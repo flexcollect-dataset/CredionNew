@@ -167,6 +167,59 @@ router.post('/get-report-data', async (req, res) => {
     }
 });
 
+async function fetch_asic_personal(data) {
+    const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
+    const bapiURL = 'https://alares.com.au/api/asic/search'
+    const bparams = {
+        first_name: "jon",
+        last_name: "adgemis",
+        dob_from: '24-04-1978',
+    };
+    bcreateResponse = await axios.get(bapiURL, {
+        params: bparams,
+        headers: {
+            'Authorization': `Bearer ${bearerToken}`
+        },
+        timeout: 30000 // 30 second timeout
+    });
+    
+    const apiUrl = 'https://alares.com.au/api/reports/create';
+    const params = {
+        type: 'individual',
+        name: "jon adgemis",
+        dob: '24-04-1978',
+        asic_current: '1',
+        person_id: bcreateResponse.data[0].person_id,
+        acs_search_id: bcreateResponse.data[0].search_id
+    };
+    createResponse = await axios.post(apiUrl, null, {
+        params: params,
+        headers: {
+            'Authorization': `Bearer ${bearerToken}`,
+            'Content-Type': 'application/json'
+        },
+        timeout: 30000 // 30 second timeout
+    });
+
+    reportData = await asic_report_data(createResponse.data.uuid);
+    reportData.data.uuid = createResponse.data.uuid;
+    return reportData;
+}
+
+async function asic_report_data(uuid) {
+    //Now call GET API to fetch the report data
+    const getApiUrl = `https://alares.com.au/api/reports/${uuid}/json`;
+
+    const response = await axios.get(getApiUrl, {
+        headers: {
+            'Authorization': `Bearer ${bearerToken}`,
+            'Content-Type': 'application/json'
+        },
+        timeout: 30000 // 30 second timeout
+    });
+    return response;
+}
+
 // Function to create report via external API
 async function createReport({ business, type }) {
     try {
@@ -197,7 +250,6 @@ async function createReport({ business, type }) {
         console.log("========================");
         if (existingReport) {
             console.log(`✅ CACHE HIT: Found existing report in Reports table`);
-            console.log(`   Report ID: ${existingReport.data}`);
             console.log(`   UUID: ${existingReport.uuid}`);
             console.log(`   Created: ${existingReport.created_at}`);
             
@@ -366,11 +418,7 @@ async function createReport({ business, type }) {
                 //console.log('✅ PPSR API Response:', response.data);
                 reportData = response;
             } else if ( type == "director-ppsr" ){
-                const ppsrTokenn = 'eyJhbGciOiJSUzI1NiIsImtpZCI6IkY2NThCODUzNDlCODc3MTVGOUM1QjI1ODgzNDcwNTVERjM5NTk1QjlSUzI1NiIsInR5cCI6ImF0K2p3dCIsIng1dCI6IjlsaTRVMG00ZHhYNXhiSllnMGNGWGZPVmxiayJ9.eyJuYmYiOjE3NjE3OTM5MzAsImV4cCI6MTc2MTc5NTczMCwiaXNzIjoiaHR0cDovL2xvY2FsaG9zdDo2MjE5NyIsImF1ZCI6ImludGVncmF0aW9uLWFwaSIsImNsaWVudF9pZCI6ImZsZXhjb2xsZWN0LWFwaS1pbnRlZ3JhdGlvbiIsImlkIjoiMTAyNzkiLCJuYW1lIjoiZmxleGNvbGxlY3QtYXBpLWludGVncmF0aW9uIiwic3ViIjoiZThiMjEwMDYtYzgxYy00YWE4LThhMDYtYWFjMzZjNzY5ODE0Iiwibmlja25hbWUiOiJGbGV4Y29sbGVjdCBJTlRFR1JBVElPTiIsInV1aWQiOiJlOGIyMTAwNi1jODFjLTRhYTgtOGEwNi1hYWMzNmM3Njk4MTQiLCJqdGkiOiI0RDM4QUY5MzVDMUQ1OUZGMzRFRDg5OTlGNDYxNjU0QyIsImlhdCI6MTc2MTc5MzkzMCwic2NvcGUiOlsidXNlcmFjY2VzcyIsImludGVncmF0aW9uYWNjZXNzIl19.kMPMLQCSbfCOd-Mc3lB8ijYYwWUfJikoYUmbfWcF7IWoiyQnyDkVMP_JrlKtoF0B0AB9IZQTHvVKbprJwbA5gPWJvnGI7pFQXNa21G0Srgdd8tioWY4UdxjujrQMpwaaQrvQOYV7-lmOIcXpj3SB3uQsWkRCWAvJ3HlukVjIMvOraJmg4tRQCerMuEn-oEOu_NHKguL0c0d7l-v-rPBJ11xPBa9RgEZJ0-E96kAPwHm5tk4yIvKHmu_WMmAxU56TnF3p8RFk_d566LHuVqTanzEaZS9m5PqMyUE5WRnUe5-S-FVSPetNTqGSNinplx90aBlI1XoRPiIlSt7J1noT_Q';
-                
-                // Remove first 2 characters from ABN to get ACN
-                const acn = abn.substring(2);
-                console.log(acn)
+                const ppsrTokenn = 'eyJhbGciOiJSUzI1NiIsImtpZCI6IkY2NThCODUzNDlCODc3MTVGOUM1QjI1ODgzNDcwNTVERjM5NTk1QjlSUzI1NiIsInR5cCI6ImF0K2p3dCIsIng1dCI6IjlsaTRVMG00ZHhYNXhiSllnMGNGWGZPVmxiayJ9.eyJuYmYiOjE3NjIwNjk3NzYsImV4cCI6MTc2MjA3MTU3NiwiaXNzIjoiaHR0cDovL2xvY2FsaG9zdDo2MjE5NyIsImF1ZCI6ImludGVncmF0aW9uLWFwaSIsImNsaWVudF9pZCI6ImZsZXhjb2xsZWN0LWFwaS1pbnRlZ3JhdGlvbiIsImlkIjoiMTAyNzkiLCJuYW1lIjoiZmxleGNvbGxlY3QtYXBpLWludGVncmF0aW9uIiwic3ViIjoiZThiMjEwMDYtYzgxYy00YWE4LThhMDYtYWFjMzZjNzY5ODE0Iiwibmlja25hbWUiOiJGbGV4Y29sbGVjdCBJTlRFR1JBVElPTiIsInV1aWQiOiJlOGIyMTAwNi1jODFjLTRhYTgtOGEwNi1hYWMzNmM3Njk4MTQiLCJqdGkiOiJFNEVEQTFBREE2QUE1MTA0QTJERUQwMjYxQzkwRjMwQiIsImlhdCI6MTc2MjA2OTc3Niwic2NvcGUiOlsidXNlcmFjY2VzcyIsImludGVncmF0aW9uYWNjZXNzIl19.Rb14hXL3Tm_0lPo4gXYO4wwu1qDgl1Afqrm5FCe6JL_mN0UFjMeZ49KFlCRN93_uxyxzhE9pS9ef5Lv5_yJTryZrKV8yjmWt0vwoYpT5pSeVArr9khsgaQ8vI005WWL4xbvOlJUuivhINp1w0af4S-5zfUNNWbwYrOKk3dV2VaBdwfb0cOqGEmTCgv15xxYwEC2TFSWPXUuoBpCRmYTKtMVqwjIo3Ihkd0G8HJqAfuLo6G2v1zE27qp5RmsnjNEBzGCwgj2dfUzbC3Pc35Ov1dZ1O931ukMSfjQeV_IlTqqyg2VJSviKJ8M3bib_hXEjS8Y1mUU0q_atlJQT18_BJQ'
                 // Step 1: Submit search request
                 const submitUrl = 'https://uat-gateway.ppsrcloud.com/api/b2b/ausearch/submit-grantor-session-cmd';
                 const requestData = {
@@ -379,9 +427,11 @@ async function createReport({ business, type }) {
                     pointInTime: null,
                     criteria: [
                         {
-                            grantorType: "organisation",
-                            organisationNumberType: "acn",
-                            organisationNumber: "146939013"
+                            grantorType: "individual",
+                            individualDateOfBirth: "1978-05-23",
+                            individualFamilyName: "budiman",
+                            individualGivenNames: "indra",
+                            acceptIndividualGrantorSearchDeclaration: true
                         }
                     ]
                 };
@@ -406,7 +456,7 @@ async function createReport({ business, type }) {
                 console.log('🔍 PPSR STEP 2 - Fetch Data:');
                 console.log('   auSearchIdentifier:', auSearchIdentifier);
                 
-                await delay(3000);
+                await delay(5000);
                 // Step 2: Fetch actual data using the auSearchIdentifier
                 const fetchUrl = 'https://uat-gateway.ppsrcloud.com/api/b2b/ausearch/result-details';
                 const fetchData = {
@@ -427,9 +477,9 @@ async function createReport({ business, type }) {
                 response.data.ppsrCloudId = auSearchIdentifier;
                 //console.log('✅ PPSR API Response:', response.data);
                 let reportData = response;
-            } else if ( type = "director-bankruptcy" ){
+            } else if ( type == "director-bankruptcy" ){
                 const apiUrl = 'https://services.afsa.gov.au/brs/api/v2/search-by-name';
-                const bearerToken = 'eyJraWQiOiIwRDRXdDh3UiIsImFsZyI6IlJTMjU2IiwidHlwIjoiSldUIn0.eyJpc3MiOiJBdXN0cmFsaWFuIEZpbmFuY2lhbCBTZWN1cml0eSBBdXRob3JpdHkiLCJpYXQiOjE3NjIwNDYzNjQsInN1YiI6IjY3ODY4IiwidXNyIjoiOGQyZTIxMWEtODhkNS00NDZmLWIzNTUtNmIxMGE4Mjc4ZTNmIiwiYXBwIjoiQ1JFRElUT1JfUFJBQ1RJVElPTkVSIiwiZW1sIjpudWxsLCJpbnQiOmZhbHNlLCJjaGEiOiJBUElfS0VZIiwiZ24iOm51bGwsInNuIjoiOGQyZTIxMWEiLCJtZmEiOnRydWUsImV4cCI6MTc2MjA0ODE2NH0.jmjek8ph0AWJ7AWNJLefhw02e9-CDZy-Y6eShwNUqOzYQMB0bsUruRkUmTdTsCvIy27IWNmE-Tm7AttDyJoW551_1A1hMbvdtzG88kQbVyoumeHCniRbvc2-IZxNEgaaNkOQTdc7Lq7RTLcMfj8H694KGSLwzLzR8hnPiQIbz12eC4gsazxgdgBNvSg4ugxAk4xRLFvJ_liSEi-17tmfJiHnFbUBi6YA1mjWKU_p-q266BCm3pp4uDbu0qo5RILyPoNVBaoiVcEpLSuRoOGXUQk07IyR2A7lehnRHmsLM7WFHTN6H2AOqGKdL09044xuNViauEP4aschOCCoW1MdRPj9pWVS0LyVPc1oo8qzeJJ0oxeJuAz1Z40ZQoo-8JTDb0_XM6WwYu8p17LSSdq2aBMBcP9hzwyMXBn8N0WVOAtJ4O_HbVXuOe0lYGUa5E0xq1lZiawrrdPSW0TPNpbMuFaBl4SaaSGmwt4sk54_u0b3Il1yCjeTk0df_QZwj6jK';
+                const bearerToken = 'eyJraWQiOiIwRDRXdDh3UiIsImFsZyI6IlJTMjU2IiwidHlwIjoiSldUIn0.eyJpc3MiOiJBdXN0cmFsaWFuIEZpbmFuY2lhbCBTZWN1cml0eSBBdXRob3JpdHkiLCJpYXQiOjE3NjIwNjgzNDcsInN1YiI6IjY3ODY4IiwidXNyIjoiOGQyZTIxMWEtODhkNS00NDZmLWIzNTUtNmIxMGE4Mjc4ZTNmIiwiYXBwIjoiQ1JFRElUT1JfUFJBQ1RJVElPTkVSIiwiZW1sIjpudWxsLCJpbnQiOmZhbHNlLCJjaGEiOiJBUElfS0VZIiwiZ24iOm51bGwsInNuIjoiOGQyZTIxMWEiLCJtZmEiOnRydWUsImV4cCI6MTc2MjA3MDE0N30.FNAxY3RBPX0PIFfVLb7s7WDwH1IkhFoLXOGL1-cpb6ryM8MtmNfST-oZQt9cZUQvzIO9sCnGf4GUqnlvyW3bc7mZpRVJUeUNgAr1quyB_DixMgLlOQT6Dt0cBCkRwZT35aiNP72MvAmNf-2-MGV0XPoE1Hk9mvWhsfz_MEMj64585yV7Bhxi9tMgKamtFKnMYbk19EDWb_yoIiZnDjlZGQKPOBfge7uqFvOCmFs4-U5YBRU59iwYBK9kAEz29ZDHrKW8g02SFfHgoIQgl7SwPU6yvRLOBPOobN4CC4iqCwx6-FNS5E-y3qiDxDT_b756r1MpkOSEnIQtSpCSB57CoK0yI7cIf0cH7LfJIVDH7rc_eHiJwZ1h7PtEUwT3oqAXKLdYGSUMUsqInO8V8HObcTR67lWAR5nsQxYUlRuZvuaJr9Hq6W_JakYGUVkM2wJ9B1Edy1KCQOUXmGUfh_hqvr-6c0zNoug4aOQWtfNIShFG713hau_7RIq1z_DwvtDH'
                 const params = {
                     debtorSurname: 'adgemis',
                     debtorGivenName: 'jon',
@@ -437,71 +487,17 @@ async function createReport({ business, type }) {
                 response = await axios.get(apiUrl, {
                     params: params,
                     headers: {
-                        'Authorization': `Bearer ${bearerToken}`
+                        'Authorization': `Bearer ${bearerToken}`,
+                        'Accept': 'application/json',
                     },
-                    Accept: 'application/json',
                     responseType: 'json',
                     timeout: 30000 // 30 second timeout
                 });
 
-
-                // const axios = require('axios');
-
-                // let config = {
-                // method: 'get',
-                // maxBodyLength: Infinity,
-                // url: 'https://services.afsa.gov.au/brs/api/v2/search-by-name?debtorSurname=adgemis&debtorGivenName=jon',
-                // headers: { 
-                //     'Authorization': 'Bearer eyJraWQiOiIwRDRXdDh3UiIsImFsZyI6IlJTMjU2IiwidHlwIjoiSldUIn0.eyJpc3MiOiJBdXN0cmFsaWFuIEZpbmFuY2lhbCBTZWN1cml0eSBBdXRob3JpdHkiLCJpYXQiOjE3NjIwNTAyMTcsInN1YiI6IjY3ODY4IiwidXNyIjoiOGQyZTIxMWEtODhkNS00NDZmLWIzNTUtNmIxMGE4Mjc4ZTNmIiwiYXBwIjoiQ1JFRElUT1JfUFJBQ1RJVElPTkVSIiwiZW1sIjpudWxsLCJpbnQiOmZhbHNlLCJjaGEiOiJBUElfS0VZIiwiZ24iOm51bGwsInNuIjoiOGQyZTIxMWEiLCJtZmEiOnRydWUsImV4cCI6MTc2MjA1MjAxN30.l7wyddWK6KWXEtHoca2t4DH4lBzVU-qg7a3Nblj16AKGZPaXrRPAQsEp2KvHNx2u8WnllqHH5DQQK4D7ce573-M70BG6Y9Jq6m1vNN7CgaSrKTR1BMFbd9bmzla9KiwgFqgZLOt4skT2yGQXjGa4H41EXxKGTBNXk3css5V4Ltq4VxTA7QJ35TdWwAbPyUM5t1Jad0JnpQRbCLGO2vrLuFHF8_wdcILsdXCve5gzumBq6-7fY3hOdFia2KKBc4XqVgJXNCzjqxATbq8C-t5nGXf-t543zdqEF4rdFKgvTOfOxk5PZjZjWBGxx3NzILFn2VNT1xYxtlT_o7k45fe-OeXr6020xeT9wNhacQnGXVZh8MkbnT-xytlJ_KxIWMotwaUCTspfie_eiyR0sa2cDtGedBKKsmjzdtC2CeEHl2Yydn-UNUIJxUV4E0DuCv3fIPvqNxPNNVbGBJJNvscbfjxNAm3bP_piDdWQ4NVUbl7EW3LQK7T4HvCNsfCufRb_', 
-                //     'Cookie': 'JSESSIONID=ED5D95A4C280E22EA88930BBCCDB68BF; TS01935e7b=016b8b0a5d5c7342e8acbb07b042095dccbd55791b2692e7bc89b3161ebff9bbf1b4f57978fe15339f73912e5a22fb5cb8560ab3cfc1556fe57d36d93a67d66e3b18040567d9644281dd40edf9fbfe87758d3bfba594cb29e1b23e9d5ef2dacb35a73493d3; BIGipServer~DMZ~pool-prd-sb-authentication-service=rd1o00000000000000000000ffff0a010264o8080; BIGipServer~DMZ~pool-prd-sb-npii=rd1o00000000000000000000ffff0a01026fo8085; SS_SESSION=4GG83597; TS01492af7=016b8b0a5dc8c56f84b15655285a88337d74b650d16ea465e42f124256adead638b4758db348ba8b8f89f84a18e047c04f8810611b966fcafc74dc9e5c151a71f7693c58370a618be0f1bf8653be696494e174ca4739ce3f88abc9a3a674a1d98fa72be5c8'
-                // }
-                // };
-
-                // axios.request(config)
-                // .then((response) => {
-                // console.log(JSON.stringify(response.data));
-                // })
-                // .catch((error) => {
-                // console.log(error);
-                // });
-
-
-                // console.log('Report creation API response:', createResponse.data);
                 response.data.uuid = response.data.insolvencySearchId;
                 reportData = response;
-            } else if ( type = "director-related" ){
-                //const apiUrl = 'https://alares.com.au/api/reports/create';
-                //const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
-                // const params = {
-                //     type: 'indivisual',
-                //     abn: abn,
-                //     asic_current: '1'
-                // };
-                // createResponse = await axios.post(apiUrl, null, {
-                //     params: params,
-                //     headers: {
-                //         'Authorization': `Bearer ${bearerToken}`,
-                //         'Content-Type': 'application/json'
-                //     },
-                //     timeout: 30000 // 30 second timeout
-                // });
-
-                // console.log('Report creation API response:', createResponse.data);
-
-                // Now call GET API to fetch the report data
-                //const getApiUrl = `https://alares.com.au/api/reports/019a2e17-f011-7183-a3db-de2ef10aaebf/json`;
-
-                // console.log('Fetching report data from:', getApiUrl);
-
-                // const response = await axios.get(getApiUrl, {
-                //     headers: {
-                //         'Authorization': `Bearer ${bearerToken}`,
-                //         'Content-Type': 'application/json'
-                //     },
-                //     timeout: 30000 // 30 second timeout
-                // });
-                // response.data.uuid = "019a2e17-f011-7183-a3db-de2ef10aaebf";
-                // reportData = response;
+            } else if ( type == "director-related" ){
+                reportData = await fetch_asic_personal(data);
             }  
 
             const { sequelize } = require('../config/db');
