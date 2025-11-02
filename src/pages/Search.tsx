@@ -1,1232 +1,1009 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import PropertyModal from '../components/PropertyModal';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { apiService } from '../services/api';
 
-interface SearchItem {
-  name: string;
-  abn: string;
+type CategoryType = 'ORGANISATION' | 'INDIVIDUAL' | 'LAND TITLE';
+type SearchType = 'SELECT ALL' | 'ASIC' | 'COURT' | 'ATO' | 'ABN/ACN PPSR' | 'ADD DOCUMENT SEARCH' | 'BANKRUPTCY' | 'LAND TITLE';
+type AsicType = 'SELECT ALL' | 'CURRENT' | 'CURRENT/HISTORICAL' | 'COMPANY';
+type AdditionalSearchType = 'SELECT ALL' | 'ABN/ACN PPSR' | 'ABN/ACN PROPERTY TITLE' | 'DIRECTOR RELATED ENTITIES' | 'DIRECTOR PROPERTY TITLE' | 'DIRECTOR PPSR' | 'DIRECTOR BANKRUPTCY' | 'ACN/ABN COURT FILES';
+
+interface SearchPrices {
+  [key: string]: number;
 }
 
-interface ReceiptItem {
-  name: string;
+interface ABNSuggestion {
+  Abn?: string;
+  Name?: string;
+  AbnStatus?: string;
+  Score?: number;
+}
+
+interface AdditionalSearchOption {
+  name: AdditionalSearchType;
+  available?: number;
   price: number;
 }
 
 const Search: React.FC = () => {
-  const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const matterIdFromUrl = searchParams.get('matterId');
-  
-  // Check if user is logged in
-  const [isLoading, setIsLoading] = useState(true);
-  const [currentMatter, setCurrentMatter] = useState<any>(null);
-  
-  // Refs for debouncing
+  const [selectedCategory, setSelectedCategory] = useState<CategoryType>('ORGANISATION');
+  const [selectedSearches, setSelectedSearches] = useState<Set<SearchType>>(new Set());
+  const [selectedAsicTypes, setSelectedAsicTypes] = useState<Set<AsicType>>(new Set());
+  const [organisationSearchTerm, setOrganisationSearchTerm] = useState('');
+  const [suggestions, setSuggestions] = useState<ABNSuggestion[]>([]);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const searchTimeoutRef = useRef<number | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const hasSelectedRef = useRef(false); // Track if user selected from dropdown
+  const [hasSelectedCompany, setHasSelectedCompany] = useState(false);
+  const [selectedAdditionalSearches, setSelectedAdditionalSearches] = useState<Set<AdditionalSearchType>>(new Set());
+  const [companyDetails, setCompanyDetails] = useState({ directors: 0, pastDirectors: 0, shareholders: 0 });
+  
+  // Individual search details
+  const [individualFirstName, setIndividualFirstName] = useState('');
+  const [individualLastName, setIndividualLastName] = useState('');
+  const [individualDateOfBirth, setIndividualDateOfBirth] = useState('');
+  
+  // Data availability
+  const [dataAvailable, setDataAvailable] = useState<boolean | null>(null);
+  const [checkingData, setCheckingData] = useState(false);
+  
+  // Stepper state and refs
+  const [activeStep, setActiveStep] = useState(0);
+  const categoryCardRef = useRef<HTMLDivElement>(null);
+  const searchesCardRef = useRef<HTMLDivElement>(null);
+  const detailsCardRef = useRef<HTMLDivElement>(null);
+  const additionalCardRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const userData = localStorage.getItem('user');
-    const matterData = localStorage.getItem('currentMatter');
-    
-    if (!userData) {
-      // Redirect to login if not logged in
-      window.location.href = '/login';
-    }
-    
-    // If matterId is provided in URL, fetch that matter's details
-    if (matterIdFromUrl) {
-      const fetchMatterDetails = async () => {
-        try {
-          const response = await apiService.getMatter(Number(matterIdFromUrl));
-          if (response.success) {
-            setCurrentMatter(response.matter);
-          } else {
-            console.error('Failed to fetch matter details');
-            // Fallback to localStorage matter
-            if (matterData) {
-              setCurrentMatter(JSON.parse(matterData));
-            } else {
-              window.location.href = '/matter-selection';
-            }
-          }
-        } catch (error) {
-          console.error('Error fetching matter details:', error);
-          // Fallback to localStorage matter
-          if (matterData) {
-            setCurrentMatter(JSON.parse(matterData));
-          } else {
-            window.location.href = '/matter-selection';
-          }
-        }
-      };
-      fetchMatterDetails();
-    } else if (matterData) {
-      setCurrentMatter(JSON.parse(matterData));
-    } else {
-      // Redirect to matter selection if no matter selected
-      window.location.href = '/matter-selection';
-    }
-    
-    setIsLoading(false);
-  }, [matterIdFromUrl]);
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  // State management
-  const [selectedCategory, setSelectedCategory] = useState<'organisation' | 'individual'>('organisation');
-  const [selectedOrgMainSearches, setSelectedOrgMainSearches] = useState<string[]>([]);
-  const [selectedAsicTypes, setSelectedAsicTypes] = useState<string[]>([]);
-  const [selectedOrgAdditionalSearches, setSelectedOrgAdditionalSearches] = useState<string[]>([]);
-  const [selectedIndividualSearches, setSelectedIndividualSearches] = useState<string[]>([]);
-  const [searchInput, setSearchInput] = useState('');
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [organizationSelected, setOrganizationSelected] = useState(false);
-  const [propertyModalCompleted, setPropertyModalCompleted] = useState(false);
-  const [directorPropertyModalCompleted, setDirectorPropertyModalCompleted] = useState(false);
-  const [propertyCount, setPropertyCount] = useState(2);
-  const [directorPropertyCount, setDirectorPropertyCount] = useState(1);
-  const [showPaymentActions, setShowPaymentActions] = useState(false);
-  const [email, setEmail] = useState('');
-  const [receiptItems, setReceiptItems] = useState<ReceiptItem[]>([]);
-  const [totalPrice, setTotalPrice] = useState(0);
-  const [showPropertyModal, setShowPropertyModal] = useState(false);
-  const [showDirectorPropertyModal, setShowDirectorPropertyModal] = useState(false);
-
-  // Real ABN search results
-  const [dropdownItems, setDropdownItems] = useState<SearchItem[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [isProcessingReports, setIsProcessingReports] = useState(false);
-  const [generatedReports, setGeneratedReports] = useState<any[]>([]);
-
-  // Pricing configuration
-  const orgMainPrices: Record<string, number> = {
-    'asic': 50,
-    'court': 60,
-    'ato': 55,
-    'land': 70
-  };
-
+  const categories: CategoryType[] = ['ORGANISATION', 'INDIVIDUAL', 'LAND TITLE'];
+  const asicTypes: AsicType[] = ['SELECT ALL', 'CURRENT', 'CURRENT/HISTORICAL', 'COMPANY'];
+  
   const asicTypePrices: Record<string, number> = {
-    'current': 20,
-    'historical': 25,
-    'company': 30,
-    'personal': 30,
-    'document-search': 35
+    'CURRENT': 25.00,
+    'CURRENT/HISTORICAL': 40.00,
+    'COMPANY': 30.00
+  };
+  
+  // Base prices for additional searches (per director for director-related searches)
+  const additionalSearchBasePrices: Record<string, number> = {
+    'ABN/ACN PPSR': 50,
+    'ABN/ACN PROPERTY TITLE': 100,
+    'DIRECTOR RELATED ENTITIES': 75,
+    'DIRECTOR PROPERTY TITLE': 80,
+    'DIRECTOR PPSR': 50,
+    'DIRECTOR BANKRUPTCY': 90,
+    'ACN/ABN COURT FILES': 60
+  };
+  
+  // Dynamic additional search options based on number of directors
+  const additionalSearchOptions: AdditionalSearchOption[] = useMemo(() => {
+    const directorCount = companyDetails.directors || 0;
+    
+    return [
+      { name: 'SELECT ALL', price: 0 },
+      { name: 'ABN/ACN PPSR', price: additionalSearchBasePrices['ABN/ACN PPSR'] },
+      { name: 'ABN/ACN PROPERTY TITLE', price: additionalSearchBasePrices['ABN/ACN PROPERTY TITLE'] },
+      { 
+        name: 'DIRECTOR RELATED ENTITIES', 
+        available: directorCount, 
+        price: additionalSearchBasePrices['DIRECTOR RELATED ENTITIES'] * directorCount
+      },
+      { 
+        name: 'DIRECTOR PROPERTY TITLE', 
+        available: directorCount,
+        price: additionalSearchBasePrices['DIRECTOR PROPERTY TITLE'] * directorCount
+      },
+      { 
+        name: 'DIRECTOR PPSR', 
+        available: directorCount,
+        price: additionalSearchBasePrices['DIRECTOR PPSR'] * directorCount
+      },
+      { 
+        name: 'DIRECTOR BANKRUPTCY', 
+        available: directorCount,
+        price: additionalSearchBasePrices['DIRECTOR BANKRUPTCY'] * directorCount
+      },
+      { name: 'ACN/ABN COURT FILES', available: 1, price: additionalSearchBasePrices['ACN/ABN COURT FILES'] }
+    ];
+  }, [companyDetails.directors]);
+  
+  // Dynamic searches based on category - CHANGES PER CATEGORY!
+  const categorySearches: Record<CategoryType, SearchType[]> = {
+    'ORGANISATION': ['SELECT ALL', 'ASIC', 'COURT', 'ATO', 'ABN/ACN PPSR', 'ADD DOCUMENT SEARCH'],
+    'INDIVIDUAL': ['SELECT ALL', 'ASIC', 'BANKRUPTCY', 'COURT', 'LAND TITLE', 'ABN/ACN PPSR'],
+    'LAND TITLE': [] // No options for Land Title as of now
+  };
+  
+  const searches = useMemo(() => categorySearches[selectedCategory], [selectedCategory]);
+  
+  // Check if all searches are selected (excluding SELECT ALL)
+  const allSearchesSelected = useMemo(() => {
+    const individualSearches = searches.filter(s => s !== 'SELECT ALL');
+    return individualSearches.length > 0 && individualSearches.every(s => selectedSearches.has(s));
+  }, [searches, selectedSearches]);
+
+  // Check if all ASIC types are selected (excluding SELECT ALL)
+  const allAsicTypesSelected = useMemo(() => {
+    const individualTypes = asicTypes.filter(t => t !== 'SELECT ALL');
+    return individualTypes.length > 0 && individualTypes.every(t => selectedAsicTypes.has(t));
+  }, [selectedAsicTypes]);
+
+  // Check if all additional searches are selected (excluding SELECT ALL)
+  const allAdditionalSearchesSelected = useMemo(() => {
+    const individualSearches = additionalSearchOptions.filter(o => o.name !== 'SELECT ALL');
+    return individualSearches.length > 0 && individualSearches.every(o => selectedAdditionalSearches.has(o.name));
+  }, [selectedAdditionalSearches]);
+
+  // Show "Enter Search Details" when ORGANISATION is selected and searches/ASIC types are chosen
+  const showEnterSearchDetails = useMemo(() => {
+    if (selectedCategory !== 'ORGANISATION') return false;
+    
+    const hasSearches = Array.from(selectedSearches).some(s => s !== 'SELECT ALL');
+    const hasAsicTypes = Array.from(selectedAsicTypes).some(t => t !== 'SELECT ALL');
+    
+    return hasSearches || hasAsicTypes;
+  }, [selectedCategory, selectedSearches, selectedAsicTypes]);
+  
+  const searchPrices: SearchPrices = {
+    'ASIC': 50.00,
+    'COURT': 60.00,
+    'ATO': 55.00,
+    'ABN/ACN PPSR': 50.00,
+    'ADD DOCUMENT SEARCH': 35.00,
+    'BANKRUPTCY': 90.00,
+    'LAND TITLE': 80.00
   };
 
-  const orgAdditionalPrices: Record<string, number> = {
-    'ppsr': 50,
-    'courts': 75,
-    'property': 100,
-    'director-related': 80,
-    'director-ppsr': 60,
-    'director-bankruptcy': 90,
-    'director-property': 110
-  };
-
-  const directorPropertyPrices: Record<number, number> = {
-    0: 20,   // Summary Only
-    1: 10,   // Current
-    11: 110, // Past
-    12: 120  // Select All
-  };
-
-  const propertySearchPrices: Record<number, number> = {
-    0: 20,   // Summary Only
-    2: 20,   // Current (2)
-    3: 20,   // Past (2)
-    4: 40    // Select All (4)
-  };
-
-  const indPrices: Record<string, number> = {
-    'asic': 40,
-    'bankruptcy': 50,
-    'court': 60,
-    'land': 70,
-    'ppsr': 45
-  };
-
-  // Calculate total price and update receipt
-  const calculateTotal = () => {
-    let total = 0;
-    const items: ReceiptItem[] = [];
-
-    if (selectedCategory === 'organisation') {
-      // Add main searches
-      selectedOrgMainSearches.forEach(search => {
-        const price = orgMainPrices[search] || 0;
-        total += price;
-        items.push({ name: search.toUpperCase(), price });
-      });
-
-      // Add ASIC type searches
-      if (selectedOrgMainSearches.includes('asic')) {
-        selectedAsicTypes.forEach(type => {
-          const price = asicTypePrices[type] || 0;
-          total += price;
-          items.push({ name: `ASIC - ${type.toUpperCase()}`, price });
-        });
+  const handleSearchToggle = (search: SearchType) => {
+    const newSelected = new Set(selectedSearches);
+    
+    if (search === 'SELECT ALL') {
+      if (selectedSearches.has('SELECT ALL')) {
+        newSelected.clear();
+        // If SELECT ALL is being deselected and ASIC was selected, clear ASIC types
+        if (selectedSearches.has('ASIC')) {
+          setSelectedAsicTypes(new Set());
+        }
+          } else {
+        searches.forEach(s => newSelected.add(s));
+          }
+        } else {
+      if (newSelected.has(search)) {
+        newSelected.delete(search);
+        newSelected.delete('SELECT ALL');
+        
+        // If ASIC is being deselected, clear all ASIC types
+        if (search === 'ASIC') {
+          setSelectedAsicTypes(new Set());
+        }
+    } else {
+        newSelected.add(search);
+        const allSelected = searches.filter(s => s !== 'SELECT ALL').every(s => newSelected.has(s) || s === search);
+    if (allSelected) {
+          newSelected.add('SELECT ALL');
+        }
       }
+    }
+    
+    setSelectedSearches(newSelected);
+  };
+
+  const calculateTotal = (): number => {
+    let total = 0;
+
+      // Add main searches
+    selectedSearches.forEach(search => {
+      if (search !== 'SELECT ALL' && search in searchPrices) {
+        total += searchPrices[search];
+      }
+    });
+    
+    // Add ASIC type prices
+        selectedAsicTypes.forEach(type => {
+      if (type !== 'SELECT ALL' && type in asicTypePrices) {
+        total += asicTypePrices[type];
+      }
+    });
 
       // Add additional searches
-      selectedOrgAdditionalSearches.forEach(search => {
-        let price = 0;
-        if (organizationSelected) {
-          if (search === 'director-property' && directorPropertyModalCompleted) {
-            price = directorPropertyPrices[directorPropertyCount] || 0;
-          } else if (search === 'property' && propertyModalCompleted) {
-            price = propertySearchPrices[propertyCount] || 0;
-          } else {
-            price = orgAdditionalPrices[search] || 0;
-          }
-        } else {
-          price = orgAdditionalPrices[search] || 0;
+    selectedAdditionalSearches.forEach(search => {
+      if (search !== 'SELECT ALL') {
+        const option = additionalSearchOptions.find(o => o.name === search);
+        if (option && option.price) {
+          total += option.price;
         }
-        total += price;
-        items.push({ name: search.replace('-', ' ').toUpperCase(), price });
-      });
-    } else {
-      // Individual searches
-      selectedIndividualSearches.forEach(search => {
-        const price = indPrices[search] || 0;
-        total += price;
-        items.push({ name: search.toUpperCase(), price });
-      });
-    }
-
-    setReceiptItems(items);
-    setTotalPrice(total);
-  };
-
-  useEffect(() => {
-    calculateTotal();
-  }, [
-    selectedCategory,
-    selectedOrgMainSearches,
-    selectedAsicTypes,
-    selectedOrgAdditionalSearches,
-    selectedIndividualSearches,
-    organizationSelected,
-    propertyModalCompleted,
-    directorPropertyModalCompleted,
-    propertyCount,
-    directorPropertyCount
-  ]);
-
-  // Handle organization selection
-  const handleOrganizationSelect = (item: SearchItem) => {
-    setSearchInput(item.name);
-    setShowDropdown(false);
-    setOrganizationSelected(true);
-  };
-
-  // Debounced search function
-  const debouncedSearch = useCallback(async (value: string) => {
-    if (value.length >= 3) {
-      setIsSearching(true);
-      try {
-        console.log('Searching for:', value);
-        const response = await apiService.searchABNByName(value);
-        console.log('ABN search response:', response);
-        
-        if (response.success) {
-          const formattedResults = response.results.map((result: any) => ({
-            name: result.Name,
-            abn: `ABN: ${result.Abn}`
-          }));
-          console.log('Formatted results:', formattedResults);
-          setDropdownItems(formattedResults);
-          setShowDropdown(true);
-        } else {
-          console.log('No results found');
-          setDropdownItems([]);
-        }
-      } catch (error) {
-        console.error('Error searching ABN:', error);
-        setDropdownItems([]);
-        // Show a simple fallback for testing
-        if (value.toLowerCase().includes('test')) {
-          setDropdownItems([
-            { name: 'TEST COMPANY PTY LTD', abn: 'ABN: 12345678901' },
-            { name: 'TEST ENTERPRISES', abn: 'ABN: 12345678902' }
-          ]);
-          setShowDropdown(true);
-        }
-      } finally {
-        setIsSearching(false);
       }
-    } else {
-      setDropdownItems([]);
-      setShowDropdown(false);
-    }
-  }, []);
-
-  // Handle search input change with debouncing
-  const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setSearchInput(value);
+    });
     
-    // Clear existing timeout
+    return total;
+  };
+
+  // Debounced search for ABN/Company suggestions
+  useEffect(() => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
-    
-    // Set new timeout for debounced search
-    searchTimeoutRef.current = setTimeout(() => {
-      debouncedSearch(value);
-    }, 300);
-  };
 
-  // Handle checkbox changes
-  const handleOrgMainSearchChange = (search: string) => {
-    setSelectedOrgMainSearches(prev => 
-      prev.includes(search) 
-        ? prev.filter(s => s !== search)
-        : [...prev, search]
-    );
-  };
-
-  const handleAsicTypeChange = (type: string) => {
-    setSelectedAsicTypes(prev => 
-      prev.includes(type) 
-        ? prev.filter(t => t !== type)
-        : [...prev, type]
-    );
-  };
-
-  const handleOrgAdditionalChange = (search: string) => {
-    if (search === 'property' && organizationSelected) {
-      setShowPropertyModal(true);
-    } else if (search === 'director-property' && organizationSelected) {
-      setShowDirectorPropertyModal(true);
-    } else {
-      setSelectedOrgAdditionalSearches(prev => 
-        prev.includes(search) 
-          ? prev.filter(s => s !== search)
-          : [...prev, search]
-      );
-    }
-  };
-
-  const handleIndividualSearchChange = (search: string) => {
-    setSelectedIndividualSearches(prev => 
-      prev.includes(search) 
-        ? prev.filter(s => s !== search)
-        : [...prev, search]
-    );
-  };
-
-  // Select all functionality
-  const handleSelectAllOrgMain = () => {
-    const allSearches = ['asic', 'court', 'ato', 'land'];
-    const allSelected = allSearches.every(search => selectedOrgMainSearches.includes(search));
-    
-    if (allSelected) {
-      setSelectedOrgMainSearches([]);
-    } else {
-      setSelectedOrgMainSearches(allSearches);
-    }
-  };
-
-  const handleSelectAllAsicType = () => {
-    const allTypes = ['current', 'historical', 'company', 'personal', 'document-search'];
-    const allSelected = allTypes.every(type => selectedAsicTypes.includes(type));
-    
-    if (allSelected) {
-      setSelectedAsicTypes([]);
-    } else {
-      setSelectedAsicTypes(allTypes);
-    }
-  };
-
-  const handleSelectAllOrgAdditional = () => {
-    const allSearches = ['ppsr', 'property', 'director-related', 'director-property', 'director-ppsr', 'director-bankruptcy', 'courts'];
-    const allSelected = allSearches.every(search => selectedOrgAdditionalSearches.includes(search));
-    
-    if (allSelected) {
-      setSelectedOrgAdditionalSearches([]);
-    } else {
-      setSelectedOrgAdditionalSearches(allSearches);
-    }
-  };
-
-  const handleSelectAllIndividual = () => {
-    const allSearches = ['asic', 'bankruptcy', 'court', 'land', 'ppsr'];
-    const allSelected = allSearches.every(search => selectedIndividualSearches.includes(search));
-    
-    if (allSelected) {
-      setSelectedIndividualSearches([]);
-    } else {
-      setSelectedIndividualSearches(allSearches);
-    }
-  };
-
-  // Payment handlers with real backend integration
-  const handleProcessReports = async () => {
-    if (!organizationSelected && selectedCategory === 'organisation') {
-      alert('Please select an organization first');
+    // Don't search if user just selected from dropdown
+    if (hasSelectedRef.current) {
+      hasSelectedRef.current = false;
       return;
     }
 
-    if (receiptItems.length === 0) {
-      alert('Please select at least one search option');
-      return;
-    }
-
-    console.log('Processing reports...');
-    console.log('Selected organization:', searchInput);
-    console.log('Receipt items:', receiptItems);
-
-    setIsProcessingReports(true);
-    try {
-      const reports = [];
-      
-      // Process each selected search
-      for (const item of receiptItems) {
-        console.log('Processing item:', item);
-        
-        // Skip generic "ASIC" if specific ASIC types are selected
-        if (item.name === 'ASIC' && selectedAsicTypes.length > 0) {
-          console.log('Skipping generic ASIC because specific ASIC types are selected');
-          continue;
+    if (organisationSearchTerm.trim().length >= 2) {
+      setIsLoadingSuggestions(true);
+      searchTimeoutRef.current = setTimeout(async () => {
+        try {
+          const response = await apiService.searchABNByName(organisationSearchTerm);
+          if (response.success && response.results) {
+            setSuggestions(response.results);
+            setShowSuggestions(true);
         }
-        
-        // Determine the report type based on the item name
-        let reportType = '';
-        if (item.name.includes('ASIC')) {
-          if (item.name.includes('CURRENT')) {
-            reportType = 'asic-current';
-          } else if (item.name.includes('HISTORICAL')) {
-            reportType = 'asic-historical';
-          } else if (item.name.includes('COMPANY')) {
-            reportType = 'asic-company';
-          } else if (item.name.includes('PERSONAL')) {
-            reportType = 'asic-personal';
-          } else if (item.name.includes('DOCUMENT')) {
-            reportType = 'asic-document-search';
-          } else {
-            reportType = 'asic-current'; // Default fallback
-          }
-        } else if (item.name.includes('COURT')) {
-          reportType = 'court';
-        } else if (item.name.includes('ATO')) {
-          reportType = 'ato';
-        } else if (item.name.includes('LAND')) {
-          reportType = 'land';
-        } else if (item.name.includes('PPSR')) {
-          reportType = 'ppsr';
-        } else if (item.name.includes('PROPERTY')) {
-          reportType = 'property';
-        } else if (item.name.includes('DIRECTOR')) {
-          if (item.name.includes('PPSR')) {
-            reportType = 'director-ppsr';
-          } else if (item.name.includes('BANKRUPTCY')) {
-            reportType = 'director-bankruptcy';
-          } else if (item.name.includes('PROPERTY')) {
-            reportType = 'director-property';
-          } else {
-            reportType = 'director-related';
-          }
-        } else {
-          // Default fallback
-          reportType = item.name.toLowerCase().replace(/\s+/g, '-');
-        }
-        
-        // Get the selected organization's ABN
-        const selectedOrg = dropdownItems.find(org => org.name === searchInput);
-        if (!selectedOrg) {
-          console.log('Organization not found in dropdown items:', dropdownItems);
-          throw new Error('Organization not found');
-        }
-
-        console.log('🔍 FRONTEND DEBUG:');
-        console.log('   Item name:', item.name);
-        console.log('   Determined reportType:', reportType);
-        console.log('Creating report for:', selectedOrg, 'Type:', reportType);
-
-        // Create report via backend API
-        const reportData = {
-          business: {
-            Abn: selectedOrg.abn.replace('ABN: ', ''),
-            Name: selectedOrg.name,
-            isCompany: selectedCategory === 'organisation'
-          },
-          type: reportType,
-          userId: JSON.parse(localStorage.getItem('user') || '{}').userId,
-          matterId: matterIdFromUrl ? Number(matterIdFromUrl) : currentMatter?.matterId
-        };
-
-          console.log('Report data being sent to backend:', reportData);
-
-          // Call backend to create report
-          const reportResponse = await apiService.createReport(reportData);
-          console.log('🔍 Raw report response:', reportResponse);
-          console.log('🔍 reportResponse.reportId:', reportResponse.reportId);
-          console.log('🔍 reportResponse.savedReportId:', reportResponse.savedReportId);
-          
-          // Extract the report data and ensure we have the correct ID field
-          const reportId = reportResponse.report.reportId;
-          console.log('🔍 Using reportId:', reportId);
-          
-          const report = {
-            id: reportId, // Map reportId to id for consistency
-            reportId: reportId,
-            uuid: reportResponse.report.uuid,
-            status: reportResponse.report.status,
-            fromCache: reportResponse.report.fromCache,
-            type: reportType
-          };
-          
-          console.log('🔍 Processed report:', report);
-          reports.push(report);
+      } catch (error) {
+          console.error('Error fetching ABN suggestions:', error);
+          setSuggestions([]);
+      } finally {
+          setIsLoadingSuggestions(false);
       }
-
-      console.log('All reports created:', reports);
-      setGeneratedReports(reports);
-      setShowPaymentActions(true);
-    } catch (error: any) {
-      console.error('Error processing reports:', error);
-      alert(`Error processing reports: ${error?.message || 'Unknown error'}`);
-    } finally {
-      setIsProcessingReports(false);
-    }
-  };
-
-  const handleSendEmail = async () => {
-    if (!email || !email.includes('@')) {
-      alert('Please enter a valid email address');
-      return;
+      }, 500);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
     }
 
-    // Filter supported like MatterReports (ASIC current/historical, PPSR, COURT)
-    const supportedReports = generatedReports.filter(report => 
-      report.type === 'asic-current' || report.type === 'asic-historical' || report.type === 'ppsr' || report.type === 'court'
-    );
-
-    if (supportedReports.length === 0) {
-      alert('Email is currently available for ASIC Current/Historical, PPSR, and COURT reports.');
-      return;
+    return () => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
     }
+    };
+  }, [organisationSearchTerm]);
 
-    if (supportedReports.length < generatedReports.length) {
-      const unsupportedCount = generatedReports.length - supportedReports.length;
-      alert(`Email will include only ASIC Current/Historical, PPSR, and COURT. ${unsupportedCount} other report type(s) will be skipped.`);
-    }
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
 
-    try {
-      // Get matter name for email
-      const matterName = currentMatter?.matterName || 'Search Results';
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+  
+  // Update stepper based on scroll position
+  useEffect(() => {
+    const updateStepperProgress = () => {
+      const viewportTrigger = window.innerHeight * 0.35;
       
-      // Build payload like MatterReports: ensure correct ID and report type mapping
-      const reportsWithIds = supportedReports.map((report) => {
-        const reportId = report.reportId ?? report.id;
-        // Map to backend PDF types
-        let mappedType = 'ASIC';
-        if (report.type === 'ppsr') mappedType = 'PPSR';
-        else if (report.type === 'court') mappedType = 'COURT';
-        else mappedType = 'ASIC'; // asic-current / asic-historical
-        
-        return {
-          ...report,
-          id: reportId,
-          reportId: reportId,
-          type: mappedType
-        };
+      // Check which sections are visible
+      const sections = [
+        categoryCardRef.current,
+        searchesCardRef.current,
+        detailsCardRef.current,
+        additionalCardRef.current
+      ];
+      
+      let newActiveStep = 0;
+      
+      sections.forEach((section, index) => {
+        if (section && section.offsetParent !== null) {
+          const rect = section.getBoundingClientRect();
+          if (rect.top <= viewportTrigger && rect.bottom > 0) {
+            newActiveStep = index;
+          }
+        }
       });
       
-      await apiService.sendReports(email, reportsWithIds, totalPrice, matterName);
-      alert(`Reports sent successfully to: ${email}`);
-      
-      // Redirect back to matter reports if we came from there
-      if (matterIdFromUrl) {
-        navigate(`/matter-reports/${matterIdFromUrl}`);
+      setActiveStep(newActiveStep);
+    };
+    
+    // Update on scroll and resize
+    window.addEventListener('scroll', updateStepperProgress);
+    window.addEventListener('resize', updateStepperProgress);
+    
+    // Initial update
+    updateStepperProgress();
+    
+    return () => {
+      window.removeEventListener('scroll', updateStepperProgress);
+      window.removeEventListener('resize', updateStepperProgress);
+    };
+  }, [hasSelectedCompany, selectedSearches, selectedCategory]);
+
+  const handleSuggestionSelect = async (suggestion: ABNSuggestion) => {
+    hasSelectedRef.current = true; // Mark as selected to prevent re-searching
+    const displayText = suggestion.Name 
+      ? `${suggestion.Name} ABN: ${suggestion.Abn}` 
+      : `ABN: ${suggestion.Abn}`;
+    setOrganisationSearchTerm(displayText);
+    setShowSuggestions(false);
+    setSuggestions([]);
+    setHasSelectedCompany(true); // Show additional searches section
+    
+    // Check data availability and extract company details
+    if (suggestion.Abn) {
+      setCheckingData(true);
+      setDataAvailable(null);
+      try {
+        const result = await apiService.checkDataAvailability(suggestion.Abn, 'asic-current');
+        setDataAvailable(result.available);
+        
+        // Extract company details from rdata if available
+        if (result.available && result.data?.rdata) {
+          const rdata = result.data.rdata;
+          const asicExtract = rdata.asic_extracts?.[0];
+          
+          if (asicExtract) {
+            const currentDirectors = asicExtract.directors?.filter((d: any) => d.status === 'Current').length || 0;
+            const pastDirectors = asicExtract.directors?.filter((d: any) => d.status !== 'Current').length || 0;
+            const shareholders = asicExtract.shareholders?.length || 0;
+            
+            setCompanyDetails({
+              directors: currentDirectors,
+              pastDirectors: pastDirectors,
+              shareholders: shareholders
+            });
+          }
+          } else {
+          // Reset to 0 if no data available
+          setCompanyDetails({ directors: 0, pastDirectors: 0, shareholders: 0 });
+        }
+      } catch (error) {
+        console.error('Error checking data:', error);
+        setDataAvailable(null);
+        setCompanyDetails({ directors: 0, pastDirectors: 0, shareholders: 0 });
+      } finally {
+        setCheckingData(false);
       }
-    } catch (error) {
-      alert('Error sending reports. Please try again.');
     }
   };
 
-  const handleDownload = async () => {
-    // Check if all reports are ASIC current or historical
-    const supportedReports = generatedReports.filter(report => 
-      report.type === 'asic-current' || report.type === 'asic-historical' || report.type === 'ppsr' || report.type === 'court'
-    );
+  // Clear selections when category changes
+  const handleCategoryChange = (category: CategoryType) => {
+    setSelectedCategory(category);
+    setSelectedSearches(new Set());
+    setSelectedAsicTypes(new Set());
+    setOrganisationSearchTerm('');
+    setSuggestions([]);
+    setShowSuggestions(false);
+    hasSelectedRef.current = false;
+    setHasSelectedCompany(false);
+    setSelectedAdditionalSearches(new Set());
+    setDataAvailable(null);
+    setCheckingData(false);
+    setCompanyDetails({ directors: 0, pastDirectors: 0, shareholders: 0 });
+    
+    // Clear individual details
+    setIndividualFirstName('');
+    setIndividualLastName('');
+    setIndividualDateOfBirth('');
+  };
 
-    if (supportedReports.length === 0) {
-      alert('Download functionality is currently only available for ASIC Current/Historical, PPSR, and COURT reports.');
-      return;
-    }
-
-    if (supportedReports.length < generatedReports.length) {
-      const unsupportedCount = generatedReports.length - supportedReports.length;
-      alert(`Download is currently only available for ASIC Current/Historical, PPSR, and COURT. ${unsupportedCount} other report type(s) will be skipped.`);
-    }
-
-    try {
-      for (const report of supportedReports) {
-        // Determine the report type for PDF generation similar to MatterReports
-        let pdfType = 'ASIC';
-        if (report.type === 'ppsr') {
-          pdfType = 'PPSR';
-        } else if (report.type === 'court') {
-          pdfType = 'COURT';
+  const handleAsicTypeToggle = (asicType: AsicType) => {
+    const newSelected = new Set(selectedAsicTypes);
+    
+    if (asicType === 'SELECT ALL') {
+      if (selectedAsicTypes.has('SELECT ALL')) {
+        newSelected.clear();
+          } else {
+        asicTypes.forEach(t => newSelected.add(t));
+          }
+          } else {
+      if (newSelected.has(asicType)) {
+        newSelected.delete(asicType);
+        newSelected.delete('SELECT ALL');
         } else {
-          // asic-current / asic-historical map to ASIC
-          pdfType = 'ASIC';
+        newSelected.add(asicType);
+        const allIndividualSelected = asicTypes.filter(t => t !== 'SELECT ALL').every(t => newSelected.has(t) || t === asicType);
+        if (allIndividualSelected) {
+          newSelected.add('SELECT ALL');
         }
-        
-        // Resolve the DB report id
-        const reportId = report.reportId ?? report.id;
-        if (!reportId) {
-          console.error('No report ID found in report object:', report);
-          continue;
+      }
+    }
+    setSelectedAsicTypes(newSelected);
+  };
+
+  const handleAdditionalSearchToggle = (searchName: AdditionalSearchType) => {
+    const newSelected = new Set(selectedAdditionalSearches);
+    
+    if (searchName === 'SELECT ALL') {
+      if (selectedAdditionalSearches.has('SELECT ALL')) {
+        newSelected.clear();
+          } else {
+        additionalSearchOptions.forEach(option => newSelected.add(option.name));
+      }
+          } else {
+      if (newSelected.has(searchName)) {
+        newSelected.delete(searchName);
+        newSelected.delete('SELECT ALL');
+        } else {
+        newSelected.add(searchName);
+        const allIndividualSelected = additionalSearchOptions
+          .filter(o => o.name !== 'SELECT ALL')
+          .every(o => newSelected.has(o.name) || o.name === searchName);
+        if (allIndividualSelected) {
+          newSelected.add('SELECT ALL');
         }
-        
-        const { blob, filename } = await apiService.generatePDF(reportId, pdfType);
-        
-        // Create download link
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
       }
-      
-      alert('Reports downloaded successfully!');
-      
-      // Redirect back to matter reports if we came from there
-      if (matterIdFromUrl) {
-        navigate(`/matter-reports/${matterIdFromUrl}`);
-      }
-    } catch (error) {
-      console.error('Error downloading reports:', error);
-      alert('Error downloading reports. Please try again.');
     }
+    setSelectedAdditionalSearches(newSelected);
   };
-
-  // Helper function to check if all reports are supported for download/email
-  const areAllReportsSupported = () => {
-    if (generatedReports.length === 0) return false;
-    return generatedReports.every(report => 
-      report.type === 'asic-current' || report.type === 'asic-historical' || report.type === 'ppsr'
-    );
-  };
-
-  // Helper function to get supported reports count
-  const getSupportedReportsCount = () => {
-    return generatedReports.filter(report => 
-      report.type === 'asic-current' || report.type === 'asic-historical' || report.type === 'ppsr'
-    ).length;
-  };
-
-  // Modal completion handlers
-  const handlePropertyModalComplete = (count: number, _label: string) => {
-    setPropertyCount(count);
-    setPropertyModalCompleted(true);
-    if (!selectedOrgAdditionalSearches.includes('property')) {
-      setSelectedOrgAdditionalSearches(prev => [...prev, 'property']);
-    }
-  };
-
-  const handleDirectorPropertyModalComplete = (count: number, _label: string) => {
-    setDirectorPropertyCount(count);
-    setDirectorPropertyModalCompleted(true);
-    if (!selectedOrgAdditionalSearches.includes('director-property')) {
-      setSelectedOrgAdditionalSearches(prev => [...prev, 'director-property']);
-    }
-  };
-
-
-  // Filter dropdown items based on search input
-  const filteredDropdownItems = dropdownItems.filter(item =>
-    item.name.toLowerCase().includes(searchInput.toLowerCase())
-  );
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
-      {isLoading ? (
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading...</p>
+      <div className="max-w-[1350px] mx-auto py-16 px-8 pr-[370px]">
+        <div className="flex gap-12">
+          {/* Left Sidebar - Vertical Stepper */}
+          <div className="w-[200px] flex-shrink-0 sticky top-32 self-start">
+            <div className="relative flex flex-col gap-9 pl-8 pr-4 py-3">
+              {/* Progress Line Background */}
+              <div className="absolute left-[14px] top-3 bottom-3 w-1 bg-gray-200 rounded-full"></div>
+              
+              {/* Progress Line Fill */}
+              <div 
+                className="absolute left-[14px] top-3 w-1 bg-gradient-to-b from-red-600 to-red-700 rounded-full transition-all duration-300"
+                style={{ height: `${(activeStep / 3) * 100}%` }}
+              ></div>
+
+              {/* Step 1 */}
+              <div className={`relative flex items-center gap-3 cursor-pointer ${activeStep === 0 ? '' : 'opacity-50'}`}>
+                <div className={`w-[34px] h-[34px] rounded-full border-2 flex items-center justify-center font-bold shadow-md z-10 ${
+                  activeStep === 0 
+                    ? 'border-red-600 bg-gradient-to-br from-red-600 to-red-700 text-white shadow-lg shadow-red-600/35' 
+                    : 'border-gray-300 bg-white text-gray-400'
+                }`}>
+                  1
           </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">STEP 1</span>
+                  <span className={`text-sm font-semibold ${activeStep === 0 ? 'text-red-600' : 'text-gray-600'}`}>Select Category</span>
         </div>
-      ) : (
-        <>
-          {/* Main Content */}
-          <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 lg:py-8 pr-96">
-        {/* Category Selection */}
-        <div className="card">
-          <h2 className="section-title">Select <span>Category</span></h2>
-          <div className="category-options">
-            <div className="radio-option">
-              <input
-                type="radio"
-                id="organisation"
-                name="category"
-                value="organisation"
-                checked={selectedCategory === 'organisation'}
-                onChange={() => setSelectedCategory('organisation')}
-              />
-              <label htmlFor="organisation">Organisation</label>
             </div>
-            <div className="radio-option">
-              <input
-                type="radio"
-                id="individual"
-                name="category"
-                value="individual"
-                checked={selectedCategory === 'individual'}
-                onChange={() => setSelectedCategory('individual')}
-              />
-              <label htmlFor="individual">Individual</label>
+
+              {/* Step 2 */}
+              <div className={`relative flex items-center gap-3 cursor-pointer ${activeStep === 1 ? '' : 'opacity-50'}`}>
+                <div className={`w-[34px] h-[34px] rounded-full border-2 flex items-center justify-center font-bold shadow-md z-10 ${
+                  activeStep === 1 
+                    ? 'border-red-600 bg-gradient-to-br from-red-600 to-red-700 text-white shadow-lg shadow-red-600/35' 
+                    : 'border-gray-300 bg-white text-gray-400'
+                }`}>
+                  2
             </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">STEP 2</span>
+                  <span className={`text-sm font-semibold ${activeStep === 1 ? 'text-red-600' : 'text-gray-600'}`}>Select Searches</span>
           </div>
         </div>
 
-        {/* Organisation Main Searches */}
-        {selectedCategory === 'organisation' && (
-          <>
-            <div className="card">
-              <h2 className="section-title">Select <span>Searches</span></h2>
-              <div className="checkboxes-grid">
-                <div className="select-all-grid-item">
-                  <button className="select-all-btn" onClick={handleSelectAllOrgMain}>
-                    {['asic', 'court', 'ato', 'land'].every(search => selectedOrgMainSearches.includes(search)) ? 'Deselect All' : 'Select All'}
-                  </button>
+              {/* Step 3 */}
+              <div className={`relative flex items-center gap-3 cursor-pointer ${activeStep === 2 ? '' : 'opacity-50'}`}>
+                <div className={`w-[34px] h-[34px] rounded-full border-2 flex items-center justify-center font-bold shadow-md z-10 ${
+                  activeStep === 2 
+                    ? 'border-red-600 bg-gradient-to-br from-red-600 to-red-700 text-white shadow-lg shadow-red-600/35' 
+                    : 'border-gray-300 bg-white text-gray-400'
+                }`}>
+                  3
                 </div>
-                <div className="checkbox-option">
-                  <input
-                    type="checkbox"
-                    id="asicOrg"
-                    checked={selectedOrgMainSearches.includes('asic')}
-                    onChange={() => handleOrgMainSearchChange('asic')}
-                  />
-                  <label htmlFor="asicOrg">ASIC</label>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">STEP 3</span>
+                  <span className={`text-sm font-semibold ${activeStep === 2 ? 'text-red-600' : 'text-gray-600'}`}>Enter Details</span>
                 </div>
-                <div className="checkbox-option">
-                  <input
-                    type="checkbox"
-                    id="courtOrg"
-                    checked={selectedOrgMainSearches.includes('court')}
-                    onChange={() => handleOrgMainSearchChange('court')}
-                  />
-                  <label htmlFor="courtOrg">COURT</label>
                 </div>
-                <div className="checkbox-option">
-                  <input
-                    type="checkbox"
-                    id="atoOrg"
-                    checked={selectedOrgMainSearches.includes('ato')}
-                    onChange={() => handleOrgMainSearchChange('ato')}
-                  />
-                  <label htmlFor="atoOrg">ATO</label>
+
+              {/* Step 4 */}
+              <div className={`relative flex items-center gap-3 cursor-pointer ${activeStep === 3 ? '' : 'opacity-50'}`}>
+                <div className={`w-[34px] h-[34px] rounded-full border-2 flex items-center justify-center font-bold shadow-md z-10 ${
+                  activeStep === 3 
+                    ? 'border-red-600 bg-gradient-to-br from-red-600 to-red-700 text-white shadow-lg shadow-red-600/35' 
+                    : 'border-gray-300 bg-white text-gray-400'
+                }`}>
+                  4
                 </div>
-                <div className="checkbox-option">
-                  <input
-                    type="checkbox"
-                    id="landOrg"
-                    checked={selectedOrgMainSearches.includes('land')}
-                    onChange={() => handleOrgMainSearchChange('land')}
-                  />
-                  <label htmlFor="landOrg">LAND TITLE</label>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">STEP 4</span>
+                  <span className={`text-sm font-semibold ${activeStep === 3 ? 'text-red-600' : 'text-gray-600'}`}>Additional Searches</span>
                 </div>
               </div>
             </div>
+                  </div>
 
-            {/* ASIC Type Options */}
-            {selectedOrgMainSearches.includes('asic') && (
-              <div className="card">
-                <h2 className="section-title">Select <span>ASIC Type</span></h2>
-                <div className="checkboxes-grid">
-                  <div className="select-all-grid-item">
-                    <button className="select-all-btn" onClick={handleSelectAllAsicType}>
-                      {['current', 'historical', 'company', 'personal', 'document-search'].every(type => selectedAsicTypes.includes(type)) ? 'Deselect All' : 'Select All'}
-                    </button>
-                  </div>
-                  <div className="checkbox-option">
+          {/* Main Content */}
+          <div className="flex-1">
+            {/* Select Category Card */}
+            <div ref={categoryCardRef} className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
+              <h2 className="text-[32px] font-bold text-center mb-10 text-gray-900 tracking-tight">
+                Select <span className="text-red-600 relative after:content-[''] after:absolute after:bottom-[-5px] after:left-0 after:right-0 after:h-[3px] after:bg-red-600 after:opacity-20">Category</span>
+              </h2>
+
+              <div className="flex justify-center gap-4 flex-wrap">
+                {categories.map((category) => (
+                  <label key={category} className="cursor-pointer">
                     <input
-                      type="checkbox"
-                      id="asicCurrent"
-                      checked={selectedAsicTypes.includes('current')}
-                      onChange={() => handleAsicTypeChange('current')}
+                      type="radio"
+                      name="category"
+                      value={category}
+                      checked={selectedCategory === category}
+                      onChange={(e) => handleCategoryChange(e.target.value as CategoryType)}
+                      className="sr-only"
                     />
-                    <label htmlFor="asicCurrent">CURRENT</label>
+                    <div className={`
+                      px-8 py-4 rounded-xl font-semibold text-sm uppercase tracking-wider
+                      transition-all duration-300 shadow-md
+                      ${selectedCategory === category
+                        ? 'bg-red-600 text-white border-2 border-red-600 shadow-lg shadow-red-600/30 -translate-y-0.5'
+                        : 'bg-gray-50 text-gray-600 border-2 border-gray-200 hover:border-red-600 hover:-translate-y-0.5 hover:shadow-lg'
+                      }
+                    `}>
+                      {category}
                   </div>
-                  <div className="checkbox-option">
-                    <input
-                      type="checkbox"
-                      id="asicHistorical"
-                      checked={selectedAsicTypes.includes('historical')}
-                      onChange={() => handleAsicTypeChange('historical')}
-                    />
-                    <label htmlFor="asicHistorical">HISTORICAL</label>
+                  </label>
+                      ))}
                   </div>
-                  <div className="checkbox-option">
-                    <input
-                      type="checkbox"
-                      id="asicCompany"
-                      checked={selectedAsicTypes.includes('company')}
-                      onChange={() => handleAsicTypeChange('company')}
-                    />
-                    <label htmlFor="asicCompany">COMPANY</label>
                   </div>
-                  <div className="checkbox-option">
-                    <input
-                      type="checkbox"
-                      id="asicPersonal"
-                      checked={selectedAsicTypes.includes('personal')}
-                      onChange={() => handleAsicTypeChange('personal')}
-                    />
-                    <label htmlFor="asicPersonal">PERSONAL</label>
+
+            {/* Select Searches Card - Only show if searches are available */}
+            {searches.length > 0 && (
+            <div ref={searchesCardRef} className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
+              <h2 className="text-[32px] font-bold text-center mb-10 text-gray-900 tracking-tight">
+                Select <span className="text-red-600 relative after:content-[''] after:absolute after:bottom-[-5px] after:left-0 after:right-0 after:h-[3px] after:bg-red-600 after:opacity-20">Searches</span>
+              </h2>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {searches.map((search) => {
+                  const isSelected = selectedSearches.has(search);
+                  const isSelectAll = search === 'SELECT ALL';
+                  
+                  return (
+                  <button
+                      key={search}
+                      onClick={() => handleSearchToggle(search)}
+                      className={`
+                        px-6 py-5 rounded-xl font-semibold text-[13px] uppercase tracking-wide
+                        transition-all duration-300 shadow-md min-h-[70px] flex items-center justify-center
+                        ${isSelected
+                          ? isSelectAll
+                            ? 'bg-white text-red-600 border-2 border-red-600 hover:bg-red-50 shadow-lg shadow-red-600/20'
+                            : 'bg-red-600 text-white border-2 border-red-600 shadow-lg shadow-red-600/30 -translate-y-0.5'
+                          : 'bg-gray-50 text-gray-600 border-2 border-gray-200 hover:border-red-600 hover:-translate-y-0.5 hover:shadow-lg'
+                        }
+                      `}
+                    >
+                      {isSelectAll && allSearchesSelected ? 'DESELECT ALL' : search}
+                  </button>
+                  );
+                })}
                   </div>
-                  <div className="checkbox-option">
-                    <input
-                      type="checkbox"
-                      id="asicDocumentSearch"
-                      checked={selectedAsicTypes.includes('document-search')}
-                      onChange={() => handleAsicTypeChange('document-search')}
-                    />
-                    <label htmlFor="asicDocumentSearch">ADD DOCUMENT SEARCH</label>
                   </div>
+                  )}
+              
+            {/* Select ASIC Type Card - Only show when ORGANISATION + ASIC selected */}
+            {selectedCategory === 'ORGANISATION' && selectedSearches.has('ASIC') && (
+            <div className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
+              <h2 className="text-[32px] font-bold text-center mb-10 text-gray-900 tracking-tight">
+                Select <span className="text-red-600 relative after:content-[''] after:absolute after:bottom-[-5px] after:left-0 after:right-0 after:h-[3px] after:bg-red-600 after:opacity-20">ASIC Type</span>
+              </h2>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {asicTypes.map((asicType) => {
+                  const isSelected = selectedAsicTypes.has(asicType);
+                  const isSelectAll = asicType === 'SELECT ALL';
+                  
+                  return (
+                  <button 
+                      key={asicType}
+                      onClick={() => handleAsicTypeToggle(asicType)}
+                      className={`
+                        px-6 py-5 rounded-xl font-semibold text-[13px] uppercase tracking-wide
+                        transition-all duration-300 shadow-md min-h-[70px] flex items-center justify-center
+                        ${isSelected
+                          ? isSelectAll
+                            ? 'bg-white text-red-600 border-2 border-red-600 hover:bg-red-50 shadow-lg shadow-red-600/20'
+                            : 'bg-red-600 text-white border-2 border-red-600 shadow-lg shadow-red-600/30 -translate-y-0.5'
+                          : 'bg-gray-50 text-gray-600 border-2 border-gray-200 hover:border-red-600 hover:-translate-y-0.5 hover:shadow-lg'
+                        }
+                      `}
+                    >
+                      {isSelectAll && allAsicTypesSelected ? 'DESELECT ALL' : asicType}
+                  </button>
+                  );
+                })}
                 </div>
               </div>
             )}
 
-            {/* Organisation Search Section */}
-            <div className="card">
-              <h2 className="section-title">Enter <span>Search Details</span></h2>
-              <div className="search-section">
-                <label className="search-label">Search for Organisation (ABN/ACN)</label>
-                <div className="search-input-wrapper">
+            {/* Enter Search Details Card - Show when ORGANISATION selected and searches/ASIC types chosen */}
+            {showEnterSearchDetails && (
+            <div ref={detailsCardRef} className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
+              <h2 className="text-[32px] font-bold text-center mb-10 text-gray-900 tracking-tight">
+                Enter <span className="text-red-600 relative after:content-[''] after:absolute after:bottom-[-5px] after:left-0 after:right-0 after:h-[3px] after:bg-red-600 after:opacity-20">Search Details</span>
+              </h2>
+
+              <div className="max-w-2xl mx-auto">
+                <div>
+                  <label htmlFor="organisation-search" className="block text-lg font-semibold text-gray-700 mb-3">
+                    Search for Organisation (ABN/ACN)
+                  </label>
+                  <div className="relative">
                   <input
                     type="text"
-                    className="search-input"
-                    placeholder={isSearching ? "Searching..." : "Type to search..."}
-                    value={searchInput}
-                    onChange={handleSearchInputChange}
+                      id="organisation-search"
+                      name="organisation-search"
+                      className="block w-full px-4 py-3 border-2 border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 text-base transition-all duration-200"
+                      placeholder="Type to search..."
+                      value={organisationSearchTerm}
+                      onChange={(e) => setOrganisationSearchTerm(e.target.value)}
                     onFocus={() => {
-                      console.log('Input focused, showing dropdown');
-                      setShowDropdown(true);
-                    }}
-                    onBlur={() => {
-                      console.log('Input blurred, hiding dropdown in 200ms');
-                      setTimeout(() => setShowDropdown(false), 200);
-                    }}
-                    disabled={isSearching}
-                  />
+                        hasSelectedRef.current = false; // Reset flag when field is focused
+                        if (organisationSearchTerm.trim().length >= 2 && suggestions.length > 0) {
+                          setShowSuggestions(true);
+                        }
+                      }}
+                    />
+                    {organisationSearchTerm && (
                   <button
-                    className="clear-btn"
+                        type="button"
                     onClick={() => {
-                      setSearchInput('');
-                      setDropdownItems([]);
-                      setShowDropdown(false);
-                    }}
-                  >
-                    ✕
+                          setOrganisationSearchTerm('');
+                          setShowSuggestions(false);
+                          setSuggestions([]);
+                          hasSelectedRef.current = false;
+                          setHasSelectedCompany(false);
+                          setSelectedAdditionalSearches(new Set());
+                          setDataAvailable(null);
+                          setCheckingData(false);
+                          setCompanyDetails({ directors: 0, pastDirectors: 0, shareholders: 0 });
+                        }}
+                        className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-red-600 focus:outline-none transition-colors duration-200"
+                        aria-label="Clear search"
+                      >
+                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
                   </button>
-                  {showDropdown && (
-                    <div 
-                      className="dropdown show"
-                      onMouseDown={(e) => e.preventDefault()}
-                    >
-                      {filteredDropdownItems.map((item, index) => (
-                        <div
+                )}
+
+                    {/* Suggestions Dropdown */}
+                    {showSuggestions && suggestions.length > 0 && (
+                      <div 
+                        ref={dropdownRef}
+                        className="absolute z-50 w-full mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-2xl max-h-80 overflow-y-auto"
+                      >
+                        {isLoadingSuggestions ? (
+                          <div className="px-4 py-3 text-center text-gray-500">
+                            <svg className="animate-spin h-5 w-5 mx-auto text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                    </div>
+                        ) : (
+                          suggestions.map((suggestion, index) => (
+                      <button 
                           key={index}
-                          className="dropdown-item"
-                          onClick={() => {
-                            console.log('Dropdown item clicked:', item);
-                            handleOrganizationSelect(item);
-                          }}
-                        >
-                          <div className="dropdown-item-name">{item.name}</div>
-                          <div className="dropdown-item-abn">{item.abn}</div>
+                              onClick={() => handleSuggestionSelect(suggestion)}
+                              className="w-full px-4 py-3 text-left hover:bg-red-50 transition-colors duration-150 border-b border-gray-100 last:border-b-0 focus:outline-none focus:bg-red-50"
+                            >
+                              <div className="flex flex-col">
+                                {suggestion.Name && (
+                                  <span className="font-semibold text-gray-900 text-sm">
+                                    {suggestion.Name}
+                                  </span>
+                                )}
+                                <span className={`text-gray-600 text-sm ${suggestion.Name ? 'mt-1' : ''}`}>
+                                  ABN: {suggestion.Abn}
+                                </span>
                         </div>
-                      ))}
+                            </button>
+                          ))
+                )}
                     </div>
                   )}
                 </div>
+                
+                {/* Data Availability Status */}
+                {hasSelectedCompany && (
+                  <div className="mt-6">
+                    {checkingData ? (
+                      <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+                        <p className="text-sm font-semibold text-blue-800">
+                          Checking data availability...
+                        </p>
               </div>
+                    ) : dataAvailable !== null && (
+                      <div className={`border-l-4 p-4 rounded ${
+                        dataAvailable 
+                          ? 'bg-green-50 border-green-500' 
+                          : 'bg-yellow-50 border-yellow-500'
+                      }`}>
+                        <p className={`text-sm font-semibold ${
+                          dataAvailable 
+                            ? 'text-green-800' 
+                            : 'text-yellow-800'
+                        }`}>
+                          {dataAvailable 
+                            ? '✅ ASIC Current data is AVAILABLE' 
+                            : '⚠️ ASIC Current data is NOT AVAILABLE'}
+                        </p>
             </div>
-
-            {/* Organisation Additional Searches */}
-            <div className="card">
-              <h2 className="section-title">Select <span>Additional Searches</span></h2>
-              
-              {/* Info Note */}
-              {organizationSelected && (
-                <div className="info-note">
-                  <span className="info-icon">ℹ️</span>
-                  Credion has detected <strong>Directors: 2</strong> | <strong>Past directors: 7</strong> | <strong>Shareholders: 12</strong>
+                    )}
+                </div>
+              )}
+                </div>
+                </div>
                 </div>
               )}
               
-              <div className="checkboxes-grid">
-                <div className="select-all-grid-item">
-                  <button className="select-all-btn" onClick={handleSelectAllOrgAdditional}>
-                    {['ppsr', 'property', 'director-related', 'director-property', 'director-ppsr', 'director-bankruptcy', 'courts'].every(search => selectedOrgAdditionalSearches.includes(search)) ? 'Deselect All' : 'Select All'}
-                  </button>
-                </div>
-                <div className="checkbox-option">
-                  <input
-                    type="checkbox"
-                    id="ppsr"
-                    checked={selectedOrgAdditionalSearches.includes('ppsr')}
-                    onChange={() => handleOrgAdditionalChange('ppsr')}
-                  />
-                  <label htmlFor="ppsr">
-                    PPSR
-                    {organizationSelected && <span className="availability-count">(1 available)</span>}
+            {/* Enter Person Details Card - Show when INDIVIDUAL selected and searches are chosen */}
+            {selectedCategory === 'INDIVIDUAL' && selectedSearches.size > 0 && Array.from(selectedSearches).some(s => s !== 'SELECT ALL') && (
+            <div ref={detailsCardRef} className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
+              <h2 className="text-[32px] font-bold text-center mb-10 text-gray-900 tracking-tight">
+                Enter <span className="text-red-600 relative after:content-[''] after:absolute after:bottom-[-5px] after:left-0 after:right-0 after:h-[3px] after:bg-red-600 after:opacity-20">Person Details</span>
+              </h2>
+
+              <div className="max-w-2xl mx-auto space-y-6">
+                {/* First Name */}
+                <div>
+                  <label htmlFor="first-name" className="block text-sm font-semibold text-[#2c3e50] mb-2.5 uppercase tracking-[0.5px]">
+                    First Name
                   </label>
-                </div>
-                <div className="checkbox-option">
                   <input
-                    type="checkbox"
-                    id="property"
-                    checked={selectedOrgAdditionalSearches.includes('property')}
-                    onChange={() => handleOrgAdditionalChange('property')}
+                    type="text"
+                    id="first-name"
+                    name="first-name"
+                    className="block w-full px-[22px] py-[18px] border-2 border-[#e8ecef] rounded-xl shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] bg-[#fafbfc] focus:outline-none focus:border-red-600 focus:bg-white focus:shadow-[0_4px_12px_rgba(229,57,53,0.15)] text-[15px] transition-all duration-300"
+                    placeholder="Enter first name"
+                    value={individualFirstName}
+                    onChange={(e) => setIndividualFirstName(e.target.value)}
                   />
-                  <label htmlFor="property">
-                    ABN/ACN PROPERTY TITLE
-                    {organizationSelected && propertyModalCompleted && <span className="availability-count">(Summary Only)</span>}
-                  </label>
                 </div>
-                <div className="checkbox-option">
-                  <input
-                    type="checkbox"
-                    id="directorRelated"
-                    checked={selectedOrgAdditionalSearches.includes('director-related')}
-                    onChange={() => handleOrgAdditionalChange('director-related')}
-                  />
-                  <label htmlFor="directorRelated">
-                    DIRECTOR RELATED ENTITIES
-                    {organizationSelected && <span className="availability-count">(2 available)</span>}
+
+                {/* Last Name */}
+                <div>
+                  <label htmlFor="last-name" className="block text-sm font-semibold text-[#2c3e50] mb-2.5 uppercase tracking-[0.5px]">
+                    Last Name
                   </label>
+                  <input
+                    type="text"
+                    id="last-name"
+                    name="last-name"
+                    className="block w-full px-[22px] py-[18px] border-2 border-[#e8ecef] rounded-xl shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] bg-[#fafbfc] focus:outline-none focus:border-red-600 focus:bg-white focus:shadow-[0_4px_12px_rgba(229,57,53,0.15)] text-[15px] transition-all duration-300"
+                    placeholder="Enter last name"
+                    value={individualLastName}
+                    onChange={(e) => setIndividualLastName(e.target.value)}
+                  />
                 </div>
-                <div className="checkbox-option">
-                  <input
-                    type="checkbox"
-                    id="directorProperty"
-                    checked={selectedOrgAdditionalSearches.includes('director-property')}
-                    onChange={() => handleOrgAdditionalChange('director-property')}
-                  />
-                  <label htmlFor="directorProperty">
-                    DIRECTOR PROPERTY TITLE
-                    {organizationSelected && directorPropertyModalCompleted && <span className="availability-count">(Summary Only)</span>}
+
+                {/* Date of Birth */}
+                <div>
+                  <label htmlFor="date-of-birth" className="block text-sm font-semibold text-[#2c3e50] mb-2.5 uppercase tracking-[0.5px]">
+                    Date of Birth
                   </label>
-                </div>
-                <div className="checkbox-option">
                   <input
-                    type="checkbox"
-                    id="directorPPSR"
-                    checked={selectedOrgAdditionalSearches.includes('director-ppsr')}
-                    onChange={() => handleOrgAdditionalChange('director-ppsr')}
+                    type="text"
+                    id="date-of-birth"
+                    name="date-of-birth"
+                    className="block w-full px-[22px] py-[18px] border-2 border-[#e8ecef] rounded-xl shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] bg-[#fafbfc] focus:outline-none focus:border-red-600 focus:bg-white focus:shadow-[0_4px_12px_rgba(229,57,53,0.15)] text-[15px] transition-all duration-300"
+                    placeholder="DD/MM/YYYY"
+                    value={individualDateOfBirth}
+                    onChange={(e) => setIndividualDateOfBirth(e.target.value)}
                   />
-                  <label htmlFor="directorPPSR">
-                    DIRECTOR PPSR
-                    {organizationSelected && <span className="availability-count">(2 available)</span>}
-                  </label>
-                </div>
-                <div className="checkbox-option">
-                  <input
-                    type="checkbox"
-                    id="directorBankruptcy"
-                    checked={selectedOrgAdditionalSearches.includes('director-bankruptcy')}
-                    onChange={() => handleOrgAdditionalChange('director-bankruptcy')}
-                  />
-                  <label htmlFor="directorBankruptcy">
-                    DIRECTOR BANKRUPTCY
-                    {organizationSelected && <span className="availability-count">(2 available)</span>}
-                  </label>
-                </div>
-                <div className="checkbox-option">
-                  <input
-                    type="checkbox"
-                    id="courts"
-                    checked={selectedOrgAdditionalSearches.includes('courts')}
-                    onChange={() => handleOrgAdditionalChange('courts')}
-                  />
-                  <label htmlFor="courts">
-                    ACN/ABN COURT FILES
-                    {organizationSelected && <span className="availability-count">(1 available)</span>}
-                  </label>
                 </div>
               </div>
-
-              {/* Selected Searches Display */}
-              <div className="selected-section">
-                <div className="selected-label">Selected Searches:</div>
-                <div className="selected-tags">
-                  {selectedOrgMainSearches.map(search => {
-                    // If ASIC is selected but ASIC types are also selected, don't show generic ASIC
-                    if (search === 'asic' && selectedAsicTypes.length > 0) {
-                      return null;
-                    }
-                    return <span key={search} className="tag">{search.toUpperCase()}</span>;
-                  })}
-                  {selectedOrgMainSearches.includes('asic') && selectedAsicTypes.map(type => (
-                    <span key={type} className="tag">ASIC - {type.toUpperCase()}</span>
-                  ))}
-                  {selectedOrgAdditionalSearches.map(search => (
-                    <span key={search} className="tag">{search.replace('-', ' ').toUpperCase()}</span>
-                  ))}
                 </div>
-                
-                {/* Pay Button */}
-                {!showPaymentActions && (
-                  <button 
-                    className="pay-button-card" 
-                    onClick={handleProcessReports}
-                    disabled={isProcessingReports}
-                  >
-                    {isProcessingReports ? 'Processing Reports...' : 'Process Reports'}
-                  </button>
-                )}
+            )}
+            
+            {/* Select Additional Searches - Show when ORGANISATION category and searches are selected */}
+            {selectedCategory === 'ORGANISATION' && selectedSearches.size > 0 && Array.from(selectedSearches).some(s => s !== 'SELECT ALL') && (
+            <div ref={additionalCardRef} className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
+              <h2 className="text-[32px] font-bold text-center mb-10 text-gray-900 tracking-tight">
+                Select <span className="text-red-600 relative after:content-[''] after:absolute after:bottom-[-5px] after:left-0 after:right-0 after:h-[3px] after:bg-red-600 after:opacity-20">Additional Searches</span>
+              </h2>
 
-                {/* Email and Download Section */}
-                {showPaymentActions && (
-                  <div className="payment-actions">
-                    <div className="action-box">
-                      <h3>Send Reports via Email</h3>
-                      <input
-                        type="email"
-                        className="email-input"
-                        placeholder="Enter your email address"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                      />
+              {/* Company Details Banner - Only show when company is selected */}
+              {hasSelectedCompany && (
+              <div className="mb-8 bg-green-50 border-l-4 border-green-500 p-4 rounded">
+                <p className="text-sm font-semibold text-green-800">
+                  Credion has detected Directors: {companyDetails.directors} | Past directors: {companyDetails.pastDirectors} | Shareholders: {companyDetails.shareholders}
+                </p>
+                </div>
+              )}
+                
+              {/* Additional Search Options Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {additionalSearchOptions.map((option) => {
+                  const isSelected = selectedAdditionalSearches.has(option.name);
+                  const isSelectAll = option.name === 'SELECT ALL';
+                  
+                  return (
                       <button 
-                        className={`action-button send-button ${!areAllReportsSupported() && generatedReports.length > 0 ? 'limited-functionality' : ''}`}
-                        onClick={handleSendEmail}
-                        title={!areAllReportsSupported() && generatedReports.length > 0 ? 'Only ASIC Current/Historical reports supported' : ''}
-                      >
-                        Send
+                      key={option.name}
+                      onClick={() => handleAdditionalSearchToggle(option.name)}
+                      className={`
+                        px-4 py-4 rounded-xl font-semibold text-xs uppercase tracking-wide
+                        transition-all duration-300 shadow-md min-h-[90px] flex flex-col items-center justify-center
+                        ${isSelected
+                          ? isSelectAll
+                            ? 'bg-white text-red-600 border-2 border-red-600 hover:bg-red-50 shadow-lg shadow-red-600/20'
+                            : 'bg-red-600 text-white border-2 border-red-600 shadow-lg shadow-red-600/30'
+                          : 'bg-white text-gray-700 border-2 border-gray-300 hover:border-red-600 hover:bg-red-50'
+                        }
+                      `}
+                    >
+                      <span className="text-center">
+                        {isSelectAll && allAdditionalSearchesSelected ? 'DESELECT ALL' : option.name}
+                      </span>
+                      {option.available && (
+                        <span className="text-xs mt-2 opacity-75">
+                          ({option.available} available)
+                        </span>
+                      )}
                       </button>
+                  );
+                })}
                     </div>
-                    <div className="action-box">
-                      <h3>Download Report</h3>
-                      <div className="reports-available">
-                        Reports available: <span>{getSupportedReportsCount()}</span>
-                        {!areAllReportsSupported() && generatedReports.length > 0 && (
-                          <div style={{fontSize: '12px', color: '#ff6b6b', marginTop: '4px'}}>
-                            (Only ASIC Current/Historical supported)
                           </div>
                         )}
-                      </div>
-                      <button 
-                        className={`action-button download-button ${!areAllReportsSupported() && generatedReports.length > 0 ? 'limited-functionality' : ''}`}
-                        onClick={handleDownload}
-                        title={!areAllReportsSupported() && generatedReports.length > 0 ? 'Only ASIC Current/Historical reports supported' : ''}
-                      >
-                        Download
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </>
-        )}
 
-        {/* Individual Searches */}
-        {selectedCategory === 'individual' && (
-          <>
-            <div className="card">
-              <h2 className="section-title">Select <span>Searches</span></h2>
-              <div className="checkboxes-grid">
-                <div className="select-all-grid-item">
-                  <button className="select-all-btn" onClick={handleSelectAllIndividual}>
-                    {['asic', 'bankruptcy', 'court', 'land', 'ppsr'].every(search => selectedIndividualSearches.includes(search)) ? 'Deselect All' : 'Select All'}
+            {/* Selected Searches Summary Section - Show when any searches/additional searches are selected */}
+            {((selectedSearches.size > 0 && Array.from(selectedSearches).some(s => s !== 'SELECT ALL')) || 
+              (selectedAdditionalSearches.size > 0 && Array.from(selectedAdditionalSearches).some(s => s !== 'SELECT ALL'))) && (
+            <div className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100">
+              <h2 className="text-base font-bold text-[#2c3e50] mb-[18px] uppercase tracking-wide">
+                Selected Searches:
+              </h2>
+
+              {/* Display all selected searches as pills */}
+              <div className="flex flex-wrap gap-4 mb-8">
+                {/* Main searches */}
+                {Array.from(selectedSearches)
+                  .filter(search => search !== 'SELECT ALL')
+                  .map((search) => (
+                    <div
+                      key={search}
+                      className="px-6 py-3 rounded-xl font-semibold text-sm uppercase tracking-wide bg-red-600 text-white shadow-md"
+                    >
+                      {search}
+                      </div>
+                  ))}
+                
+                {/* ASIC types - Show as separate pills if selected */}
+                {selectedCategory === 'ORGANISATION' && selectedSearches.has('ASIC') && 
+                  Array.from(selectedAsicTypes)
+                    .filter(type => type !== 'SELECT ALL')
+                    .map((type) => (
+                      <div
+                        key={`asic-${type}`}
+                        className="px-6 py-3 rounded-xl font-semibold text-sm uppercase tracking-wide bg-blue-600 text-white shadow-md border-2 border-blue-700"
+                      >
+                        ASIC: {type}
+                    </div>
+                    ))
+                }
+                
+                {/* Additional searches */}
+                {Array.from(selectedAdditionalSearches)
+                  .filter(search => search !== 'SELECT ALL')
+                  .map((search) => {
+                    const option = additionalSearchOptions.find(o => o.name === search);
+                    return (
+                      <div
+                        key={search}
+                        className="px-6 py-3 rounded-xl font-semibold text-sm uppercase tracking-wide bg-red-600 text-white shadow-md"
+                      >
+                        {search}
+                        {option?.available && ` (${option.available} available)`}
+                  </div>
+                    );
+                  })}
+              </div>
+
+              {/* Process Reports Button */}
+                      <button 
+                className="w-full py-4 rounded-xl font-bold text-lg uppercase tracking-wide bg-red-600 text-white shadow-lg hover:bg-red-700 transition-all duration-300 hover:shadow-xl"
+                      >
+                Process Reports
                   </button>
                 </div>
-                <div className="checkbox-option">
-                  <input
-                    type="checkbox"
-                    id="asic"
-                    checked={selectedIndividualSearches.includes('asic')}
-                    onChange={() => handleIndividualSearchChange('asic')}
-                  />
-                  <label htmlFor="asic">ASIC</label>
+                )}
                 </div>
-                <div className="checkbox-option">
-                  <input
-                    type="checkbox"
-                    id="bankruptcy"
-                    checked={selectedIndividualSearches.includes('bankruptcy')}
-                    onChange={() => handleIndividualSearchChange('bankruptcy')}
-                  />
-                  <label htmlFor="bankruptcy">BANKRUPTCY</label>
                 </div>
-                <div className="checkbox-option">
-                  <input
-                    type="checkbox"
-                    id="court"
-                    checked={selectedIndividualSearches.includes('court')}
-                    onChange={() => handleIndividualSearchChange('court')}
-                  />
-                  <label htmlFor="court">COURT</label>
                 </div>
-                <div className="checkbox-option">
-                  <input
-                    type="checkbox"
-                    id="land"
-                    checked={selectedIndividualSearches.includes('land')}
-                    onChange={() => handleIndividualSearchChange('land')}
-                  />
-                  <label htmlFor="land">LAND TITLE</label>
-                </div>
-                <div className="checkbox-option">
-                  <input
-                    type="checkbox"
-                    id="ppsrInd"
-                    checked={selectedIndividualSearches.includes('ppsr')}
-                    onChange={() => handleIndividualSearchChange('ppsr')}
-                  />
-                  <label htmlFor="ppsrInd">PPSR</label>
-                </div>
+
+      {/* Right Sidebar - Receipt */}
+      <div className="fixed right-8 top-32 w-80 max-h-[calc(100vh-160px)] bg-white rounded-[20px] shadow-xl overflow-hidden flex flex-col z-50 hidden lg:flex">
+        {/* Header */}
+        <div className="bg-white px-6 py-6 border-b border-gray-100">
+          <h3 className="text-xl font-bold text-gray-800 tracking-tight">Your Selection</h3>
               </div>
 
-              {/* Selected Searches Display */}
-              <div className="selected-section">
-                <div className="selected-label">Selected Searches:</div>
-                <div className="selected-tags">
-                  {selectedIndividualSearches.map(search => (
-                    <span key={search} className="tag">{search.toUpperCase()}</span>
-                  ))}
+        {/* Items */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 bg-white custom-scrollbar">
+          {(selectedSearches.size === 0 || (selectedSearches.size === 1 && selectedSearches.has('SELECT ALL'))) && 
+           (selectedAdditionalSearches.size === 0 || (selectedAdditionalSearches.size === 1 && selectedAdditionalSearches.has('SELECT ALL'))) ? (
+            <div className="text-center py-12">
+              <div className="text-4xl mb-3 opacity-40">📋</div>
+              <div className="text-[15px] font-semibold text-gray-700 mb-1.5">No reports selected</div>
+              <div className="text-[13px] text-gray-400">Select reports to see them here</div>
                 </div>
-              </div>
-            </div>
-
-            {/* Individual Person Details Section */}
-            <div className="card">
-              <h2 className="section-title">Enter <span>Person Details</span></h2>
-              <div className="individual-form">
-                <div className="form-group">
-                  <label className="form-label">First Name</label>
-                  <input type="text" className="form-input" placeholder="Enter first name" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Last Name</label>
-                  <input type="text" className="form-input" placeholder="Enter last name" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Date of Birth</label>
-                  <input type="text" className="form-input" placeholder="DD/MM/YYYY" />
-                </div>
-              </div>
-
-              {/* Pay Button */}
-              {!showPaymentActions && (
-                <button 
-                  className="pay-button-card" 
-                  onClick={handleProcessReports}
-                  disabled={isProcessingReports}
-                >
-                  {isProcessingReports ? 'Processing Reports...' : 'Process Reports'}
-                </button>
-              )}
-
-              {/* Email and Download Section */}
-              {showPaymentActions && (
-                <div className="payment-actions">
-                  <div className="action-box">
-                    <h3>Send Reports via Email</h3>
-                    <input
-                      type="email"
-                      className="email-input"
-                      placeholder="Enter your email address"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                    />
-                    <button 
-                      className={`action-button send-button ${!areAllReportsSupported() && generatedReports.length > 0 ? 'limited-functionality' : ''}`}
-                      onClick={handleSendEmail}
-                      title={!areAllReportsSupported() && generatedReports.length > 0 ? 'Only ASIC Current/Historical reports supported' : ''}
-                    >
-                      Send
-                    </button>
-                  </div>
-                  <div className="action-box">
-                    <h3>Download Report</h3>
-                    <div className="reports-available">
-                      Reports available: <span>{getSupportedReportsCount()}</span>
-                      {!areAllReportsSupported() && generatedReports.length > 0 && (
-                        <div style={{fontSize: '12px', color: '#ff6b6b', marginTop: '4px'}}>
-                          (Only ASIC Current/Historical supported)
-                        </div>
-                      )}
-                    </div>
-                    <button 
-                      className={`action-button download-button ${!areAllReportsSupported() && generatedReports.length > 0 ? 'limited-functionality' : ''}`}
-                      onClick={handleDownload}
-                      title={!areAllReportsSupported() && generatedReports.length > 0 ? 'Only ASIC Current/Historical reports supported' : ''}
-                    >
-                      Download
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </main>
-
-      {/* Receipt Sidebar */}
-      <div className="receipt-sidebar">
-        <div className="receipt-header">
-          <h3>Your Selection</h3>
-        </div>
-        <div className="receipt-items">
-          {receiptItems.length === 0 ? (
-            <div className="receipt-empty">
-              <div className="receipt-empty-icon">📋</div>
-              <div className="receipt-empty-text">No reports selected</div>
-              <div className="receipt-empty-subtext">Select reports to see them here</div>
-            </div>
           ) : (
-            receiptItems.map((item, index) => (
-              <div key={index} className="receipt-item">
-                <div className="receipt-item-name">{item.name}</div>
-                <div className="receipt-item-price">${item.price.toFixed(2)}</div>
+            <div className="space-y-0">
+              {Array.from(selectedSearches)
+                .filter(search => search !== 'SELECT ALL')
+                .map((search, index) => (
+                  <div 
+                    key={search} 
+                    className="flex justify-between items-start py-3 border-b border-gray-100 last:border-b-0 animate-fadeIn"
+                    style={{ animationDelay: `${index * 50}ms` }}
+                  >
+                    <div className="flex-1 text-[13px] font-medium text-gray-600 pr-4 leading-relaxed">
+                      {search}
               </div>
-            ))
+                    <div className="text-sm font-semibold text-gray-800 whitespace-nowrap">
+                      ${searchPrices[search as keyof SearchPrices].toFixed(2)}
+            </div>
+              </div>
+                ))}
+              
+              {/* Show selected ASIC types if any */}
+              {selectedCategory === 'ORGANISATION' && Array.from(selectedAsicTypes).filter(t => t !== 'SELECT ALL').length > 0 && (
+                <div className="mt-2">
+                  {Array.from(selectedAsicTypes)
+                    .filter(type => type !== 'SELECT ALL')
+                    .map((type, index) => (
+                      <div 
+                        key={type}
+                        className="flex justify-between items-start py-3 border-b border-gray-100 last:border-b-0 animate-fadeIn"
+                        style={{ animationDelay: `${(selectedSearches.size + index) * 50}ms` }}
+                      >
+                        <div className="flex-1 text-[13px] font-medium text-gray-600 pr-4 leading-relaxed">
+                          ASIC: {type}
+                </div>
+                        <div className="text-sm font-semibold text-gray-800 whitespace-nowrap">
+                          ${asicTypePrices[type]?.toFixed(2) || '0.00'}
+                </div>
+                </div>
+                    ))}
+              </div>
+              )}
+              
+              {/* Show selected additional searches if any */}
+              {Array.from(selectedAdditionalSearches).filter(s => s !== 'SELECT ALL').length > 0 && (
+                <div className="mt-2">
+                  {Array.from(selectedAdditionalSearches)
+                    .filter(search => search !== 'SELECT ALL')
+                    .map((search, index) => {
+                      const option = additionalSearchOptions.find(o => o.name === search);
+                      return (
+                        <div 
+                          key={search}
+                          className="flex justify-between items-start py-3 border-b border-gray-100 last:border-b-0 animate-fadeIn"
+                          style={{ animationDelay: `${(selectedSearches.size + selectedAsicTypes.size + index) * 50}ms` }}
+                        >
+                          <div className="flex-1 text-[13px] font-medium text-gray-600 pr-4 leading-relaxed">
+                            {search}
+                            {option?.available && ` (${option.available})`}
+                  </div>
+                          <div className="text-sm font-semibold text-gray-800 whitespace-nowrap">
+                            ${option?.price.toFixed(2)}
+                        </div>
+                    </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
           )}
         </div>
-        <div className="receipt-footer">
-          <div className="receipt-total">
-            <span>Total</span>
-            <span>${totalPrice.toFixed(2)}</span>
-          </div>
+
+        {/* Footer */}
+        <div className="bg-gray-50 px-6 py-5 border-t border-gray-100">
+          <div className="flex justify-between items-center">
+            <span className="text-lg font-bold text-gray-800">Total</span>
+            <span className="text-[22px] font-bold text-red-600">
+              ${calculateTotal().toFixed(2)}
+            </span>
+        </div>
         </div>
       </div>
 
-      {/* Property Modals */}
-      <PropertyModal
-        isOpen={showPropertyModal}
-        onClose={() => setShowPropertyModal(false)}
-        onComplete={handlePropertyModalComplete}
-        type="property"
-      />
-      
-      <PropertyModal
-        isOpen={showDirectorPropertyModal}
-        onClose={() => setShowDirectorPropertyModal(false)}
-        onComplete={handleDirectorPropertyModalComplete}
-        type="director-property"
-      />
-        </>
-      )}
     </div>
   );
 };

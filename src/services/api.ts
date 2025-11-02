@@ -172,18 +172,19 @@ class ApiService {
     });
   }
 
-  // UserReport API methods
-  async getUserReports() {
-    return this.request<{ success: boolean; reports: any[] }>('/api/userreports');
-  }
-
-  async getUserReportsByMatter(matterId: number) {
-    return this.request<{ success: boolean; reports: any[] }>(`/api/userreports/matter/${matterId}`);
-  }
-
   // Search functionality - Direct call to Australian Business Register API
   async searchABNByName(searchTerm: string): Promise<{ success: boolean; results: any[] }> {
     const ABN_GUID = '250e9f55-f46e-4104-b0df-774fa28cff97';
+    
+    // Check if search term is a number (ABN/ACN search)
+    const isNumeric = /^\d+$/.test(searchTerm.replace(/\s/g, ''));
+    
+    if (isNumeric) {
+      // Search by ABN/ACN number
+      return this.searchByABN(searchTerm.replace(/\s/g, ''));
+    }
+    
+    // Search by name
     const url = `https://abr.business.gov.au/json/MatchingNames.aspx?name=${encodeURIComponent(searchTerm)}&maxResults=10&guid=${ABN_GUID}`;
     
     try {
@@ -204,9 +205,8 @@ class ApiService {
         results: results.map((result: any) => ({
           Abn: result.Abn,
           Name: result.Name || 'Unknown',
-          entityStatus: 'Available via ABN lookup',
-          entityType: 'Available via ABN lookup',
-          address: 'Available via ABN lookup'
+          AbnStatus: result.AbnStatus || 'Active',
+          Score: result.Score || 0
         }))
       };
     } catch (error) {
@@ -216,6 +216,61 @@ class ApiService {
         results: []
       };
     }
+  }
+  
+  // Search by ABN/ACN number directly
+  async searchByABN(abnNumber: string): Promise<{ success: boolean; results: any[] }> {
+    const ABN_GUID = '250e9f55-f46e-4104-b0df-774fa28cff97';
+    const url = `https://abr.business.gov.au/json/AbnDetails.aspx?abn=${abnNumber}&guid=${ABN_GUID}`;
+    
+    try {
+      const response = await fetch(url);
+      const text = await response.text();
+      
+      // Extract JSON from JSONP response
+      const match = text.match(/callback\((.*)\)/);
+      if (!match) {
+        throw new Error('Invalid ABN lookup response format');
+      }
+      
+      const data = JSON.parse(match[1]);
+      
+      // Check if ABN was found
+      if (data.Abn) {
+        return {
+          success: true,
+          results: [{
+            Abn: data.Abn,
+            Name: data.EntityName || 'Unknown',
+            AbnStatus: data.AbnStatus || 'Active',
+            Score: 100 // Exact match
+          }]
+        };
+      }
+      
+      return {
+        success: true,
+        results: []
+      };
+    } catch (error) {
+      console.error('Error searching by ABN:', error);
+      return {
+        success: false,
+        results: []
+      };
+    }
+  }
+
+  // Get or create report data (checks cache, fetches if not available)
+  async checkDataAvailability(abn: string, type: string) {
+    return this.request<{
+      success: boolean;
+      available: boolean;
+      data?: { createdAt: string; rdata: any };
+    }>(`/api/get-report-data`, {
+      method: 'POST',
+      body: JSON.stringify({ abn, type })
+    });
   }
 
   // Payment Methods API
@@ -278,75 +333,6 @@ class ApiService {
     }
   }
 
-  // Reports API
-  async getReports(): Promise<any[]> {
-    return this.request(`/reports`);
-  }
-
-  async getReportDetails(reportId: number): Promise<any> {
-    return this.request(`/reports/${reportId}`);
-  }
-
-  // Report Creation API
-  async createReport(reportData: any): Promise<any> {
-    return this.request('/api/create-report', {
-      method: 'POST',
-      body: JSON.stringify(reportData),
-    });
-  }
-
-  // Send Reports via Email API
-  async sendReports(email: string, reports: any[], totalPrice: number, matterName?: string): Promise<any> {
-    return this.request('/api/send-reports', {
-      method: 'POST',
-      body: JSON.stringify({ email, reports, totalPrice, matterName }),
-    });
-  }
-
-  // PDF Generation API
-  async generatePDF(reportId: number, reportType: string): Promise<{ blob: Blob; filename: string }> {
-    try {
-      const response = await fetch(`${this.baseURL}/api/generate-pdf`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
-        },
-        body: JSON.stringify({ reportId, reportType })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to generate PDF');
-      }
-
-      // Extract filename from Content-Disposition header
-      const contentDisposition = response.headers.get('Content-Disposition');
-      let filename = `${reportType.toLowerCase()}-report-${reportId}.pdf`; // fallback
-      
-      console.log('🔍 Content-Disposition header:', contentDisposition);
-      
-      if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="([^"]+)"/);
-        if (filenameMatch) {
-          filename = filenameMatch[1];
-          console.log('✅ Extracted filename from header:', filename);
-        } else {
-          console.log('❌ Could not extract filename from header');
-        }
-      } else {
-        console.log('❌ No Content-Disposition header found');
-      }
-      
-      console.log('📄 Final filename being used:', filename);
-
-      const blob = await response.blob();
-      return { blob, filename };
-    } catch (error) {
-      console.error('Error generating PDF:', error);
-      throw error;
-    }
-  }
 }
 
 export const apiService = new ApiService();
