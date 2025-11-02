@@ -333,6 +333,23 @@ class ApiService {
     }
   }
 
+  // Create report
+  async createReport(reportData: {
+    business: { Abn: string; Name?: string; isCompany?: string };
+    type: string;
+    userId: number;
+    matterId?: number;
+  }) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      report: any;
+    }>('/api/create-report', {
+      method: 'POST',
+      body: JSON.stringify(reportData)
+    });
+  }
+
 }
 
 export const apiService = new ApiService();

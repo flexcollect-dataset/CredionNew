@@ -414,6 +414,54 @@ app.get('/search', async (req, res) => {
 
 // Payment Routes
 const paymentRoutes = require('./routes/payment.routes');
+
+// Report Creation endpoint (without payment) - MUST be before API routes to avoid conflicts
+app.post('/api/create-report', async (req, res) => {
+  try {
+    const { business, type, userId, matterId } = req.body;
+
+    if (!business || !type || !userId) {
+      return res.status(400).json({
+        error: 'MISSING_PARAMETERS',
+        message: 'business, type, and userId are required'
+      });
+    }
+
+    // Extract ABN for validation
+    const abn = business?.Abn || business?.abn || business?.ABN;
+    
+    if (!abn) {
+      return res.status(400).json({
+        error: 'ABN_NOT_FOUND',
+        message: 'ABN not found in business data'
+      });
+    }
+
+    // Import the createReport function from payment routes
+    const { createReport } = require('./routes/payment.routes');
+    
+    // Call the createReport function (it will handle cache checking internally)
+    const reportResponse = await createReport({
+      business,
+      type
+    });
+
+    res.json({
+      success: true,
+      message: 'Report created successfully',
+      report: reportResponse
+    });
+
+  } catch (error) {
+    console.error('Error creating report:', error);
+    res.status(500).json({
+      error: 'REPORT_CREATION_FAILED',
+      message: error.message || 'Failed to create report'
+    });
+  }
+});
+
+// Now mount payment routes
 app.use('/api/payment', paymentRoutes.router);
 app.use('/api', paymentRoutes.router); // Mount at /api for check-data endpoint
 

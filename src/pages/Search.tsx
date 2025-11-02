@@ -37,7 +37,7 @@ const Search: React.FC = () => {
   const [hasSelectedCompany, setHasSelectedCompany] = useState(false);
   const [selectedAdditionalSearches, setSelectedAdditionalSearches] = useState<Set<AdditionalSearchType>>(new Set());
   const [companyDetails, setCompanyDetails] = useState({ directors: 0, pastDirectors: 0, shareholders: 0 });
-  
+  const [isProcessingReports, setIsProcessingReports] = useState(false);
   // Individual search details
   const [individualFirstName, setIndividualFirstName] = useState('');
   const [individualLastName, setIndividualLastName] = useState('');
@@ -426,6 +426,173 @@ const Search: React.FC = () => {
       }
     }
     setSelectedAdditionalSearches(newSelected);
+  };
+
+  // Process reports handler
+  const handleProcessReports = async () => {
+    // Validation checks
+    if (selectedCategory === 'ORGANISATION' && !hasSelectedCompany) {
+      alert('Please select an organization first');
+      return;
+    }
+
+    // Check if at least one search is selected
+    const hasMainSearches = Array.from(selectedSearches).some(s => s !== 'SELECT ALL');
+    const hasAdditionalSearches = Array.from(selectedAdditionalSearches).some(s => s !== 'SELECT ALL');
+    const hasAsicTypes = Array.from(selectedAsicTypes).some(t => t !== 'SELECT ALL');
+    
+    if (!hasMainSearches && !hasAdditionalSearches && !hasAsicTypes) {
+      alert('Please select at least one search option');
+      return;
+    }
+
+    console.log('Processing reports...');
+    setIsProcessingReports(true);
+    
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      if (!user.userId) {
+        alert('Please log in to continue');
+        return;
+      }
+
+      // Get ABN and Name from the selected organization
+      let abn = '';
+      let companyName = '';
+      
+      if (selectedCategory === 'ORGANISATION' && organisationSearchTerm) {
+        // Extract ABN from the format: "Company Name ABN: X" or "ABN: X"
+        const abnMatch = organisationSearchTerm.match(/ABN:\s*(\d+)/i);
+        if (abnMatch) {
+          abn = abnMatch[1];
+          companyName = organisationSearchTerm.replace(/\s*ABN:.*$/i, '').trim();
+        } else {
+          alert('Unable to extract ABN from selected organization');
+          return;
+        }
+      }
+
+      // Collect all reports to create
+      const reportsToCreate: Array<{ type: string; name: string }> = [];
+
+      // Add main searches
+      Array.from(selectedSearches)
+        .filter(search => search !== 'SELECT ALL')
+        .forEach(search => {
+          if (search === 'ASIC') {
+            // Don't add generic ASIC if specific types are selected
+            if (hasAsicTypes) {
+              return;
+            }
+          }
+          reportsToCreate.push({ type: search, name: search });
+        });
+
+      // Add ASIC types if selected
+      if (selectedCategory === 'ORGANISATION' && selectedSearches.has('ASIC')) {
+        Array.from(selectedAsicTypes)
+          .filter(type => type !== 'SELECT ALL')
+          .forEach(type => {
+            reportsToCreate.push({ type: `ASIC: ${type}`, name: `ASIC ${type}` });
+          });
+      }
+
+      // Add additional searches
+      Array.from(selectedAdditionalSearches)
+        .filter(search => search !== 'SELECT ALL')
+        .forEach(search => {
+          reportsToCreate.push({ type: search, name: search });
+        });
+
+      console.log('Reports to create:', reportsToCreate);
+
+      // Process each report
+      const createdReports = [];
+      for (const reportItem of reportsToCreate) {
+        console.log('Processing report:', reportItem);
+        
+        // Map report display name to API type
+        let reportType = '';
+        if (reportItem.type.startsWith('ASIC:')) {
+          const asicType = reportItem.type.split(':')[1].trim();
+          if (asicType === 'CURRENT') {
+            reportType = 'asic-current';
+          } else if (asicType === 'CURRENT/HISTORICAL') {
+            reportType = 'asic-historical';
+          } else if (asicType === 'COMPANY') {
+            reportType = 'asic-company';
+          } else {
+            reportType = 'asic-current'; // Default fallback
+          }
+        } else if (reportItem.type === 'COURT') {
+          reportType = 'court';
+        } else if (reportItem.type === 'ATO') {
+          reportType = 'ato';
+        } else if (reportItem.type === 'BANKRUPTCY') {
+          reportType = 'bankruptcy';
+        } else if (reportItem.type === 'LAND TITLE') {
+          reportType = 'land';
+        } else if (reportItem.type === 'ABN/ACN PPSR') {
+          reportType = 'ppsr';
+        } else if (reportItem.type === 'ABN/ACN PROPERTY TITLE') {
+          reportType = 'property';
+        } else if (reportItem.type === 'ACN/ABN COURT FILES') {
+          reportType = 'court';
+        } else if (reportItem.type.includes('DIRECTOR')) {
+          if (reportItem.type.includes('PPSR')) {
+            reportType = 'director-ppsr';
+          } else if (reportItem.type.includes('BANKRUPTCY')) {
+            reportType = 'director-bankruptcy';
+          } else if (reportItem.type.includes('PROPERTY')) {
+            reportType = 'director-property';
+          } else {
+            reportType = 'director-related';
+          }
+        } else if (reportItem.type === 'ADD DOCUMENT SEARCH') {
+          reportType = 'asic-document-search';
+        } else {
+          // Default fallback
+          reportType = reportItem.type.toLowerCase().replace(/\s+/g, '-');
+        }
+
+        // Get matter ID if available
+        const currentMatterStr = localStorage.getItem('currentMatter');
+        const currentMatter = currentMatterStr ? JSON.parse(currentMatterStr) : null;
+
+        // Create report data
+        const reportData = {
+          business: {
+            Abn: abn,
+            Name: companyName || 'Unknown',
+            isCompany: selectedCategory
+          },
+          type: reportType,
+          userId: user.userId,
+          matterId: currentMatter?.matterId || null
+        };
+
+        console.log('Creating report with data:', reportData);
+
+        // Call backend to create report
+        const reportResponse = await apiService.createReport(reportData);
+        console.log('Report created:', reportResponse);
+        
+        createdReports.push({
+          type: reportType,
+          name: reportItem.name,
+          response: reportResponse
+        });
+      }
+
+      console.log('All reports created:', createdReports);
+      alert(`${createdReports.length} report(s) created successfully!`);
+      
+    } catch (error: any) {
+      console.error('Error processing reports:', error);
+      alert(`Error processing reports: ${error?.message || 'Unknown error'}`);
+    } finally {
+      setIsProcessingReports(false);
+    }
   };
 
   return (
@@ -898,8 +1065,10 @@ const Search: React.FC = () => {
               {/* Process Reports Button */}
                       <button 
                 className="w-full py-4 rounded-xl font-bold text-lg uppercase tracking-wide bg-red-600 text-white shadow-lg hover:bg-red-700 transition-all duration-300 hover:shadow-xl"
-                      >
-                Process Reports
+                      onClick={handleProcessReports}
+                    disabled={isProcessingReports}
+                    >
+                {isProcessingReports ? 'Processing Reports...' : 'Process Reports'}
                   </button>
                 </div>
                 )}
