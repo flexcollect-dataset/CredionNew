@@ -7,8 +7,8 @@ const axios = require('axios');
 const path = require('path');
 const fs = require('fs').promises;
 const moment = require('moment');
-const puppeteer = require('puppeteer');
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { uploadToS3 } = require('../services/s3.service');
+const { replaceVariables, convertWithVariables, addDownloadReportInDB, ensureMediaDir, mediaDir } = require('../services/pdf.service');
 const UserReport = require('../models/UserReport');
 
 
@@ -176,142 +176,10 @@ router.post('/get-report-data', async (req, res) => {
     }
 });
 
-// Configure AWS S3 client
-const s3Client = new S3Client({
-  region: process.env.AWS_REGION,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-  }
-});
-
-// S3 Upload function for PDF
-const BUCKET_NAME = process.env.AWS_BUCKET_NAME;
-const uploadToS3 = async (fileBuffer, filename, contentType = 'application/pdf') => {
-  try {
-    const params = {
-      Bucket: BUCKET_NAME,
-      Key: `${filename}`,
-      Body: fileBuffer,
-      ContentType: contentType,
-      Metadata: {
-        'uploaded-by': 'pdf-generation-api',
-        'generated-at': new Date().toISOString()
-      }
-    };
-
-    const command = new PutObjectCommand(params);
-    const result = await s3Client.send(command);
-    
-    return {
-      success: true,
-      key: params.Key,
-      location: `https://${BUCKET_NAME}.${process.env.AWS_REGION}.amazonaws.com/${params.Key}`,
-      etag: result.ETag
-    };
-  } catch (error) {
-    console.error('Error uploading to S3:', error);
-    return { success: false, error: error.message };
-  }
-};
-
-
-// Create media directory if it doesn't exist
-const mediaDir = path.join(__dirname, '../media');
-async function ensureMediaDir() {
-  try {
-    await fs.access(mediaDir);
-  } catch {
-    await fs.mkdir(mediaDir, { recursive: true });
-  }
-}
-
-// Function to replace variables in HTML
-function replaceVariables(htmlContent, data, reportype) {
-  // Extract values from data
-  const company_type = reportype || 'N/A';
-  const acn = data.acn || data.entity?.acn || 'N/A';
-  const abn = data.abn || data.entity?.abn || 'N/A';
-  const companyName = data.entity?.name || 'DIGICALL NETWORK PTY. LTD.';
-
-  const abn_state = data.abn_state || 'N/A';
-  const abn_status = data.abn_status || 'N/A';
-  const entity_abn = data.entity?.abn || 'N/A';
-  const entity_acn = data.entity?.acn || 'N/A';
-  const entity_name = data.entity?.name || 'N/A';
-  const entity_review_date = moment(data.entity?.review_date).format('DD/MM/YYYY') || 'N/A';
-  const entity_registered_in = data.entity?.registered_in || 'N/A';
-  const entity_abr_gst_status = data.entity?.abr_gst_status || 'N/A';
-  const entity_document_number = data.entity?.document_number || 'N/A';
-  const entity_organisation_type = data.entity?.organisation_type || 'N/A';
-  const entity_asic_date_of_registration = moment(data.entity?.asic_date_of_registration).format('DD/MM/YYYY') || 'N/A';
-
-  const current_date_and_time = moment().format('DD MMMM YYYY');
-
-  const formattedAmount = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(data.current_tax_debt?.amount);
-
-  const current_tax_debt_amount = formattedAmount || 'N/A';
-  const current_tax_debt_ato_updated_at = moment.utc(data.current_tax_debt?.ato_updated_at).format('MMMM D, YYYY, [at] h:mm:ss A') || 'N/A';
-
-  // Format ACN and ABN with spaces if they are numbers
-  const formattedAcn = acn.length === 9 ? acn.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3') : acn;
-  const formattedAbn = abn.length === 11 ? abn.replace(/(\d{2})(\d{3})(\d{3})(\d{3})/, '$1 $2 $3 $4') : abn;
-
-  // Current date for report
-  const reportDate = new Date().toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric'
-  });
-
-  console.log(`Replacing variables - ACN: ${formattedAcn}, ABN: ${formattedAbn}, Company: ${companyName}`);
-
-  // Replace all variables in HTML
-  let updatedHtml = htmlContent;
-
-  // Replace ACN variable
-  updatedHtml = updatedHtml.replace(/\$\{acn\}/g, formattedAcn);
-
-  // Replace ABN variable
-  updatedHtml = updatedHtml.replace(/\$\{abn\}/g, formattedAbn);
-
-  // Replace company name variable if exists
-  updatedHtml = updatedHtml.replace(/\$\{companyName\}/g, companyName);
-
-  updatedHtml = updatedHtml.replace(/\$\{company_type\}/g, company_type);
-
-  // Replace report date variable if exists
-  updatedHtml = updatedHtml.replace(/\$\{reportDate\}/g, reportDate);
-
-  updatedHtml = updatedHtml.replace(/\$\{abn_state\}/g, abn_state);
-  updatedHtml = updatedHtml.replace(/\$\{abn_status\}/g, abn_status);
-  updatedHtml = updatedHtml.replace(/\$\{entity_abn\}/g, entity_abn);
-  updatedHtml = updatedHtml.replace(/\$\{entity_acn\}/g, entity_acn);
-  updatedHtml = updatedHtml.replace(/\$\{entity_name\}/g, entity_name);
-  updatedHtml = updatedHtml.replace(/\$\{entity_review_date\}/g, entity_review_date);
-  updatedHtml = updatedHtml.replace(/\$\{entity_registered_in\}/g, entity_registered_in);
-  updatedHtml = updatedHtml.replace(/\$\{entity_abr_gst_status\}/g, entity_abr_gst_status);
-  updatedHtml = updatedHtml.replace(/\$\{entity_document_number\}/g, entity_document_number);
-  updatedHtml = updatedHtml.replace(/\$\{entity_organisation_type\}/g, entity_organisation_type);
-  updatedHtml = updatedHtml.replace(/\$\{entity_asic_date_of_registration\}/g, entity_asic_date_of_registration);
-  updatedHtml = updatedHtml.replace(/\$\{current_date_and_time\}/g, current_date_and_time);
-  updatedHtml = updatedHtml.replace(/\$\{current_tax_debt_amount\}/g, current_tax_debt_amount);
-  updatedHtml = updatedHtml.replace(/\$\{current_tax_debt_ato_updated_at\}/g, current_tax_debt_ato_updated_at);
-
-
-
-  return updatedHtml;
-}
 
 router.post('/convert-with-variables', async (req, res) => {
-  let browser = null;
-
   try {
-
-    const templateName = 'task1.html';
+    const templateName = 'task1.html'; // This was a placeholder, now dynamically determined in pdf.service.js
     const data = req.body;
     console.log("************************************************")
     console.log(data?.reportype);
@@ -323,195 +191,31 @@ router.post('/convert-with-variables', async (req, res) => {
       });
     }
 
-    // Ensure media directory exists
-    await ensureMediaDir();
-
-    // Read the HTML template file
-    const htmlTemplatePath = path.join(mediaDir, templateName);
-    let htmlContent;
-    console.log("htmlTemplatePath", htmlTemplatePath)
-
-    try {
-      htmlContent = await fs.readFile(htmlTemplatePath, 'utf-8');
-    } catch (error) {
-      return res.status(404).json({
-        success: false,
-        error: `HTML template file '${templateName}' not found in media folder`
-      });
-    }
-
-    // Replace variables in HTML
-    const updatedHtml = replaceVariables(htmlContent, data);
-
-    // Generate filename
-    const timestamp = data?.reportName || new Date().getTime();
-    const pdfFilename = timestamp + '.pdf';
-
-    const outputPath = path.join(mediaDir, pdfFilename);
-
-    console.log('Launching browser for PDF generation...');
-
-    // Launch puppeteer browser
-    browser = await puppeteer.launch({
-      headless: 'new',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu'
-      ]
-    });
-
-    const page = await browser.newPage();
-
-    // Enhanced CSS for proper page breaks and styling
-    const enhancedCSS = `
-      <style>
-        /* Ensure proper page breaks and dimensions */
-        .page {
-          page-break-after: always;
-          page-break-inside: avoid;
-          break-after: page;
-          width: 210mm;
-          height: 297mm;
-          position: relative;
-          background: white;
-          margin: 0;
-          padding: 60px 50px;
-          box-sizing: border-box;
-        }
-        
-        .page:last-child {
-          page-break-after: auto;
-        }
-        
-        /* Ensure all content is visible */
-        body {
-          margin: 0;
-          padding: 0;
-          background: white;
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
-        }
-        
-        .page-container {
-          margin: 0;
-          padding: 0;
-        }
-        
-        /* Print styles */
-        @media print {
-          body {
-            margin: 0 !important;
-            padding: 0 !important;
-            background: white !important;
-          }
-          
-          .page {
-            margin: 0 !important;
-            box-shadow: none !important;
-            border: none !important;
-            page-break-after: always !important;
-          }
-          
-          .page:last-child {
-            page-break-after: auto !important;
-          }
-        }
-        
-        @page {
-          size: A4;
-          margin: 0;
-        }
-      </style>
-    `;
-
-    // Inject enhanced CSS into the HTML
-    const finalHtml = updatedHtml.replace('</head>', `${enhancedCSS}</head>`);
-
-    // Set viewport
-    await page.setViewport({
-      width: 1200,
-      height: 800
-    });
-
-    // Set content with modified HTML
-    await page.setContent(finalHtml, {
-      waitUntil: 'networkidle0',
-      timeout: 30000
-    });
-
-    // Wait for all content to load
-    // await page.waitForTimeout(40000);
-
-    // Count the number of page elements
-    const pageCount = await page.evaluate(() => {
-      return document.querySelectorAll('.page').length;
-    });
-
-    console.log(`Found ${pageCount} page elements`);
-
-    // Generate PDF with proper settings
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: {
-        top: '0mm',
-        right: '0mm',
-        bottom: '0mm',
-        left: '0mm'
-      },
-      displayHeaderFooter: false,
-      preferCSSPageSize: true
-    });
-
-    console.log('PDF generated successfully');
-
-    // Save locally (optional)
-    await fs.writeFile(outputPath, pdfBuffer);
-    console.log('PDF saved locally:', outputPath);
-
-    // Upload to S3
-    console.log('Uploading PDF to S3...');
-    const s3UploadResult = await uploadToS3(pdfBuffer, pdfFilename);
-
-    if (!s3UploadResult.success) {
-      throw new Error(`S3 upload failed: ${s3UploadResult.error}`);
-    }
-
-    await browser.close();
-    browser = null;
+    // Use the service to convert with variables
+    const result = await convertWithVariables(data, templateName); // templateName is now passed but largely ignored in favor of reportype
 
     const formattedAmount = new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
     }).format(data.rdata?.current_tax_debt?.amount);
 
-    await UserReport.create({
-                        userId: data.userId || null,
-                        matterId: data.matterId || null,
-                        reportId:  data.reportId || null,
-                        reportName: `${data.reportName}.pdf` || null,
-                        isPaid: true
-                    });
-
     // Return success response with both local and S3 URLs
     res.json({
       success: true,
       message: 'PDF generated and uploaded to S3 successfully',
-      filename: pdfFilename,
+      filename: result.pdfFilename,
       local: {
-        downloadUrl: `/media/${pdfFilename}`,
-        fullPath: outputPath
+        downloadUrl: `/media/${result.pdfFilename}`,
+        fullPath: result.outputPath
       },
       s3: {
-        key: s3UploadResult.key,
-        location: s3UploadResult.location,
-        etag: s3UploadResult.etag
+        key: result.s3UploadResult.key,
+        location: result.s3UploadResult.location,
+        etag: result.s3UploadResult.etag
       },
       fileInfo: {
-        totalPages: pageCount,
-        fileSize: `${(pdfBuffer.length / 1024 / 1024).toFixed(2)} MB`,
+        totalPages: result.pageCount,
+        fileSize: `${(result.pdfBuffer.length / 1024 / 1024).toFixed(2)} MB`,
         generatedAt: new Date().toISOString()
       },
       replacedVariables: {
@@ -537,10 +241,6 @@ router.post('/convert-with-variables', async (req, res) => {
   } catch (error) {
     console.error('Error converting HTML to PDF:', error);
 
-    if (browser) {
-      await browser.close();
-    }
-
     res.status(500).json({
       success: false,
       error: 'Failed to convert HTML to PDF or upload to S3',
@@ -552,6 +252,7 @@ router.post('/convert-with-variables', async (req, res) => {
 async function asic_report_data(uuid) {
     //Now call GET API to fetch the report data
     const getApiUrl = `https://alares.com.au/api/reports/${uuid}/json`;
+    const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
 
     const response = await axios.get(getApiUrl, {
         headers: {
@@ -563,206 +264,6 @@ async function asic_report_data(uuid) {
     return response;
 }
 
-async function addDownloadReportInDB(rdata, userId, matterId, reportId, reportName, reportype ) {
-    // console.log("]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]");
-    //  console.log(rdata);
-    //     console.log(userId);
-    //     console.log(matterId);
-    //     console.log(reportId);
-    //     console.log(reportName);
-        
-    //     console.log(reportype);
-    //     console.log("]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]");
-    let browser = null;
-    if( reportype == "asic-current") {
-      templateName = 'task10.html';        
-    } else if ( reportype == "court" ) {
-       templateName = 'task1.html';
-    } else if ( reportype == "ato" ) {
-       templateName = 'task2.html';
-    } else if ( reportype == "asic-historical" ) {
-       templateName = 'task3.html';
-    } else if ( reportype == "asic-company" ) {
-       templateName = 'task4.html';
-    } else if ( reportype == "ppsr" ){
-       templateName = 'task5.html';
-    } else if ( reportype == "director-ppsr" ){
-       templateName = 'task6.html';
-    } else if ( reportype = "director-bankruptcy" ){
-       templateName = 'task7.html';
-    } else if ( reportype = "director-related" ){
-       templateName = 'task8.html';
-    }
-    await ensureMediaDir();
-
-    const htmlTemplatePath = path.join(mediaDir, templateName);
-    let htmlContent;
-    console.log("htmlTemplatePath", htmlTemplatePath)
-
-    try {
-      htmlContent = await fs.readFile(htmlTemplatePath, 'utf-8');
-    } catch (error) {
-      return res.status(404).json({
-        success: false,
-        error: `HTML template file '${templateName}' not found in media folder`
-      });
-    }
-
-    // Replace variables in HTML
-    const updatedHtml = replaceVariables(htmlContent, rdata, reportype);
-
-    // Generate filename
-    const timestamp = reportName || new Date().getTime();
-    const pdfFilename = timestamp + '.pdf';
-
-    const outputPath = path.join(mediaDir, pdfFilename);
-
-    console.log('Launching browser for PDF generation...');
-    // Launch puppeteer browser
-    browser = await puppeteer.launch({
-      headless: 'new',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu'
-      ]
-    });
-
-    const page = await browser.newPage();
-
-    // Enhanced CSS for proper page breaks and styling
-    const enhancedCSS = `
-      <style>
-        /* Ensure proper page breaks and dimensions */
-        .page {
-          page-break-after: always;
-          page-break-inside: avoid;
-          break-after: page;
-          width: 210mm;
-          height: 297mm;
-          position: relative;
-          background: white;
-          margin: 0;
-          padding: 60px 50px;
-          box-sizing: border-box;
-        }
-        
-        .page:last-child {
-          page-break-after: auto;
-        }
-        
-        /* Ensure all content is visible */
-        body {
-          margin: 0;
-          padding: 0;
-          background: white;
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
-        }
-        
-        .page-container {
-          margin: 0;
-          padding: 0;
-        }
-        
-        /* Print styles */
-        @media print {
-          body {
-            margin: 0 !important;
-            padding: 0 !important;
-            background: white !important;
-          }
-          
-          .page {
-            margin: 0 !important;
-            box-shadow: none !important;
-            border: none !important;
-            page-break-after: always !important;
-          }
-          
-          .page:last-child {
-            page-break-after: auto !important;
-          }
-        }
-        
-        @page {
-          size: A4;
-          margin: 0;
-        }
-      </style>
-    `;
-
-    // Inject enhanced CSS into the HTML
-    const finalHtml = updatedHtml.replace('</head>', `${enhancedCSS}</head>`);
-
-    // Set viewport
-    await page.setViewport({
-      width: 1200,
-      height: 800
-    });
-
-    // Set content with modified HTML
-    await page.setContent(finalHtml, {
-      waitUntil: 'networkidle0',
-      timeout: 30000
-    });
-
-    // Wait for all content to load
-    // await page.waitForTimeout(40000);
-
-    // Count the number of page elements
-    const pageCount = await page.evaluate(() => {
-      return document.querySelectorAll('.page').length;
-    });
-
-    console.log(`Found ${pageCount} page elements`);
-
-    // Generate PDF with proper settings
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: {
-        top: '0mm',
-        right: '0mm',
-        bottom: '0mm',
-        left: '0mm'
-      },
-      displayHeaderFooter: false,
-      preferCSSPageSize: true
-    });
-
-    console.log('PDF generated successfully');
-
-    // Save locally (optional)
-    await fs.writeFile(outputPath, pdfBuffer);
-    console.log('PDF saved locally:', outputPath);
-
-    // Upload to S3
-    console.log('Uploading PDF to S3...');
-    const s3UploadResult = await uploadToS3(pdfBuffer, pdfFilename);
-
-    if (!s3UploadResult.success) {
-      throw new Error(`S3 upload failed: ${s3UploadResult.error}`);
-    }
-
-    await browser.close();
-    browser = null;
-
-    const formattedAmount = new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(rdata?.current_tax_debt?.amount);
-
-    await UserReport.create({
-                        userId: userId || null,
-                        matterId: matterId || null,
-                        reportId: reportId || null,
-                        reportName: `${reportName}.pdf` || null,
-                        isPaid: true
-                    });
-    return pdfFilename;
-}
 
 // Function to create report via external API
 async function createReport({ business, type, userId, matterId, ispdfcreate }) {
@@ -1379,4 +880,3 @@ module.exports = {
     addDownloadReportInDB
 
 };
-

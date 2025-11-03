@@ -1,0 +1,2737 @@
+const path = require('path');
+const fs = require('fs').promises;
+const moment = require('moment');
+const puppeteer = require('puppeteer');
+const { uploadToS3 } = require('./s3.service');
+const UserReport = require('../models/UserReport');
+
+// Create media directory if it doesn't exist
+const mediaDir = path.join(__dirname, '../media');
+async function ensureMediaDir() {
+  try {
+    await fs.access(mediaDir);
+  } catch {
+    await fs.mkdir(mediaDir, { recursive: true });
+  }
+}
+
+// Helper function to format ACN
+function fmtAcn(acnVal) {
+  if (!acnVal) return '';
+  const s = ('' + acnVal).replace(/\D/g, '');
+  return s.length === 9 ? s.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3') : acnVal;
+}
+
+// Helper function to format dates
+function fmtDate(date) {
+  if (!date) return 'N/A';
+  return moment(date).format('DD MMM YYYY');
+}
+
+function fmtDateTime(date) {
+  if (!date) return 'N/A';
+  return `${moment(date).format('DD MMM YYYY')}<br>${moment(date).format('h:mma')}`;
+}
+
+// Extract data for ATO Report
+function extractAtoData(data) {
+  const entity = data.entity || {};
+  const current_tax_debt = data.current_tax_debt || {};
+  
+  return {
+    company_type: 'ato',
+    acn: data.acn || entity.acn || 'N/A',
+    abn: data.abn || entity.abn || 'N/A',
+    companyName: entity.name || 'N/A',
+    entity_abn: entity.abn || 'N/A',
+    entity_acn: entity.acn || 'N/A',
+    entity_name: entity.name || 'N/A',
+    entity_review_date: entity.review_date ? moment(entity.review_date).format('DD/MM/YYYY') : 'N/A',
+    entity_registered_in: entity.registered_in || 'N/A',
+    entity_abr_gst_status: entity.abr_gst_status || 'N/A',
+    entity_document_number: entity.document_number || 'N/A',
+    entity_organisation_type: entity.organisation_type || 'N/A',
+    entity_asic_date_of_registration: entity.asic_date_of_registration ? moment(entity.asic_date_of_registration).format('DD/MM/YYYY') : 'N/A',
+    abn_state: data.abn_state || 'N/A',
+    abn_status: data.abn_status || 'N/A',
+    current_tax_debt_amount: current_tax_debt.amount ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(current_tax_debt.amount) : 'N/A',
+    current_tax_debt_ato_updated_at: current_tax_debt.ato_updated_at ? moment.utc(current_tax_debt.ato_updated_at).format('MMMM D, YYYY, [at] h:mm:ss A') : 'N/A',
+    // ATO reports don't need court/insolvency data
+    actionSummaryRows: '',
+    insolvency_notice_id: 'N/A',
+    insolvency_type: 'N/A',
+    insolvency_publish_date: 'N/A',
+    insolvency_status: 'N/A',
+    insolvency_appointee: 'N/A',
+    insolvency_parties_rows: '',
+    insolvency_court: 'N/A',
+    case_case_id: 'N/A',
+    case_source: 'N/A',
+    case_jurisdiction: 'N/A',
+    case_type: 'N/A',
+    case_status: 'N/A',
+    case_location: 'N/A',
+    case_most_recent_event: 'N/A',
+    case_notification_date: 'N/A',
+    case_next_event: 'N/A',
+    orders_rows: '',
+    case_parties_rows: '',
+    hearings_rows: '',
+    documents_rows: '',
+    caseNumber: 'N/A'
+  };
+}
+
+// Extract data for Court Report
+function extractCourtData(data) {
+  const entity = data.entity || {};
+  const firstInsolv = data.insolvencies ? Object.values(data.insolvencies)[0] : null;
+  const firstCase = data.cases ? (Array.isArray(data.cases) ? data.cases[0] : Object.values(data.cases)[0]) : null;
+  
+  // Extract case number
+  let caseNumber = 'N/A';
+  if (firstCase) {
+    caseNumber = firstCase.case_number || firstCase.case_name || 'N/A';
+  } else if (firstInsolv) {
+    caseNumber = firstInsolv.case_number || firstInsolv.asic_notice_id || 'N/A';
+  }
+  
+  // Action summary rows
+  let actionSummaryRows = '';
+  let rowIndex = 1;
+  if (firstInsolv) {
+    const date = firstInsolv.notification_time || firstInsolv.date_filed || firstInsolv.created_at;
+    actionSummaryRows += `<tr><td>${rowIndex++}</td><td>${fmtDate(date)}<br><span style="font-size: 9px; color: #64748B;">(${moment(date).fromNow(true)} ago)</span></td><td>${firstInsolv.match_on || firstInsolv.name || 'N/A'}</td><td>${firstInsolv.court_name || firstInsolv.court || 'ASIC Insolvencies'}</td><td>${firstInsolv.case_type || firstInsolv.type || 'N/A'}</td><td>${firstInsolv.case_number || firstInsolv.asic_notice_id || 'N/A'}</td></tr>`;
+  }
+  if (firstCase) {
+    const date = firstCase.notification_time || firstCase.most_recent_event || firstCase.created_at;
+    actionSummaryRows += `<tr><td>${rowIndex++}</td><td>${fmtDate(date)}<br><span style="font-size: 9px; color: #64748B;">(${moment(date).fromNow(true)} ago)</span></td><td>${firstCase.match_on || firstCase.name || 'N/A'}</td><td>${firstCase.court_name || firstCase.source || 'N/A'}</td><td>${firstCase.case_type || firstCase.type || 'N/A'}</td><td>${firstCase.case_number || firstCase.case_name || 'N/A'}</td></tr>`;
+  }
+  
+  // Insolvency details
+  const insolvency_notice_id = firstInsolv?.asic_notice_id || firstInsolv?.case_number || 'N/A';
+  const insolvency_type = firstInsolv?.case_type || firstInsolv?.type || 'N/A';
+  const insolvency_publish_date = fmtDate(firstInsolv?.notification_time || firstInsolv?.date_filed || firstInsolv?.created_at);
+  const insolvency_status = firstInsolv?.status || 'N/A';
+  const insolvency_appointee = (firstInsolv?.parties && firstInsolv.parties[0]?.name) || 'N/A';
+  const insolvency_court = firstInsolv?.court_name || firstInsolv?.court || 'ASIC Insolvencies';
+  
+  let insolvency_parties_rows = '';
+  if (firstInsolv && Array.isArray(firstInsolv.parties)) {
+    firstInsolv.parties.forEach(p => {
+      insolvency_parties_rows += `<tr><td>${p.name || ''}</td><td>${fmtAcn(p.acn) || ''}</td></tr>`;
+    });
+  } else if (firstInsolv) {
+    insolvency_parties_rows = `<tr><td>${firstInsolv.name || 'N/A'}</td><td></td></tr>`;
+  }
+  
+  // Case details
+  const case_case_id = firstCase?.case_number || firstCase?.case_name || 'N/A';
+  const case_source = firstCase?.court_name || firstCase?.source || 'N/A';
+  const case_jurisdiction = firstCase?.jurisdiction || 'N/A';
+  const case_type = firstCase?.case_type || firstCase?.type || 'N/A';
+  const case_status = (firstCase?.applications && firstCase.applications[0]?.status) || 'N/A';
+  const case_location = firstCase?.suburb || firstCase?.registered_in || 'N/A';
+  const case_most_recent_event = fmtDate(firstCase?.most_recent_event || firstCase?.last_event || firstCase?.updated_at);
+  const case_notification_date = fmtDate(firstCase?.notification_time || firstCase?.applications?.[0]?.date_filed || firstCase?.created_at);
+  const case_next_event = firstCase?.next_hearing_date ? fmtDate(firstCase.next_hearing_date) : 'N/A';
+  
+  let orders_rows = '';
+  if (firstCase && Array.isArray(firstCase.judgments)) {
+    firstCase.judgments.forEach(j => {
+      orders_rows += `<tr><td style="padding: 8px;"><strong>${fmtDate(j.date)}</strong></td><td style="padding: 8px;"><strong>Title:</strong> ${j.title || ''}</td></tr>`;
+    });
+  }
+  
+  let case_parties_rows = '';
+  if (firstCase && Array.isArray(firstCase.parties)) {
+    firstCase.parties.forEach(p => {
+      case_parties_rows += `<tr><td>${p.name || ''}</td><td>${p.role || ''}</td><td>${p.representative_firm || p.representative_name || ''}</td><td>${fmtAcn(p.acn) || ''}</td></tr>`;
+    });
+  }
+  
+  let hearings_rows = '';
+  if (firstCase && Array.isArray(firstCase.hearings)) {
+    firstCase.hearings.forEach(h => {
+      hearings_rows += `<tr><td>${fmtDateTime(h.datetime)}</td><td>${h.officer || ''}</td><td>${h.court_room || ''}</td><td>${h.court_name || ''}</td><td>${h.type || ''}</td><td>${h.outcome || ''}</td></tr>`;
+    });
+  }
+  
+  let documents_rows = '';
+  if (firstCase && Array.isArray(firstCase.documents)) {
+    firstCase.documents.forEach(d => {
+      documents_rows += `<tr><td>${fmtDate(d.datetime)}</td><td>${moment(d.datetime).format('h:mma')}</td><td>${d.title || ''}</td><td>${d.filed_by || ''}</td></tr>`;
+    });
+  }
+  
+  return {
+    company_type: 'court',
+    acn: data.acn || entity.acn || 'N/A',
+    abn: data.abn || entity.abn || 'N/A',
+    companyName: entity.name || 'N/A',
+    entity_abn: entity.abn || 'N/A',
+    entity_acn: entity.acn || 'N/A',
+    entity_name: entity.name || 'N/A',
+    entity_review_date: entity.review_date ? moment(entity.review_date).format('DD/MM/YYYY') : 'N/A',
+    entity_registered_in: entity.registered_in || 'N/A',
+    entity_abr_gst_status: entity.abr_gst_status || 'N/A',
+    entity_document_number: entity.document_number || 'N/A',
+    entity_organisation_type: entity.organisation_type || 'N/A',
+    entity_asic_date_of_registration: entity.asic_date_of_registration ? moment(entity.asic_date_of_registration).format('DD/MM/YYYY') : 'N/A',
+    abn_state: data.abn_state || 'N/A',
+    abn_status: data.abn_status || 'N/A',
+    actionSummaryRows,
+    insolvency_notice_id,
+    insolvency_type,
+    insolvency_publish_date,
+    insolvency_status,
+    insolvency_appointee,
+    insolvency_parties_rows,
+    insolvency_court,
+    case_case_id,
+    case_source,
+    case_jurisdiction,
+    case_type,
+    case_status,
+    case_location,
+    case_most_recent_event,
+    case_notification_date,
+    case_next_event,
+    orders_rows,
+    case_parties_rows,
+    hearings_rows,
+    documents_rows,
+    caseNumber,
+    current_tax_debt_amount: 'N/A',
+    current_tax_debt_ato_updated_at: 'N/A'
+  };
+}
+
+// Extract data for ASIC Current Report
+function extractAsicCurrentData(data) {
+  const entity = data.entity || {};
+  const rdata = data.rdata || data; 
+  
+  const entityData = rdata.entity || entity;
+  const formattedAcn = entityData.acn ? fmtAcn(entityData.acn) : 'N/A';
+  const formattedAbn = entityData.abn ? entityData.abn.replace(/\D/g, '').replace(/(\d{2})(\d{3})(\d{3})(\d{3})/, '$1 $2 $3 $4') : 'N/A';
+  
+  const currentDate = moment();
+  const reportDate = currentDate.format('DD MMMM YYYY');
+  const reportDateWithTime = `${currentDate.format('DD MMM YYYY')}, ${currentDate.format('h:mma')}`;
+  
+  const asicRegistrationDate = entityData.asic_date_of_registration 
+    ? moment(entityData.asic_date_of_registration).format('DD/MM/YYYY') 
+    : 'N/A';
+  
+  // Format review date
+  const reviewDate = entityData.review_date 
+    ? moment(entityData.review_date).format('DD/MM/YYYY') 
+    : 'N/A';
+  
+  // Extract tax debt information
+  let taxDebtAmount = 'N/A';
+  let taxDebtUpdatedAt = 'N/A';
+  let taxDebtSection = ''; // HTML for tax debt section
+  
+  if (rdata.current_tax_debt && rdata.current_tax_debt.amount !== null && rdata.current_tax_debt.amount !== undefined) {
+    const amount = parseFloat(rdata.current_tax_debt.amount);
+    taxDebtAmount = new Intl.NumberFormat('en-AU', {
+      style: 'currency',
+      currency: 'AUD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(amount);
+    
+    if (rdata.current_tax_debt.ato_updated_at) {
+      taxDebtUpdatedAt = moment.utc(rdata.current_tax_debt.ato_updated_at).format('DD/MM/YYYY [at] h:mm:ss A');
+    }
+    
+    // Generate tax debt section HTML
+    taxDebtSection = `
+            <div style="margin-top: 60px;">
+                <div class="card" style="border: 2px solid #CBD5E1; background: #F8FAFC;">
+                    <div style="font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 16px; display: flex; align-items: center;">
+                        ⚠ CRITICAL: ATO TAX DEBT
+                    </div>
+                    <div style="font-size: 20px; font-weight: 700; color: #0F172A; margin-bottom: 12px;">
+                        ${taxDebtAmount}
+                    </div>
+                    <div style="font-size: 11px; color: #64748B;">
+                        Outstanding/Updated as of ${taxDebtUpdatedAt}
+                    </div>
+                </div>
+            </div>
+    `;
+  }
+  
+  // Get status values (with fallbacks)
+  const asicStatus = entityData.asic_status || data.asic_status || 'N/A';
+  const abnStatus = entityData.abr_status || data.abn_status || 'N/A';
+  const gstStatus = entityData.abr_gst_status || data.abn_gst_status || 'N/A';
+  
+  // Document number for header
+  const documentNumber = entityData.document_number || data.document_number || 'N/A';
+  
+  // Extract data from asic_extracts for Pages 3 and 4
+  const asicExtracts = rdata.asic_extracts || data.asic_extracts || [];
+  const firstExtract = asicExtracts.length > 0 ? asicExtracts[0] : null;
+  
+  // Page 3 - ASIC Extract Summary
+  const extractType = firstExtract?.type || 'Current';
+  const addresses = firstExtract?.addresses || [];
+  const contactAddresses = firstExtract?.contact_addresses || [];
+  const directors = firstExtract?.directors || [];
+  const secretaries = firstExtract?.secretaries || [];
+  const shareholders = firstExtract?.shareholders || [];
+  const shareholdings = firstExtract?.shareholdings || [];
+  
+  // Counts for Page 3
+  const totalAddresses = addresses.length + contactAddresses.length;
+  const totalDirectors = directors.length;
+  const totalSecretaries = secretaries.length;
+  const totalShareholders = shareholders.length || shareholdings.length;
+  
+  // Get 2 addresses for Page 3 (prefer "Current" status, then first 2)
+  const currentAddresses = addresses.filter(addr => addr.status === 'Current');
+  const page3Addresses = currentAddresses.length >= 2 
+    ? currentAddresses.slice(0, 2)
+    : addresses.slice(0, 2);
+  
+  // Generate address boxes HTML for Page 3
+  let addressBoxesHtml = '';
+  page3Addresses.forEach((addr, index) => {
+    const addressLines = [];
+    if (addr.care_of) addressLines.push(`'${addr.care_of}'`);
+    if (addr.address_1) addressLines.push(addr.address_1);
+    if (addr.address_2) addressLines.push(`'${addr.address_2}'`);
+    if (addr.suburb) addressLines.push(addr.suburb);
+    if (addr.state && addr.postcode) addressLines.push(`${addr.state} ${addr.postcode}`);
+    
+    const addressText = addressLines.join('<br>');
+    const startDate = addr.start_date ? moment(addr.start_date).format('DD/MM/YYYY') : 'N/A';
+    const docNo = addr.document_number || 'N/A';
+    
+    addressBoxesHtml += `
+                <div class="card">
+                    <div class="card-header">${addr.type || 'Address'}</div>
+                    <div style="font-size: 11px; line-height: 1.6;">
+                        ${addr.care_of ? `<strong>Name:</strong> ${addr.care_of}<br>` : ''}
+                        <strong>Address:</strong><br>
+                        ${addressText}<br><br>
+                        <strong>Start Date:</strong> ${startDate}<br>
+                        <strong>Document No:</strong> ${docNo}
+                    </div>
+                </div>
+    `;
+  });
+  
+  // Get first contact address for ASIC
+  const firstContactAddress = contactAddresses.length > 0 ? contactAddresses[0] : null;
+  let contactAddressHtml = '';
+  if (firstContactAddress) {
+    const contactAddressLines = [];
+    if (firstContactAddress.address_1) contactAddressLines.push(firstContactAddress.address_1);
+    if (firstContactAddress.address_2) contactAddressLines.push(firstContactAddress.address_2);
+    if (firstContactAddress.suburb) contactAddressLines.push(firstContactAddress.suburb);
+    if (firstContactAddress.state && firstContactAddress.postcode) {
+      contactAddressLines.push(`${firstContactAddress.state} ${firstContactAddress.postcode}`);
+    }
+    
+    const contactAddressText = contactAddressLines.join(' ');
+    const contactStartDate = firstContactAddress.start_date 
+      ? moment(firstContactAddress.start_date).format('DD/MM/YYYY') 
+      : 'N/A';
+    const contactEndDate = firstContactAddress.end_date 
+      ? moment(firstContactAddress.end_date).format('DD/MM/YYYY') 
+      : 'Current';
+    
+    contactAddressHtml = `
+            <div class="card info" style="margin-top: 30px;">
+                <div class="card-header" style="color: #0F172A;">Contact Address for ASIC</div>
+                <div class="card warning" style="margin: 10px 0; font-size: 10px;">
+                    ⚠️ This address is to be used by ASIC and not for delivery of documents to the company
+                </div>
+                <div style="font-size: 14px; font-weight: 700; margin: 12px 0; color: #0F172A;">
+                    ${contactAddressText}
+                </div>
+                <div style="font-size: 10px; color: #64748B;">
+                    <strong>Type:</strong> ${firstContactAddress.type || 'Contact Address for ASIC use only'}<br>
+                    <strong>Start Date:</strong> ${contactStartDate} | <strong>End Date:</strong> ${contactEndDate}
+                </div>
+            </div>
+    `;
+  }
+  
+  // Page 4 - Address Change History (get ceased addresses, limit to 2)
+  const ceasedAddresses = addresses.filter(addr => addr.status === 'Ceased').slice(0, 2);
+  let addressChangeHistoryRows = '';
+  ceasedAddresses.forEach(addr => {
+    const addressText = addr.address || `${addr.address_1 || ''} ${addr.suburb || ''} ${addr.state || ''} ${addr.postcode || ''}`.trim();
+    const changeDate = addr.end_date 
+      ? moment(addr.end_date).format('DD/MM/YYYY') 
+      : (addr.start_date ? moment(addr.start_date).format('DD/MM/YYYY') : 'N/A');
+    const docNo = addr.document_number || 'N/A';
+    
+    addressChangeHistoryRows += `
+                    <tr>
+                        <td>${addressText}</td>
+                        <td>${changeDate}</td>
+                        <td>${docNo}</td>
+                    </tr>
+    `;
+  });
+  
+  // Page 4 - Key Personnel Summary
+  // Directors HTML
+  let directorsHtml = '';
+  directors.forEach(dir => {
+    const dirAddress = dir.address ? dir.address.address : 'N/A';
+    const dirStartDate = dir.start_date ? moment(dir.start_date).format('DD/MM/YYYY') : 'N/A';
+    const dirStatus = dir.status === 'Current' ? '<span class="risk-low">Current</span>' : '<span class="risk-high">Ceased</span>';
+    
+    directorsHtml += `
+            <div class="card" style="padding: 14px 20px; margin-bottom: 12px;">
+                <div class="card-header" style="margin-bottom: 10px;">Director</div>
+                <div style="font-size: 11px;">
+                    <strong>${dir.name || 'N/A'}</strong><br>
+                    Appointment Date: ${dirStartDate} | Address: ${dirAddress}<br>
+                    Status: ${dirStatus}
+                </div>
+            </div>
+    `;
+  });
+  
+  // Secretaries HTML
+  let secretariesHtml = '';
+  secretaries.forEach(sec => {
+    const secAddress = sec.address ? sec.address.address : 'N/A';
+    const secStartDate = sec.start_date ? moment(sec.start_date).format('DD/MM/YYYY') : 'N/A';
+    const secStatus = sec.status === 'Current' ? '<span class="risk-low">Current</span>' : '<span class="risk-high">Ceased</span>';
+    
+    secretariesHtml += `
+            <div class="card" style="padding: 14px 20px; margin-bottom: 12px;">
+                <div class="card-header" style="margin-bottom: 10px;">Secretary</div>
+                <div style="font-size: 11px;">
+                    <strong>${sec.name || 'N/A'}</strong><br>
+                    Appointment Date: ${secStartDate} | Address: ${secAddress}<br>
+                    Status: ${secStatus}
+                </div>
+            </div>
+    `;
+  });
+  
+  // Shareholders HTML
+  let shareholdersHtml = '';
+  if (shareholders.length > 0) {
+    shareholders.forEach(shareholder => {
+      const shareAddress = shareholder.address ? shareholder.address.address : 'N/A';
+      shareholdersHtml += `
+            <div class="card" style="padding: 14px 20px; margin-bottom: 12px;">
+                <div class="card-header" style="margin-bottom: 10px;">Shareholder</div>
+                <div style="font-size: 11px;">
+                    <strong>${shareholder.name || 'N/A'}</strong><br>
+                    Address: ${shareAddress}
+                </div>
+            </div>
+      `;
+    });
+  } else if (shareholdings.length > 0) {
+    // Group shareholdings by name
+    const shareholderGroups = {};
+    shareholdings.forEach(sh => {
+      const name = sh.name || 'Unknown';
+      if (!shareholderGroups[name]) {
+        shareholderGroups[name] = [];
+      }
+      shareholderGroups[name].push(sh);
+    });
+    
+    Object.keys(shareholderGroups).forEach(name => {
+      const holdings = shareholderGroups[name];
+      let sharesInfo = '';
+      holdings.forEach(h => {
+        const shareClass = h.share_class || 'N/A';
+        const shares = h.shares || 0;
+        sharesInfo += `${shareClass}: ${shares} shares | `;
+      });
+      sharesInfo = sharesInfo.replace(/\s\|\s$/, '');
+      
+      shareholdersHtml += `
+            <div class="card" style="padding: 14px 20px; margin-bottom: 12px;">
+                <div class="card-header" style="margin-bottom: 10px;">Shareholder</div>
+                <div style="font-size: 11px;">
+                    <strong>${name}</strong><br>
+                    ${sharesInfo}
+                </div>
+            </div>
+      `;
+    });
+  }
+  
+  // Page 5 & 6 - ASIC Documents & Filings
+  const documents = firstExtract?.documents || [];
+  const totalDocuments = documents.length;
+  
+  // Calculate date range
+  let minYear = null;
+  let maxYear = null;
+  let filings2025 = 0;
+  const formTypesSet = new Set();
+  
+  documents.forEach(doc => {
+    // Get year from received_at, effective_at, or processed_at
+    let docYear = null;
+    if (doc.received_at) {
+      docYear = moment(doc.received_at).year();
+    } else if (doc.effective_at) {
+      docYear = moment(doc.effective_at).year();
+    } else if (doc.processed_at) {
+      docYear = moment(doc.processed_at).year();
+    }
+    
+    if (docYear) {
+      if (minYear === null || docYear < minYear) minYear = docYear;
+      if (maxYear === null || docYear > maxYear) maxYear = docYear;
+      if (docYear === 2025) filings2025++;
+    }
+    
+    // Track form types
+    if (doc.form_code) {
+      formTypesSet.add(doc.form_code);
+    }
+  });
+  
+  const dateRange = minYear && maxYear ? `${minYear}-${maxYear}` : 'N/A';
+  const formTypesCount = formTypesSet.size;
+  
+  // Sort documents by date (most recent first) - use received_at, effective_at, or processed_at
+  const sortedDocuments = [...documents].sort((a, b) => {
+    const dateA = a.received_at || a.effective_at || a.processed_at || '';
+    const dateB = b.received_at || b.effective_at || b.processed_at || '';
+    return moment(dateB).valueOf() - moment(dateA).valueOf(); // Descending order
+  });
+  
+  // Generate documents table rows
+  let documentsRowsHtml = '';
+  sortedDocuments.forEach(doc => {
+    const formCode = doc.form_code || 'N/A';
+    const description = doc.description || 'N/A';
+    // Use received_at, effective_at, or processed_at for date
+    const docDate = doc.received_at || doc.effective_at || doc.processed_at;
+    const formattedDate = docDate ? moment(docDate).format('DD/MM/YYYY') : 'N/A';
+    const docNumber = doc.document_number || 'N/A';
+    
+    documentsRowsHtml += `
+                    <tr>
+                        <td><strong>${formCode}</strong></td>
+                        <td>${description}</td>
+                        <td>${formattedDate}</td>
+                        <td>${docNumber}</td>
+                    </tr>
+    `;
+  });
+  
+  // Page 7 - Board of Directors & Shareholders
+  // Get current directors and secretaries
+  const currentDirectors = directors.filter(d => d.status === 'Current');
+  const currentSecretaries = secretaries.filter(s => s.status === 'Current');
+  
+  // Generate Directors & Secretaries table rows
+  let directorsSecretariesRowsHtml = '';
+  
+  // Combine directors and secretaries, mark positions and detect duplicates
+  const allOfficeholders = [];
+  const processedNames = new Set();
+  
+  // Process directors first
+  currentDirectors.forEach(dir => {
+    const name = dir.name || '';
+    // Check if this person is also a secretary
+    const isAlsoSecretary = currentSecretaries.some(sec => sec.name === name);
+    
+    if (isAlsoSecretary && !processedNames.has(name)) {
+      allOfficeholders.push({ ...dir, position: 'Director & Secretary' });
+      processedNames.add(name);
+    } else if (!processedNames.has(name)) {
+      allOfficeholders.push({ ...dir, position: 'Director' });
+      processedNames.add(name);
+    }
+  });
+  
+  // Process secretaries (excluding those already added as Director & Secretary)
+  currentSecretaries.forEach(sec => {
+    const name = sec.name || '';
+    if (!processedNames.has(name)) {
+      allOfficeholders.push({ ...sec, position: 'Secretary' });
+      processedNames.add(name);
+    }
+  });
+  
+  allOfficeholders.forEach(holder => {
+    const dob = holder.dob ? moment(holder.dob).format('DD/MM/YYYY') : 'N/A';
+    const placeOfBirth = holder.place_of_birth || 'N/A';
+    const address = holder.address ? holder.address.address : 'N/A';
+    const appointedDate = holder.start_date ? moment(holder.start_date).format('DD/MM/YYYY') : 'N/A';
+    
+    directorsSecretariesRowsHtml += `
+                    <tr>
+                        <td><strong>${holder.name || 'N/A'}</strong></td>
+                        <td>${holder.position || 'N/A'}</td>
+                        <td>${appointedDate}</td>
+                        <td>${address}</td>
+                        <td>${dob}</td>
+                        <td>${placeOfBirth}</td>
+                    </tr>
+    `;
+  });
+  
+  // Shareholders & Ownership section - only show if data exists
+  const shareStructures = firstExtract?.share_structures || [];
+  const hasShareholderData = (shareholders.length > 0 || shareholdings.length > 0 || shareStructures.length > 0);
+  
+  let shareholdersOwnershipSection = '';
+  
+  if (hasShareholderData) {
+    // Calculate stats
+    const uniqueShareholders = new Set();
+    // Use shareholders array first (preferred), then shareholdings
+    shareholdings.forEach(sh => {
+      if (sh.name) uniqueShareholders.add(sh.name);
+    });
+    shareholders.forEach(sh => {
+      if (sh.name) uniqueShareholders.add(sh.name);
+    });
+    const totalShareholdersCount = uniqueShareholders.size || shareholders.length || shareholdings.length;
+    
+    const shareClassesSet = new Set();
+    shareStructures.forEach(ss => {
+      if (ss.class_code) shareClassesSet.add(ss.class_code);
+      if (ss.class) shareClassesSet.add(ss.class);
+    });
+    shareholdings.forEach(sh => {
+      if (sh.share_class) shareClassesSet.add(sh.share_class);
+      if (sh.class) shareClassesSet.add(sh.class);
+    });
+    shareholders.forEach(sh => {
+      if (sh.class) shareClassesSet.add(sh.class);
+    });
+    const shareClassesCount = shareClassesSet.size;
+    
+    // Calculate ownership concentration (if we have share data)
+    let ownershipConcentration = 'N/A';
+    let totalShares = 0;
+    const shareholderShares = {};
+    
+    // Use shareholders array first, then shareholdings
+    shareholders.forEach(sh => {
+      const name = sh.name || 'Unknown';
+      const shares = parseInt(sh.number_held || sh.shares || 0);
+      totalShares += shares;
+      if (!shareholderShares[name]) {
+        shareholderShares[name] = 0;
+      }
+      shareholderShares[name] += shares;
+    });
+    
+    shareholdings.forEach(sh => {
+      const name = sh.name || 'Unknown';
+      const shares = parseInt(sh.shares || sh.number_held || 0);
+      totalShares += shares;
+      if (!shareholderShares[name]) {
+        shareholderShares[name] = 0;
+      }
+      shareholderShares[name] += shares;
+    });
+    
+    if (totalShares > 0) {
+      const maxShares = Math.max(...Object.values(shareholderShares));
+      ownershipConcentration = `${Math.round((maxShares / totalShares) * 100)}%`;
+    }
+    
+    // Calculate share capital from share_structures
+    // Note: amount_paid appears to be in cents, so we divide by 100
+    let shareCapital = 0;
+    shareStructures.forEach(ss => {
+      const paid = parseFloat(ss.amount_paid || ss.total_paid || ss.total_paid_up || 0);
+      shareCapital += paid / 100; // Convert cents to dollars
+    });
+    const formattedShareCapital = shareCapital > 0 
+      ? new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 2 }).format(shareCapital)
+      : 'N/A';
+    
+    // Generate Share Register table rows
+    // Prefer shareholders array, fallback to shareholdings
+    let shareRegisterRowsHtml = '';
+    const allShareholderData = shareholders.length > 0 ? shareholders : shareholdings;
+    
+    allShareholderData.forEach(sh => {
+      const name = sh.name || 'N/A';
+      const address = sh.address ? sh.address.address : 'N/A';
+      const shareClass = sh.class || sh.share_class || 'N/A';
+      const shares = sh.number_held || sh.shares || 0;
+      const fullyPaid = sh.fully_paid === true || sh.fully_paid === 'Yes' ? 'Yes' : (sh.fully_paid === false || sh.fully_paid === 'No' ? 'No' : 'N/A');
+      const docNo = sh.document_number || 'N/A';
+      
+      shareRegisterRowsHtml += `
+                    <tr>
+                        <td><strong>${name}</strong></td>
+                        <td>${address}</td>
+                        <td>${shareClass}</td>
+                        <td>${shares}</td>
+                        <td>${fullyPaid}</td>
+                        <td>${docNo}</td>
+                    </tr>
+      `;
+    });
+    
+    shareholdersOwnershipSection = `
+            <div class="page-title" style="margin-top: 30px;">Shareholders &amp; Ownership</div>
+            
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="stat-label">Total Shareholders</div>
+                    <div class="stat-value">${totalShareholdersCount}</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Share Classes</div>
+                    <div class="stat-value">${shareClassesCount}</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Ownership Concentration</div>
+                    <div class="stat-value alert">${ownershipConcentration}</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Share Capital</div>
+                    <div class="stat-value">${formattedShareCapital}</div>
+                </div>
+            </div>
+            
+            <div class="section-title">Share Register</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Shareholder Name</th>
+                        <th>Address</th>
+                        <th>Share Class</th>
+                        <th>Shares Held</th>
+                        <th>Fully Paid</th>
+                        <th>Document No</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${shareRegisterRowsHtml}
+                </tbody>
+            </table>
+    `;
+  }
+  
+  // Page 8 - Share Structure (only show if share_structures data exists)
+  let shareStructureSection = '';
+  
+  if (shareStructures.length > 0) {
+    let shareStructureRowsHtml = '';
+    
+    shareStructures.forEach(ss => {
+      const classCode = ss.class_code || ss.class || 'N/A';
+      const description = ss.class_description || ss.description || 'N/A';
+      const numberIssued = ss.share_count || ss.number_issued || 0;
+      const amountPaid = parseFloat(ss.amount_paid || ss.total_paid || 0);
+      const formattedAmountPaid = amountPaid > 0 
+        ? new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 2 }).format(amountPaid / 100)
+        : '$0.00';
+      const docNo = ss.document_number || 'N/A';
+      
+      shareStructureRowsHtml += `
+                        <tr>
+                            <td><strong>${classCode}</strong></td>
+                            <td>${description}</td>
+                            <td>${numberIssued}</td>
+                            <td>${formattedAmountPaid}</td>
+                            <td>${docNo}</td>
+                        </tr>
+      `;
+    });
+    
+    shareStructureSection = `
+            <div class="section-title">Share Structure</div>
+            <div class="card">
+                <div class="card-header">Issued Share Classes</div>
+                <table style="margin-top: 12px;">
+                    <thead>
+                        <tr>
+                            <th>Class</th>
+                            <th>Description</th>
+                            <th>Number Issued</th>
+                            <th>Total Paid</th>
+                            <th>Document No</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${shareStructureRowsHtml}
+                    </tbody>
+                </table>
+                <div class="card warning" style="margin-top: 12px; font-size: 10px;">
+                    <strong>Note:</strong> For each class of shares issued by a proprietary company, ASIC records the details of the twenty members of the class based on shareholdings.
+                </div>
+            </div>
+    `;
+  }
+  
+  // Calculate total pages dynamically
+  // Base pages: 1 (Cover), 2 (Report Summary), 3 (Company Info), 4 (Address History), 5 (Documents Part 1), 7 (Directors)
+  // Conditional: 8 (Share Structure) - only if shareStructures exist
+  // Note: Page 6 is just a continuation of Page 5 table, not a separate page
+  let totalPages = 7; // Base pages
+  if (shareStructures.length > 0) {
+    totalPages = 8; // Add Share Structure page if data exists
+  }
+  
+  // Generate page number strings for each page
+  const page1Number = `Page 1 of ${totalPages}`;
+  const page2Number = `Page 2 of ${totalPages}`;
+  const page3Number = `Page 3 of ${totalPages}`;
+  const page4Number = `Page 4 of ${totalPages}`;
+  const page5Number = `Page 5 of ${totalPages}`;
+  const page7Number = `Page 7 of ${totalPages}`;
+  const page8Number = shareStructures.length > 0 ? `Page 8 of ${totalPages}` : '';
+  
+  return {
+    company_type: 'asic-current',
+    acn: formattedAcn,
+    abn: formattedAbn,
+    companyName: entityData.name || 'N/A',
+    
+    // Page 1 - Cover Page variables
+    cover_company_name: (entityData.name || 'N/A').toUpperCase(),
+    cover_report_title: 'ASIC Current Report',
+    cover_report_date: reportDate,
+    cover_acn: formattedAcn,
+    cover_abn: formattedAbn,
+    cover_document_number: documentNumber,
+    
+    // Page 2 - Report Summary variables
+    entity_name: entityData.name || 'N/A',
+    entity_abn: formattedAbn,
+    entity_acn: formattedAcn,
+    entity_asic_status: asicStatus,
+    entity_abn_status: abnStatus,
+    entity_gst_status: gstStatus,
+    entity_organisation_type: entityData.organisation_type || 'N/A',
+    entity_asic_date_of_registration: asicRegistrationDate,
+    entity_review_date: reviewDate,
+    entity_registered_in: entityData.registered_in || 'N/A',
+    report_date: reportDateWithTime,
+    tax_debt_section: taxDebtSection,
+    current_tax_debt_amount: taxDebtAmount,
+    current_tax_debt_ato_updated_at: taxDebtUpdatedAt,
+    
+    // Page 3 - ASIC Extract Summary
+    extract_report_type: extractType,
+    extract_addresses_count: totalAddresses,
+    extract_directors_count: totalDirectors,
+    extract_secretaries_count: totalSecretaries,
+    extract_shareholders_count: totalShareholders,
+    address_boxes: addressBoxesHtml,
+    contact_address_section: contactAddressHtml,
+    
+    // Page 4 - Address Change History & Key Personnel
+    address_change_history_rows: addressChangeHistoryRows,
+    directors_summary: directorsHtml,
+    secretaries_summary: secretariesHtml,
+    shareholders_summary: shareholdersHtml,
+    
+    // Page 5 & 6 - ASIC Documents & Filings
+    documents_total_count: totalDocuments,
+    documents_date_range: dateRange,
+    documents_2025_filings: filings2025,
+    documents_form_types_count: formTypesCount,
+    documents_table_rows: documentsRowsHtml,
+    
+    // Page 7 - Board of Directors & Shareholders
+    directors_secretaries_table_rows: directorsSecretariesRowsHtml,
+    shareholders_ownership_section: shareholdersOwnershipSection,
+    
+    // Page 8 - Share Structure
+    share_structure_section: shareStructureSection,
+    
+    // Page Numbers (dynamic)
+    page_number_1: page1Number,
+    page_number_2: page2Number,
+    page_number_3: page3Number,
+    page_number_4: page4Number,
+    page_number_5: page5Number,
+    page_number_7: page7Number,
+    page_number_8: page8Number,
+    total_pages: totalPages,
+    
+    // Legacy fields (kept for backward compatibility)
+    entity_abr_gst_status: gstStatus,
+    entity_document_number: documentNumber,
+    abn_state: data.abn_state || entityData.abr_state || 'N/A',
+    abn_status: abnStatus,
+    
+    // Placeholder fields for future pages
+    actionSummaryRows: '',
+    insolvency_notice_id: 'N/A',
+    insolvency_type: 'N/A',
+    insolvency_publish_date: 'N/A',
+    insolvency_status: 'N/A',
+    insolvency_appointee: 'N/A',
+    insolvency_parties_rows: '',
+    insolvency_court: 'N/A',
+    case_case_id: 'N/A',
+    case_source: 'N/A',
+    case_jurisdiction: 'N/A',
+    case_type: 'N/A',
+    case_status: 'N/A',
+    case_location: 'N/A',
+    case_most_recent_event: 'N/A',
+    case_notification_date: 'N/A',
+    case_next_event: 'N/A',
+    orders_rows: '',
+    case_parties_rows: '',
+    hearings_rows: '',
+    documents_rows: '',
+    caseNumber: 'N/A'
+  };
+}
+
+// Extract data for ASIC Historical Report
+function extractAsicHistoricalData(data) {
+  // For pages 1-8, use the same logic as extractAsicCurrentData
+  const currentData = extractAsicCurrentData(data);
+  
+  const entity = data.entity || {};
+  const rdata = data.rdata || data;
+  const entityData = rdata.entity || entity;
+  
+  // Extract historical data for pages 9-11
+  const asicExtracts = rdata.asic_extracts || data.asic_extracts || [];
+  const firstExtract = asicExtracts.length > 0 ? asicExtracts[0] : null;
+  
+  // Page 9: Historical Company Names
+  const formerNames = entityData.former_names || [];
+  let historicalCompanyNamesRows = '';
+  if (formerNames.length > 0) {
+    // Assuming we have date info, otherwise just list names
+    formerNames.forEach((name, index) => {
+      // If name_start_at exists, use it; otherwise use registration date
+      const effectiveFrom = entityData.name_start_at ? moment(entityData.name_start_at).format('DD/MM/YYYY') : (entityData.asic_date_of_registration ? moment(entityData.asic_date_of_registration).format('DD/MM/YYYY') : 'N/A');
+      const effectiveTo = index === 0 && entityData.name ? 'Current' : (index > 0 && formerNames[index - 1] ? (entityData.name_start_at ? moment(entityData.name_start_at).format('DD/MM/YYYY') : 'N/A') : 'N/A');
+      
+      historicalCompanyNamesRows += `
+                      <tr>
+                          <td>${name}</td>
+                          <td>${effectiveFrom}</td>
+                          <td>${effectiveTo}</td>
+                          <td>Name Change</td>
+                      </tr>
+      `;
+    });
+  } else {
+    historicalCompanyNamesRows = `
+                    <tr>
+                        <td colspan="4" style="text-align: center; font-style: italic;">No former company names found</td>
+                    </tr>
+    `;
+  }
+  
+  // Page 9-10: Historical Registered Addresses
+  // Get all ceased addresses, sorted by end_date descending
+  const allAddresses = firstExtract?.addresses || [];
+  const historicalAddresses = allAddresses
+    .filter(addr => addr.status === 'Ceased')
+    .sort((a, b) => {
+      const dateA = a.end_date || a.start_date || '';
+      const dateB = b.end_date || b.start_date || '';
+      return moment(dateB).valueOf() - moment(dateA).valueOf(); // Descending
+    });
+  
+  let historicalAddressesRows = '';
+  historicalAddresses.forEach(addr => {
+    const addressText = addr.address || `${addr.address_1 || ''} ${addr.address_2 ? addr.address_2 + ' ' : ''}${addr.suburb || ''} ${addr.state || ''} ${addr.postcode || ''}`.trim();
+    const fromDate = addr.start_date ? moment(addr.start_date).format('DD/MM/YYYY') : 'N/A';
+    const toDate = addr.end_date ? moment(addr.end_date).format('DD/MM/YYYY') : 'Current';
+    const addressType = addr.type || 'N/A';
+    
+    historicalAddressesRows += `
+                    <tr>
+                        <td>${addressText}</td>
+                        <td>${addressType}</td>
+                        <td>${fromDate}</td>
+                        <td>${toDate}</td>
+                    </tr>
+    `;
+  });
+  
+  // Page 10: Previous Officeholders (Ceased Directors & Secretaries)
+  const directors = firstExtract?.directors || [];
+  const secretaries = firstExtract?.secretaries || [];
+  const ceasedDirectors = directors.filter(d => d.status === 'Ceased');
+  const ceasedSecretaries = secretaries.filter(s => s.status === 'Ceased');
+  
+  let previousOfficeholdersRows = '';
+  // Combine and sort by end_date descending
+  const allCeasedOfficeholders = [
+    ...ceasedDirectors.map(d => ({ ...d, position: 'Director' })),
+    ...ceasedSecretaries.map(s => ({ ...s, position: 'Secretary' }))
+  ].sort((a, b) => {
+    const dateA = a.end_date || a.start_date || '';
+    const dateB = b.end_date || b.start_date || '';
+    return moment(dateB).valueOf() - moment(dateA).valueOf(); // Descending
+  });
+  
+  if (allCeasedOfficeholders.length > 0) {
+    allCeasedOfficeholders.forEach(holder => {
+      const appointedDate = holder.start_date ? moment(holder.start_date).format('DD/MM/YYYY') : 'N/A';
+      const ceasedDate = holder.end_date ? moment(holder.end_date).format('DD/MM/YYYY') : 'Current';
+      const reason = holder.end_date ? 'Resigned' : 'N/A';
+      
+      previousOfficeholdersRows += `
+                      <tr>
+                          <td>${holder.name || 'N/A'}</td>
+                          <td>${holder.position || 'N/A'}</td>
+                          <td>${appointedDate}</td>
+                          <td>${ceasedDate}</td>
+                          <td>${reason}</td>
+                      </tr>
+      `;
+    });
+  } else {
+    previousOfficeholdersRows = `
+                    <tr>
+                        <td colspan="5" style="text-align: center; font-style: italic;">No former directors or secretaries found</td>
+                    </tr>
+    `;
+  }
+  
+  // Page 10: Historical Shareholders
+  const shareholders = firstExtract?.shareholders || [];
+  const shareholdings = firstExtract?.shareholdings || [];
+  const historicalShareholders = [...shareholders, ...shareholdings].filter(sh => sh.status === 'Ceased' || (!sh.status && sh.end_date));
+  
+  let historicalShareholdersRows = '';
+  if (historicalShareholders.length > 0) {
+    historicalShareholders.forEach(sh => {
+      const shareClass = sh.class || sh.share_class || 'N/A';
+      const shares = sh.number_held || sh.shares || 0;
+      const docNo = sh.document_number || 'N/A';
+      const status = sh.status || 'Ceased';
+      
+      historicalShareholdersRows += `
+                      <tr>
+                          <td>${sh.name || 'N/A'}</td>
+                          <td>${shareClass}</td>
+                          <td>${shares}</td>
+                          <td>${docNo}</td>
+                          <td>${status}</td>
+                      </tr>
+      `;
+    });
+  } else {
+    // If no historical shareholders in data, show empty message
+    historicalShareholdersRows = `
+                    <tr>
+                        <td colspan="5" style="text-align: center; font-style: italic;">No historical shareholder data available</td>
+                    </tr>
+    `;
+  }
+  
+  // Page 11: Historical Share Structure Changes
+  const shareStructures = firstExtract?.share_structures || [];
+  let historicalShareStructureRows = '';
+  // Sort by date descending
+  const sortedShareStructures = [...shareStructures].sort((a, b) => {
+    const dateA = a.effective_date || a.start_date || a.document_date || '';
+    const dateB = b.effective_date || b.start_date || b.document_date || '';
+    return moment(dateB).valueOf() - moment(dateA).valueOf();
+  });
+  
+  if (sortedShareStructures.length > 0) {
+    sortedShareStructures.forEach(ss => {
+      const changeDate = ss.effective_date || ss.start_date || ss.document_date || 'N/A';
+      const shareClass = ss.class_code || ss.class || ss.class_description || 'N/A';
+      const shares = ss.share_count || ss.number_issued || 0;
+      const amountPaid = parseFloat(ss.amount_paid || ss.total_paid || 0);
+      const formattedAmountPaid = amountPaid > 0 
+        ? new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 2 }).format(amountPaid / 100)
+        : '$0.00';
+      const changeType = ss.change_type || 'Capital Increase';
+      
+      historicalShareStructureRows += `
+                      <tr>
+                          <td>${changeDate ? moment(changeDate).format('DD/MM/YYYY') : 'N/A'}</td>
+                          <td>${shareClass}</td>
+                          <td>${shares}</td>
+                          <td>${formattedAmountPaid}</td>
+                          <td>${changeType}</td>
+                      </tr>
+      `;
+    });
+  } else {
+    historicalShareStructureRows = `
+                    <tr>
+                        <td colspan="5" style="text-align: center; font-style: italic;">No historical share structure changes found</td>
+                    </tr>
+    `;
+  }
+  
+  // Page 11: ASIC Documents (already extracted in currentData, but we might want to show them separately)
+  // The documents are already in currentData.documents_table_rows, so we can reuse or create a separate section
+  
+  // Extract Date for Historical Extract
+  const extractDate = firstExtract?.created_at || entityData.asic_date_of_registration || new Date();
+  const formattedExtractDate = moment(extractDate).format('DD/MM/YYYY');
+  
+  // Calculate total pages dynamically
+  // Base pages: 1-8 (same as current), 9 (Historical Extract), 10 (Historical Continued), 11 (Historical Share Structure & Documents)
+  let totalPages = 11;
+  
+  // Generate page number strings
+  const page1Number = `Page 1 of ${totalPages}`;
+  const page2Number = `Page 2 of ${totalPages}`;
+  const page3Number = `Page 3 of ${totalPages}`;
+  const page4Number = `Page 4 of ${totalPages}`;
+  const page5Number = `Page 5 of ${totalPages}`;
+  const page7Number = `Page 7 of ${totalPages}`;
+  const page8Number = shareStructures.length > 0 ? `Page 8 of ${totalPages}` : '';
+  const page9Number = `Page 9 of ${totalPages}`;
+  const page10Number = `Page 10 of ${totalPages}`;
+  const page11Number = `Page 11 of ${totalPages}`;
+  
+  return {
+    ...currentData, // Include all data from pages 1-8
+    
+    // Page 9 - Historical ASIC Extract
+    historical_extract_date: formattedExtractDate,
+    historical_company_names_rows: historicalCompanyNamesRows,
+    historical_addresses_rows: historicalAddressesRows,
+    
+    // Page 10 - Historical Continued
+    previous_officeholders_rows: previousOfficeholdersRows,
+    historical_shareholders_rows: historicalShareholdersRows,
+    
+    // Page 11 - Historical Share Structure & Documents
+    historical_share_structure_rows: historicalShareStructureRows,
+    
+    // Page Numbers (dynamic)
+    page_number_1: page1Number,
+    page_number_2: page2Number,
+    page_number_3: page3Number,
+    page_number_4: page4Number,
+    page_number_5: page5Number,
+    page_number_7: page7Number,
+    page_number_8: page8Number,
+    page_number_9: page9Number,
+    page_number_10: page10Number,
+    page_number_11: page11Number,
+    total_pages: totalPages,
+  };
+}
+
+// Extract data for ASIC Company (Related Entities) Report
+function extractAsicCompanyData(data) {
+  const entity = data.entity || {};
+  const rdata = data.rdata || data;
+  const entityData = rdata.entity || entity;
+  
+  // Extract ASIC extracts for shareholdings
+  const asicExtracts = rdata.asic_extracts || data.asic_extracts || [];
+  const firstExtract = asicExtracts.length > 0 ? asicExtracts[0] : null;
+  const shareholdings = firstExtract?.shareholdings || [];
+  
+  // Count current and former shareholdings
+  const currentShareholdings = shareholdings.filter(sh => sh.status === 'Current');
+  const formerShareholdings = shareholdings.filter(sh => sh.status === 'Ceased');
+  
+  // Generate Current Shareholdings table rows
+  let currentShareholdingsRows = '';
+  if (currentShareholdings.length > 0) {
+    currentShareholdings.forEach(sh => {
+      const companyName = sh.name || 'N/A';
+      const acn = sh.acn ? fmtAcn(sh.acn) : 'N/A';
+      const shareClass = sh.class || 'N/A';
+      const sharesHeld = sh.number_held ? parseInt(sh.number_held, 10).toLocaleString('en-US') : '0';
+      const address = sh.address?.address || (sh.address ? 
+        `${sh.address.address_1 || ''} ${sh.address.address_2 ? sh.address.address_2 + ' ' : ''}${sh.address.suburb || ''} ${sh.address.state || ''} ${sh.address.postcode || ''}`.trim() 
+        : 'N/A');
+      const status = sh.status || 'Current';
+      
+      currentShareholdingsRows += `
+                    <tr>
+                        <td>${companyName}</td>
+                        <td>${acn}</td>
+                        <td>${shareClass}</td>
+                        <td>${sharesHeld}</td>
+                        <td>${address}</td>
+                        <td>${status}</td>
+                    </tr>
+      `;
+    });
+  } else {
+    currentShareholdingsRows = `
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: #64748B; font-style: italic;">No current shareholdings found</td>
+                    </tr>
+    `;
+  }
+  
+  // Generate Former Shareholdings table rows
+  let formerShareholdingsRows = '';
+  if (formerShareholdings.length > 0) {
+    formerShareholdings.forEach(sh => {
+      const companyName = sh.name || 'N/A';
+      const acn = sh.acn ? fmtAcn(sh.acn) : 'N/A';
+      const shareClass = sh.class || 'N/A';
+      const sharesHeld = sh.number_held ? parseInt(sh.number_held, 10).toLocaleString('en-US') : '0';
+      const address = sh.address?.address || (sh.address ? 
+        `${sh.address.address_1 || ''} ${sh.address.address_2 ? sh.address.address_2 + ' ' : ''}${sh.address.suburb || ''} ${sh.address.state || ''} ${sh.address.postcode || ''}`.trim() 
+        : 'N/A');
+      const status = sh.status || 'Ceased';
+      
+      formerShareholdingsRows += `
+                    <tr>
+                        <td>${companyName}</td>
+                        <td>${acn}</td>
+                        <td>${shareClass}</td>
+                        <td>${sharesHeld}</td>
+                        <td>${address}</td>
+                        <td>${status}</td>
+                    </tr>
+      `;
+    });
+  } else {
+    formerShareholdingsRows = `
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: #64748B; font-style: italic;">No former shareholdings found</td>
+                    </tr>
+    `;
+  }
+  
+  // Extract licences - can be from root level or asic_extracts
+  const licences = data.licences || firstExtract?.licences || [];
+  const currentLicences = licences.filter(l => !l.status || l.status === 'Current' || !l.end_date);
+  
+  // Generate Licences table rows
+  let licencesRows = '';
+  if (licences.length > 0) {
+    licences.forEach(lic => {
+      const licenceType = lic.type || lic.licence_type || 'N/A';
+      const licenceNo = lic.number || lic.licence_number || lic.identifier || 'N/A';
+      const status = lic.status || (lic.end_date ? 'Ceased' : 'Current');
+      const address = lic.address?.address || (lic.address ? 
+        `${lic.address.address_1 || ''} ${lic.address.address_2 ? lic.address.address_2 + ' ' : ''}${lic.address.suburb || ''} ${lic.address.state || ''} ${lic.address.postcode || ''}`.trim() 
+        : 'N/A');
+      const appointmentDate = lic.start_date || lic.appointment_date ? moment(lic.start_date || lic.appointment_date).format('DD/MM/YYYY') : 'N/A';
+      const ceaseDate = lic.end_date ? moment(lic.end_date).format('DD/MM/YYYY') : 'N/A';
+      const documentNo = lic.document_number || 'N/A';
+      
+      licencesRows += `
+                    <tr>
+                        <td>${licenceType}</td>
+                        <td>${licenceNo}</td>
+                        <td>${status}</td>
+                        <td>${address}</td>
+                        <td>${appointmentDate}</td>
+                        <td>${ceaseDate}</td>
+                        <td>${documentNo}</td>
+                    </tr>
+      `;
+    });
+  } else {
+    licencesRows = `
+                    <tr>
+                        <td colspan="7" style="text-align: center; color: #64748B; font-style: italic;">No licences found</td>
+                    </tr>
+    `;
+  }
+  
+  // Extract ASIC documents - convert object to array if needed
+  let asicDocuments = [];
+  if (data.asic_documents) {
+    if (Array.isArray(data.asic_documents)) {
+      asicDocuments = data.asic_documents;
+    } else if (typeof data.asic_documents === 'object') {
+      asicDocuments = Object.values(data.asic_documents);
+    }
+  }
+  
+  // Generate ASIC Documents table rows - sort by date descending
+  let asicDocumentsRows = '';
+  if (asicDocuments.length > 0) {
+    // Sort by date descending (most recent first)
+    const sortedDocuments = [...asicDocuments].sort((a, b) => {
+      const dateA = a.date ? moment(a.date).valueOf() : 0;
+      const dateB = b.date ? moment(b.date).valueOf() : 0;
+      return dateB - dateA;
+    });
+    
+    sortedDocuments.forEach(doc => {
+      const docDate = doc.date ? moment(doc.date).format('DD/MM/YYYY') : 'N/A';
+      const formCode = doc.form_code || 'N/A';
+      const description = doc.description || 'N/A';
+      const documentNo = doc.identifier || doc.document_number || 'N/A';
+      
+      asicDocumentsRows += `
+                    <tr>
+                        <td>${docDate}</td>
+                        <td>${formCode}</td>
+                        <td>${description}</td>
+                        <td>${documentNo}</td>
+                    </tr>
+      `;
+    });
+  } else {
+    asicDocumentsRows = `
+                    <tr>
+                        <td colspan="4" style="text-align: center; color: #64748B; font-style: italic;">No ASIC documents found</td>
+                    </tr>
+    `;
+  }
+  
+  // Format ABN and ACN
+  const abn = entityData.abn || data.abn || '';
+  const acn = entityData.acn || data.acn || '';
+  const formattedAbn = abn && abn.length === 11 && /^\d+$/.test(abn.replace(/\s/g, ''))
+    ? abn.replace(/\D/g, '').replace(/(\d{2})(\d{3})(\d{3})(\d{3})/, '$1 $2 $3 $4')
+    : abn;
+  const formattedAcn = acn && acn.length === 9 && /^\d+$/.test(acn.replace(/\s/g, ''))
+    ? acn.replace(/\D/g, '').replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3')
+    : acn;
+  
+  // Format document number for cover
+  const documentNumber = entityData.document_number || data.document_number || formattedAcn || 'N/A';
+  const coverDocumentNumber = formattedAcn ? `ACN ${formattedAcn}` : (documentNumber !== 'N/A' ? documentNumber : '');
+  
+  // Location: abr_state + abr_postcode
+  const location = [entityData.abr_state || data.abr_state, entityData.abr_postcode || data.abr_postcode]
+    .filter(Boolean)
+    .join(' ') || 'N/A';
+  
+  // Report date - current date
+  const reportDate = moment().format('DD MMM YYYY');
+  const reportDateTime = moment().format('DD MMM YYYY, h:mma');
+  
+  // Calculate total pages (base 4 pages for now)
+  const totalPages = 4;
+  const page2Number = `Page 2 of ${totalPages}`;
+  const page3Number = `Page 3 of ${totalPages}`;
+  const page4Number = `Page 4 of ${totalPages}`;
+  
+  return {
+    // Cover page (Page 1)
+    cover_company_name: entityData.name || 'N/A', // CSS will handle uppercase transformation
+    cover_report_title: 'Company Related Entities Report',
+    cover_report_date: moment().format('DD MMMM YYYY'),
+    cover_abn: formattedAbn || 'N/A',
+    cover_acn: formattedAcn || 'N/A',
+    cover_document_number: coverDocumentNumber,
+    
+    // Page 2 - Company Details
+    entity_name: entityData.name || 'N/A',
+    entity_abn: formattedAbn || 'N/A',
+    entity_acn: formattedAcn || 'N/A',
+    entity_asic_status: entityData.asic_status || data.asic_status || 'N/A',
+    entity_abn_status: entityData.abr_status || data.abn_status || 'N/A',
+    entity_gst_status: entityData.abr_gst_status || data.abn_gst_status || 'N/A',
+    entity_registration_date: entityData.asic_date_of_registration ? moment(entityData.asic_date_of_registration).format('DD/MM/YYYY') : 'N/A',
+    entity_location: location,
+    report_date: reportDateTime,
+    
+    // Entity Statistics
+    current_shareholdings_count: currentShareholdings.length,
+    former_shareholdings_count: formerShareholdings.length,
+    current_licences_count: currentLicences.length,
+    
+    // ASIC Documents count
+    asic_documents_count: asicDocuments.length,
+    
+    // Page 3 - Shareholdings
+    current_shareholdings_rows: currentShareholdingsRows,
+    former_shareholdings_rows: formerShareholdingsRows,
+    
+    // Page 4 - Licences & ASIC Documents
+    licences_rows: licencesRows,
+    asic_documents_rows: asicDocumentsRows,
+    
+    // Page numbers
+    page_number_2: page2Number,
+    page_number_3: page3Number,
+    page_number_4: page4Number,
+    
+    // Legacy/placeholder fields
+    company_type: 'asic-company',
+    acn: formattedAcn,
+    abn: formattedAbn,
+    companyName: entityData.name || 'N/A',
+    entity_review_date: entityData.review_date ? moment(entityData.review_date).format('DD/MM/YYYY') : 'N/A',
+    entity_registered_in: entityData.registered_in || 'N/A',
+    entity_abr_gst_status: entityData.abr_gst_status || 'N/A',
+    entity_document_number: documentNumber,
+    entity_organisation_type: entityData.organisation_type || 'N/A',
+    entity_asic_date_of_registration: entityData.asic_date_of_registration ? moment(entityData.asic_date_of_registration).format('DD/MM/YYYY') : 'N/A',
+    abn_state: entityData.abr_state || data.abn_state || 'N/A',
+    abn_status: entityData.abr_status || data.abn_status || 'N/A',
+  };
+}
+
+// Extract data for Director Bankruptcy Report
+function extractBankruptcyData(data) {
+  // Handle different data structures (could be rdata or data)
+  const rdata = data.rdata || data;
+  
+  // Extract search metadata
+  const searchId = rdata.uuid || rdata.insolvencySearchId || data.uuid || 'N/A';
+  const resultCount = rdata.resultCount || (rdata.insolvencies ? rdata.insolvencies.length : 0);
+  const insolvencies = rdata.insolvencies || [];
+  
+  // Extract person information from first insolvency record (if available)
+  let surname = '';
+  let givenNames = '';
+  let dateOfBirth = '';
+  let occupation = '';
+  let addressSuburb = '';
+  
+  if (insolvencies.length > 0) {
+    const firstInsolvency = insolvencies[0];
+    const debtor = firstInsolvency.debtor || {};
+    surname = debtor.surname || '';
+    givenNames = debtor.givenNames || '';
+    dateOfBirth = debtor.dateOfBirth || '';
+    occupation = debtor.occupation || '';
+    addressSuburb = debtor.addressSuburb || '';
+  }
+  
+  // Format full name
+  const fullName = [surname, givenNames].filter(Boolean).join(' ').toUpperCase() || 'N/A';
+  
+  // Format date of birth
+  const formattedDateOfBirth = dateOfBirth ? moment(dateOfBirth).format('DD MMMM YYYY') : 'N/A';
+  
+  // Search date - current date/time
+  const searchDate = moment().format('DD MMMM YYYY');
+  const searchDateTime = moment().format('DD MMMM YYYY, h:mm A [AEDT]');
+  
+  // Determine status based on result count
+  let statusText = '';
+  let statusBadge = '';
+  let verificationText = '';
+  let whatThisMeansItems = '';
+  
+  if (resultCount === 0) {
+    statusText = '✓ No Insolvency Records Found';
+    statusBadge = 'ok';
+    verificationText = 'CLEAR — No bankruptcy or personal insolvency on record';
+    whatThisMeansItems = `
+        <li>Has not declared bankruptcy</li>
+        <li>No debt agreements recorded</li>
+        <li>No personal insolvency agreements on record</li>
+        <li>Not subject to any registered insolvency proceedings</li>
+    `;
+  } else {
+    statusText = `${resultCount} Insolvency Record${resultCount > 1 ? 's' : ''} Found`;
+    statusBadge = 'critical';
+    verificationText = `⚠️ ${resultCount} active or historical insolvency record${resultCount > 1 ? 's' : ''} found`;
+    whatThisMeansItems = `
+        <li>${resultCount} insolvency record${resultCount > 1 ? 's' : ''} found on the National Personal Insolvency Index</li>
+        <li>Review details in the insolvency records section</li>
+        <li>Verify current status of each insolvency proceeding</li>
+        <li>Consider impact on current financial standing</li>
+    `;
+  }
+  
+  // Generate search details HTML
+  let searchDetailsRows = '';
+  if (insolvencies.length > 0) {
+    const firstInsolvency = insolvencies[0];
+    const debtor = firstInsolvency.debtor || {};
+    const searchSurname = debtor.surname || 'N/A';
+    const searchGivenNames = debtor.givenNames || 'N/A';
+    const searchMiddleName = debtor.middleName ? debtor.middleName : 'Any (including none)';
+    const searchDateOfBirth = debtor.dateOfBirth ? moment(debtor.dateOfBirth).format('DD MMMM YYYY') : 'N/A';
+    const searchDateOfBirthMatch = debtor.dateOfBirth ? '(Exact match)' : '';
+    
+    searchDetailsRows = `
+        <div class="data-item"><div class="data-label">Search Date</div><div class="data-value">${searchDateTime}</div></div>
+        <div class="data-item"><div class="data-label">Search ID</div><div class="data-value">${searchId}</div></div>
+        <div class="data-item"><div class="data-label">Family Name</div><div class="data-value">${searchSurname} (Exact match)</div></div>
+        <div class="data-item"><div class="data-label">Given Name</div><div class="data-value">${searchGivenNames.split(' ')[0] || 'N/A'} (Exact match)</div></div>
+        <div class="data-item"><div class="data-label">Middle Name</div><div class="data-value">${searchMiddleName}</div></div>
+        <div class="data-item"><div class="data-label">Date of Birth</div><div class="data-value">${searchDateOfBirth} ${searchDateOfBirthMatch}</div></div>
+        <div class="data-item" style="grid-column:1 / -1;"><div class="data-label">Insolvency Records Searched</div><div class="data-value">All records</div></div>
+    `;
+  } else {
+    searchDetailsRows = `
+        <div class="data-item"><div class="data-label">Search Date</div><div class="data-value">${searchDateTime}</div></div>
+        <div class="data-item"><div class="data-label">Search ID</div><div class="data-value">${searchId}</div></div>
+        <div class="data-item" style="grid-column:1 / -1;"><div class="data-label">Insolvency Records Searched</div><div class="data-value">All records</div></div>
+    `;
+  }
+  
+  // Calculate total pages (base 4 pages + pages for each insolvency record if any)
+  const basePages = 4;
+  const totalPages = basePages;
+  
+  return {
+    // Cover page (Page 1)
+    cover_search_id: searchId,
+    cover_full_name: fullName,
+    cover_search_date: searchDateTime,
+    cover_date_of_birth: formattedDateOfBirth,
+    
+    // Page 2 - Summary
+    result_status_text: statusText,
+    result_status_badge: statusBadge,
+    verification_text: verificationText,
+    search_time: searchDateTime,
+    what_this_means_items: whatThisMeansItems,
+    search_details_rows: searchDetailsRows,
+    
+    // Page 3 - Document Information
+    document_search_id: searchId,
+    document_search_date: searchDateTime,
+    
+    // Page numbers
+    page_number_2: `Page 2 of ${totalPages}`,
+    page_number_3: `Page 3 of ${totalPages}`,
+    page_number_4: `Page 4 of ${totalPages}`,
+    
+    // Legacy/placeholder fields
+    company_type: 'director-bankruptcy',
+    resultCount: resultCount,
+    insolvencies: insolvencies
+  };
+}
+
+// Extract data for Director Related Entities Report
+function extractDirectorRelatedEntitiesData(data) {
+  // Handle different data structures (could be rdata or data)
+  const rdata = data.rdata || data;
+  
+  // Extract entity information
+  const entity = rdata.entity || {};
+  const directorName = entity.name || 'N/A';
+  const dateOfBirth = entity.date_of_birth && entity.date_of_birth !== '0000-00-00' 
+    ? moment(entity.date_of_birth).format('DD/MM/YYYY') 
+    : 'N/A';
+  const address = entity.address || 'N/A';
+  
+  // Extract ASIC extracts
+  const asicExtracts = rdata.asic_extracts || [];
+  
+  // Process directorships and shareholdings from asic_extracts
+  let currentDirectorships = [];
+  let ceasedDirectorships = [];
+  let currentShareholdingsNameAndDOB = [];
+  let ceasedShareholdingsNameAndDOB = [];
+  let currentShareholdingsNameOnly = [];
+  let ceasedShareholdingsNameOnly = [];
+  
+  asicExtracts.forEach(extract => {
+    // Process directorships
+    if (extract.directorships) {
+      extract.directorships.forEach(directorship => {
+        const dir = {
+          companyName: directorship.company_name || directorship.name || 'N/A',
+          acn: directorship.acn ? fmtAcn(directorship.acn) : 'N/A',
+          status: directorship.status || 'Current',
+          appointmentDate: directorship.appointment_date || directorship.start_date 
+            ? moment(directorship.appointment_date || directorship.start_date).format('DD/MM/YYYY') 
+            : 'N/A'
+        };
+        
+        if (directorship.status === 'Ceased' || directorship.status === 'Former') {
+          ceasedDirectorships.push(dir);
+        } else {
+          currentDirectorships.push(dir);
+        }
+      });
+    }
+    
+    // Process shareholdings
+    if (extract.shareholdings) {
+      extract.shareholdings.forEach(shareholding => {
+        const sh = {
+          companyName: shareholding.company_name || shareholding.name || 'N/A',
+          acn: shareholding.acn ? fmtAcn(shareholding.acn) : 'N/A',
+          shareClass: shareholding.class || shareholding.share_class || 'N/A',
+          shares: shareholding.number_held || shareholding.shares || '0',
+          address: shareholding.address?.address || (shareholding.address ? 
+            `${shareholding.address.address_1 || ''} ${shareholding.address.address_2 ? shareholding.address.address_2 + ' ' : ''}${shareholding.address.suburb || ''} ${shareholding.address.state || ''} ${shareholding.address.postcode || ''}`.trim() 
+            : 'N/A'),
+          status: shareholding.status || 'Current',
+          hasDOB: shareholding.date_of_birth ? true : false
+        };
+        
+        const isCurrent = sh.status === 'Current';
+        const hasDOB = sh.hasDOB;
+        
+        if (isCurrent && hasDOB) {
+          currentShareholdingsNameAndDOB.push(sh);
+        } else if (!isCurrent && hasDOB) {
+          ceasedShareholdingsNameAndDOB.push(sh);
+        } else if (isCurrent && !hasDOB) {
+          currentShareholdingsNameOnly.push(sh);
+        } else {
+          ceasedShareholdingsNameOnly.push(sh);
+        }
+      });
+    }
+  });
+  
+  // Generate Current Directorships table rows
+  let currentDirectorshipsRows = '';
+  if (currentDirectorships.length > 0) {
+    currentDirectorships.forEach(dir => {
+      currentDirectorshipsRows += `
+                    <tr>
+                        <td>${dir.companyName}</td>
+                        <td>${dir.acn}</td>
+                        <td>${dir.status}</td>
+                        <td>${dir.appointmentDate}</td>
+                    </tr>
+      `;
+    });
+  } else {
+    currentDirectorshipsRows = `
+                    <tr>
+                        <td colspan="4" style="text-align: center; color: #64748B; font-style: italic;">No current directorships found</td>
+                    </tr>
+    `;
+  }
+  
+  // Generate Ceased Directorships table rows
+  let ceasedDirectorshipsRows = '';
+  if (ceasedDirectorships.length > 0) {
+    ceasedDirectorships.forEach(dir => {
+      ceasedDirectorshipsRows += `
+                    <tr>
+                        <td>${dir.companyName}</td>
+                        <td>${dir.acn}</td>
+                        <td style="color: #DC2626;">${dir.status}</td>
+                        <td>${dir.appointmentDate}</td>
+                    </tr>
+      `;
+    });
+  } else {
+    ceasedDirectorshipsRows = `
+                    <tr>
+                        <td colspan="4" style="text-align: center; color: #64748B; font-style: italic;">No ceased directorships found</td>
+                    </tr>
+    `;
+  }
+  
+  // Generate Current Shareholdings (Name and DOB) table rows
+  let currentShareholdingsNameAndDOBRows = '';
+  if (currentShareholdingsNameAndDOB.length > 0) {
+    currentShareholdingsNameAndDOB.forEach(sh => {
+      currentShareholdingsNameAndDOBRows += `
+                    <tr>
+                        <td>${sh.companyName}</td>
+                        <td>${sh.acn}</td>
+                        <td>${sh.shareClass}</td>
+                        <td>${parseInt(sh.shares, 10).toLocaleString('en-US')}</td>
+                        <td>${sh.address}</td>
+                        <td>${sh.status}</td>
+                    </tr>
+      `;
+    });
+  } else {
+    currentShareholdingsNameAndDOBRows = `
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: #64748B; font-style: italic;">No current shareholdings found</td>
+                    </tr>
+    `;
+  }
+  
+  // Generate Ceased Shareholdings (Name and DOB) table rows
+  let ceasedShareholdingsNameAndDOBRows = '';
+  if (ceasedShareholdingsNameAndDOB.length > 0) {
+    ceasedShareholdingsNameAndDOB.forEach(sh => {
+      ceasedShareholdingsNameAndDOBRows += `
+                    <tr>
+                        <td>${sh.companyName}</td>
+                        <td>${sh.acn}</td>
+                        <td>${sh.shareClass}</td>
+                        <td>${parseInt(sh.shares, 10).toLocaleString('en-US')}</td>
+                        <td>${sh.address}</td>
+                        <td style="color: #DC2626;">${sh.status}</td>
+                    </tr>
+      `;
+    });
+  } else {
+    ceasedShareholdingsNameAndDOBRows = `
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: #64748B; font-style: italic;">No ceased shareholdings found</td>
+                    </tr>
+    `;
+  }
+  
+  // Generate Current Shareholdings (Name Only) table rows
+  let currentShareholdingsNameOnlyRows = '';
+  if (currentShareholdingsNameOnly.length > 0) {
+    currentShareholdingsNameOnly.forEach(sh => {
+      currentShareholdingsNameOnlyRows += `
+                    <tr>
+                        <td>${sh.companyName}</td>
+                        <td>${sh.acn}</td>
+                        <td>${sh.shareClass}</td>
+                        <td>${parseInt(sh.shares, 10).toLocaleString('en-US')}</td>
+                        <td>${sh.address}</td>
+                        <td>${sh.status}</td>
+                    </tr>
+      `;
+    });
+  } else {
+    currentShareholdingsNameOnlyRows = `
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: #64748B; font-style: italic;">No current shareholdings found</td>
+                    </tr>
+    `;
+  }
+  
+  // Generate Ceased Shareholdings (Name Only) table rows
+  let ceasedShareholdingsNameOnlyRows = '';
+  if (ceasedShareholdingsNameOnly.length > 0) {
+    ceasedShareholdingsNameOnly.forEach(sh => {
+      ceasedShareholdingsNameOnlyRows += `
+                    <tr>
+                        <td>${sh.companyName}</td>
+                        <td>${sh.acn}</td>
+                        <td>${sh.shareClass}</td>
+                        <td>${parseInt(sh.shares, 10).toLocaleString('en-US')}</td>
+                        <td>${sh.address}</td>
+                        <td style="color: #DC2626;">${sh.status}</td>
+                    </tr>
+      `;
+    });
+  } else {
+    ceasedShareholdingsNameOnlyRows = `
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: #64748B; font-style: italic;">No ceased shareholdings found</td>
+                    </tr>
+    `;
+  }
+  
+  // Calculate counts
+  const directorshipsCount = currentDirectorships.length;
+  const shareholdingsCount = currentShareholdingsNameAndDOB.length + currentShareholdingsNameOnly.length;
+  
+  // Report date
+  const reportDate = moment().format('DD MMMM YYYY');
+  const reportDateTime = moment().format('DD MMMM YYYY, h:mma');
+  
+  // Calculate total pages (base 4 pages)
+  const totalPages = 4;
+  
+  // Extract company info for cover (from first directorship or entity)
+  const companyName = currentDirectorships.length > 0 
+    ? currentDirectorships[0].companyName 
+    : (entity.reference || 'N/A');
+  const companyAcn = currentDirectorships.length > 0 
+    ? currentDirectorships[0].acn 
+    : 'N/A';
+  
+  return {
+    // Cover page (Page 1)
+    cover_director_name: directorName,
+    cover_report_date: reportDate,
+    cover_company_name: companyName,
+    cover_company_acn: companyAcn,
+    
+    // Page 2 - Director Search
+    director_name: directorName,
+    director_date_of_birth: dateOfBirth,
+    director_address: address,
+    director_report_date: reportDateTime,
+    directorships_count: directorshipsCount,
+    shareholdings_count: shareholdingsCount,
+    data_extract_date: reportDateTime,
+    current_directorships_rows: currentDirectorshipsRows,
+    
+    // Page 3
+    ceased_directorships_rows: ceasedDirectorshipsRows,
+    current_shareholdings_name_dob_rows: currentShareholdingsNameAndDOBRows,
+    
+    // Page 4
+    ceased_shareholdings_name_dob_rows: ceasedShareholdingsNameAndDOBRows,
+    current_shareholdings_name_only_rows: currentShareholdingsNameOnlyRows,
+    ceased_shareholdings_name_only_rows: ceasedShareholdingsNameOnlyRows,
+    
+    // Page numbers
+    page_number_2: `Page 2 of ${totalPages}`,
+    page_number_3: `Page 3 of ${totalPages}`,
+    page_number_4: `Page 4 of ${totalPages}`,
+    
+    // Document ID (using UUID or director name)
+    document_id: rdata.uuid || directorName,
+    
+    // Legacy/placeholder fields
+    company_type: 'director-related'
+  };
+}
+
+// Extract data for PPSR Report
+function extractPpsrData(data) {
+  // Handle different data structures (could be rdata.resource or data.resource)
+  const resource = data.resource || data.rdata?.resource || data;
+  const searchCriteriaSummary = resource.searchCriteriaSummaries?.[0] || {};
+  const items = resource.items || [];
+  
+  // Extract search metadata
+  const searchNumber = searchCriteriaSummary.searchNumber || data.searchNumber || 'N/A';
+  const criteriaSummary = searchCriteriaSummary.criteriaSummary || '';
+  const resultCount = searchCriteriaSummary.resultCount || items.length || 0;
+  
+  // Extract entity information from first grantor
+  let entityName = '';
+  let entityAcn = '';
+  let entityAbn = '';
+  
+  if (items.length > 0) {
+    const firstItem = items[0];
+    if (firstItem.grantors && firstItem.grantors.length > 0) {
+      const firstGrantor = firstItem.grantors[0];
+      if (firstGrantor.grantorType === 'Organisation') {
+        entityName = firstGrantor.organisationName || '';
+        if (firstGrantor.organisationNumberType === 'ACN') {
+          entityAcn = firstGrantor.organisationNumber || '';
+        } else if (firstGrantor.organisationNumberType === 'ABN') {
+          entityAbn = firstGrantor.organisationNumber || '';
+        }
+      }
+    }
+  }
+  
+  // Format ACN
+  const formattedAcn = entityAcn ? fmtAcn(entityAcn) : '';
+  
+  // Extract search date - use current date for now, or from data if available
+  const searchDate = data.searchDate || moment().format('DD MMMM YYYY');
+  const searchDateTime = data.searchDateTime || moment().format('DD MMMM YYYY, HH:mm [AEDT]');
+  
+  // Analyze registrations
+  const registrations = items || [];
+  const activeRegistrations = registrations.filter(r => {
+    if (!r.registrationEndTime) return true; // No end time = active
+    return moment(r.registrationEndTime).isAfter(moment());
+  });
+  
+  // Count by collateral class type
+  const collateralTypeCounts = {};
+  registrations.forEach(r => {
+    const type = r.collateralClassType || 'Unknown';
+    collateralTypeCounts[type] = (collateralTypeCounts[type] || 0) + 1;
+  });
+  
+  // Identify blanket security (All Pap No Except)
+  const blanketSecurities = registrations.filter(r => 
+    r.collateralClassType === 'All Pap No Except' || 
+    r.collateralClassType === 'All Pap No Except'
+  );
+  
+  // Count motor vehicles
+  const motorVehicles = registrations.filter(r => 
+    r.collateralClassType === 'Motor Vehicle'
+  );
+  
+  // Build security breakdown text
+  let securityBreakdown = '';
+  if (blanketSecurities.length > 0) {
+    securityBreakdown += `${blanketSecurities.length} × BLANKET SECURITY (All Assets)\n`;
+  }
+  if (motorVehicles.length > 0) {
+    securityBreakdown += `${motorVehicles.length} × MOTOR VEHICLE SECURITIES`;
+  }
+  
+  // Build secured parties summary
+  const securedPartiesMap = new Map();
+  registrations.forEach(r => {
+    const partySummary = r.securedPartySummary || 'Unknown';
+    const collateralType = r.collateralClassType || 'Unknown';
+    const count = securedPartiesMap.get(partySummary) || { total: 0, types: new Set() };
+    count.total += 1;
+    count.types.add(collateralType);
+    securedPartiesMap.set(partySummary, count);
+  });
+  
+  // Generate secured parties at a glance HTML
+  let securedPartiesRows = '';
+  let partyIndex = 0;
+  for (const [partyName, info] of securedPartiesMap.entries()) {
+    if (partyIndex >= 4) break; // Limit to 4 parties on page 2
+    
+    const assetCount = info.total;
+    const assetText = assetCount === 1 ? 'All Company Assets' : 
+                     motorVehicles.filter(r => r.securedPartySummary === partyName).length > 0 
+                       ? `${motorVehicles.filter(r => r.securedPartySummary === partyName).length} Vehicles`
+                       : `${assetCount} Assets`;
+    
+    const priority = blanketSecurities.some(r => r.securedPartySummary === partyName) 
+      ? 'CRITICAL' 
+      : 'HIGH';
+    
+    securedPartiesRows += `
+                <div class="data-grid" style="grid-template-columns: 2fr 1.5fr 1fr 1fr; gap: 12px;">
+                    <div class="data-value">${partyName}</div>
+                    <div class="data-value">${collateralType === 'Motor Vehicle' ? 'Vehicle Finance' : 'General Security'}</div>
+                    <div class="data-value">${assetText}</div>
+                    <div><span class="badge ${priority.toLowerCase()}">${priority}</span></div>
+                </div>
+    `;
+    if (partyIndex < securedPartiesMap.size - 1 && partyIndex < 3) {
+      securedPartiesRows += '<div class="divider" style="margin: 12px 0;"></div>';
+    }
+    partyIndex++;
+  }
+  
+  // Find critical blanket security for Page 3
+  const criticalSecurity = blanketSecurities[0] || null;
+  let criticalSecurityHtml = '';
+  if (criticalSecurity) {
+    const startDate = criticalSecurity.registrationStartTime 
+      ? moment(criticalSecurity.registrationStartTime).format('MMMM YYYY') 
+      : 'N/A';
+    const endDate = criticalSecurity.registrationEndTime 
+      ? moment(criticalSecurity.registrationEndTime).format('DD MMMM YYYY') 
+      : 'No expiry date';
+    
+    criticalSecurityHtml = `
+      <div class="card alert">
+          <div class="card-header">[CRITICAL] - Blanket Security Interest</div>
+          <div style="font-size: 11px; line-height: 1.7; color: #1E293B; margin-bottom: 16px;">
+              <strong>${criticalSecurity.securedPartySummary || 'N/A'}</strong> holds an unrestricted security over <strong>ALL present and after-acquired property</strong> with <strong>${endDate === 'No expiry date' ? 'no end date' : 'end date: ' + endDate}</strong>. This is the most significant security interest on the register.
+          </div>
+          <div class="data-grid" style="grid-template-columns: repeat(2, 1fr);">
+              <div class="data-item">
+                  <div class="data-label">Registration</div>
+                  <div class="data-value">${criticalSecurity.registrationNumber || 'N/A'}</div>
+              </div>
+              <div class="data-item">
+                  <div class="data-label">Started</div>
+                  <div class="data-value">${startDate}</div>
+              </div>
+              <div class="data-item">
+                  <div class="data-label">Expires</div>
+                  <div class="data-value">${endDate}</div>
+              </div>
+              <div class="data-item">
+                  <div class="data-label">Scope</div>
+                  <div class="data-value">Everything the company owns or will own</div>
+              </div>
+          </div>
+      </div>
+    `;
+  }
+  
+  // Group motor vehicles by expiry year
+  const vehicleExpiryGroups = {};
+  motorVehicles.forEach(v => {
+    if (v.registrationEndTime) {
+      const year = moment(v.registrationEndTime).year();
+      vehicleExpiryGroups[year] = (vehicleExpiryGroups[year] || 0) + 1;
+    }
+  });
+  
+  let vehicleExpiryTimeline = '';
+  const sortedYears = Object.keys(vehicleExpiryGroups).sort((a, b) => a - b);
+  sortedYears.forEach(year => {
+    vehicleExpiryTimeline += `• <strong>${year}:</strong> ${vehicleExpiryGroups[year]} vehicles<br>`;
+  });
+  
+  // Generate registration detail pages HTML (one page per registration, starting from page 4)
+  let registrationPagesHtml = '';
+  registrations.slice(0, 7).forEach((reg, index) => { // Limit to 7 registrations (pages 4-10)
+    const regNum = index + 1;
+    const isBlanket = reg.collateralClassType === 'All Pap No Except';
+    const isVehicle = reg.collateralClassType === 'Motor Vehicle';
+    
+    // Format dates
+    const regStart = reg.registrationStartTime 
+      ? moment(reg.registrationStartTime).format('DD MMMM YYYY, HH:mm')
+      : 'N/A';
+    const regEnd = reg.registrationEndTime 
+      ? moment(reg.registrationEndTime).format('DD MMMM YYYY, HH:mm:ss')
+      : 'No stated end time';
+    const lastChanged = reg.registrationChangeTime
+      ? moment(reg.registrationChangeTime).format('DD MMMM YYYY, HH:mm:ss')
+      : 'N/A';
+    
+    // Get secured party ACN
+    const securedParty = reg.securedParties?.[0];
+    const securedPartyAcn = securedParty?.organisationNumberType === 'ACN' 
+      ? fmtAcn(securedParty.organisationNumber)
+      : 'N/A';
+    
+    // Get address for service
+    const addressForService = reg.addressForService || {};
+    const contactEmail = addressForService.emailAddress || 'N/A';
+    const contactFax = addressForService.faxNumber || '';
+    const mailingAddress = addressForService.mailingAddress || {};
+    const contactAddress = [
+      mailingAddress.line1,
+      mailingAddress.line2,
+      mailingAddress.line3,
+      mailingAddress.locality,
+      mailingAddress.state,
+      mailingAddress.postcode
+    ].filter(Boolean).join(', ') || 'N/A';
+    
+    const collateralType = reg.collateralClassType || 'N/A';
+    const collateralDesc = reg.collateralDescription || (isBlanket ? 'All present and after-acquired property - No exceptions' : 'N/A');
+    const proceedsDesc = reg.proceedsClaimedDescription || 'N/A';
+    const pmsi = reg.isPmsi ? 'Yes' : 'No';
+    
+    // Vehicle-specific fields
+    const vin = reg.serialNumber || '';
+    const serialNumberType = reg.serialNumberType || '';
+    const vehicleDescription = reg.vehicleDescriptiveText || 'Unknown/Unknown/Unknown';
+    
+    const pageNum = 4 + index; // Pages start at 4
+    const totalPages = registrations.length > 7 ? Math.min(12, 4 + registrations.length) : 12;
+    
+    registrationPagesHtml += `
+        <!-- PAGE ${pageNum}: REGISTRATION #${regNum} -->
+        <div class="page">
+            <div class="brand-header">
+                <div class="logo"><img src="data:image/webp;base64,UklGRhwNAABXRUJQVlA4WAoAAAAgAAAASgEAewAASUNDUMgBAAAAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADZWUDggLgsAADA6AJ0BKksBfAA+USiQRiOioaEmMokgcAoJZ27hdgD9v4+ufkdxAPffn3zu9eX7LcAP0b/u32McID+G/3n9UOwt6AH+A/xnWLegB5ZP7h/CD+2n7XezBqq/kn+tdmv91+rntzfU3sBk+nvn9j8v/8Z/LfFP1QeoF6l/wn5TfmBx82ieYF7AfTv8xxl+IB+rP/G41qgH/PP7p/2v7b7rv8n/2f8d+aHtB/N/8b/4/8d8Bn8x/rn/M/vHaK/b72Wf13//5B0C4TijRaQWRayoJBacJxRotILItY6Ba3Et5WSMdAFhU1OSlQLqzNtwMZe7qxPjI0wejVqirrcpWk0Tws5o4WEUoLmn3gnl+MYVa7FoZH+2xS2a79Lg0jv+5EjM0yNxJF4wp/f/86PEixJ6e3xek1i7p7csjSchWNVvysKAIE7TpOSTZ2svir8WE8mtmfQhy23oaqG49knz3SupB5H5tK3YCMg5W8zZqxP/Vu4xbwQTqsAHhN9fVv6aM3UHfTk6Q28miMp0ZV4zmd1+57pol6a2vNXFIybPFttE6j8ylJqSo6+yVG6R65s0oI2K0DyUV5UK4RtjmeoikAJFn9PralZ5JBZFrKgkFpwnFGi0gsi1lQSC04TZAAD+/9uZAAABDT3B52ZvoCMruepaKrRROENx5WKFJFIjc5alRPtNcv+r/bYVl1/ATfbYE//Hu67TthoWJJ5tOsWiQ6AaFqN/OUM8E5VHiVAcu4dAqJaaHaRG2e9uB9RJGI97TmfZhcv5cRTeXek8zT7wl7b9RKrNtTkiAWN9mr56x9FKpOhH/kPwovovmP85hsIK1n1/HY09sSaFlZ66m3NtrIMl11kw/kLV2+1eL4AIJ0EF+8UMXFgNNknOWXBEEVtkxGcENf82TJeoInxp+s3yM7q/V5ID6UEI7SrOSrOIraP3W1rfEYLXffGb9A1QCvx8ia4o1tnz/4uZkFTWC92qm1RH8gUt5gDTSAA9FF6RBNXKofpGukof7a3e8D4i2KE/VT2tXD3775dFCsi95h/8K9KP7/0aCm5QyuHmqu7R1N81W36EPfF5OGUPP7TX80fzRflu9NCotw8zLs0gm/FcEQA1H8KfCpjvf0brT5T+0iAM7tDhEe6js1Aj9Pf1KfdTzk7qhHCj1L4Y22zV5N3E1hbKQazZ7vfVms5bMFQEJzdu//xZ35P40SUJEuJFDpBzzRjgNOoXNaHTqN1u0RtgSMu7lUX/fYMQ9pM2bAj4gWX/MnWNbte5LMTziRv8xd35djfxSuEkfIGATmbe1H5vJHkY5f6EzeTCD4H56mZjo9SIfUK2fh9rbfaJo2pOax/8qgwdFZ5viBY2q2wAvd+wVeqMlM6R/imiS58gU3dJaPGC8RwP7Zz85bn8aPcIpOf47RTYxtUKbbYliEIJ8ZyoBS6c5mmCnQUeR9CdwJRYRufr/m/UQGW+ovXZa7+LALuRhll8IAucpdT7Sj+o4wBA+4t9YQUCu85+S57MBeFjlVIK/vm6jKp2DeH/yMgkG/yLYbva2DEeme+9xll/Wyx/nFAycWB36rot/+H9KvUJxdmXlC4cK7RKkwybGFyX5kTPzkd3LK9KCxP50jHyqtCDW6rf7nyzJzfiDGvEhBkYM+cNAMmKuW5065Jxf7ANRk9ciHyI+TquBZd4P/Z2IVhTHMBrCz/6pGthtRxIyaOwv4+1GkkstkiKY288lEiSA7ADFnO+sRp3fgtXDgCyVREXmeI2rhOCwHiLXsPiyIHNykMS8VaxPcXpcmai7lxJdPHvKrPIgnT7FjS8dH1ARRM9/NILiv7ndaMlNVMeacn3OY1Qvevqlv0h7wIzpe69MBaH4FawVk/VJCdF9ZAJtZ/nTNjR94PLlcGAAiRgTIrS2bWxP7VY7AIXudd9tVScEior1gjnPd9Z4arMs08Ih74RhvZiKONlnVPOP1mVsR8AFCYdwdB3QbJrpeha8t5k6ZP0sCfoeXX/JpoU+hfTZVG9Z+jp47XafxCp1amokS8j+FHv+l1V63fIF3qYIF7/qB4wFivo09ciUzvQVu4fBK4r14YUgcI1+9oCwdaeLAEXVFqkHzP69jE/e+jIrpvcZHbfd3Do9x+/dJMd1ggnhqcOpSAmx8SSKL8R69+lwnPViC/vcUvbD5DGW+EuT8vneX14xgayuNV5QtKLUfSCdLQVID3jpdYlv34vzPeVz0lJsVN3d9xIFL1BhjuoVB9/azvJWeXBM170Fapd42fwiV0KqPIHsLpWtxy4aZER8vskJ8QPINHrKQHIdNy+9kHO0P7lr6yhHUf/8dqS97tCFU/skdvTiV0hAe7VdrIF8YlIZ5kmXI0vofthFcFF89omxdaCr6MQEz1qiVVqfaPH1zWpv+C7EnRLAJpW6SZ8YHu15fEUB1sn4c8/4gBEKMlmILL7q7rzRGPMfh+4LWaobjY6xlP94v4HxY7x2HF+PQQux0hXg5spxOVEgW94mfzp6kHSMHkKAfbIPO21TlfUAcBBTuEwETt3//juGcZId2iL++JQ7gVKik39rWZ+c0mYyHwHpmbKf1224zyO1Kx03eIiIRMVvsA9nsl36+P7FvRl29OuGqbJQSWhIlUoFH7k+gTbZAMYXXriU3+MXRH8Sp4lBQL0ShvsxF+dffPyZCxyStMgwooIX1vx5kKV4pcYsh71Tme4Q8OC9D6LU3puu6qhCagxdF0wHZWPtsACUgl7B6XX9xozO5cdzAlc1Qaod7M7Mdxx9Rd8xnN/fkpNzeinvKpVpdYLIaIlP2q+LJbNDhU+90sZ5nw9wY/8CnwSWWU4a+//iimn05K6zGJSXCnYPno+Pvp/csn9i1Wgq5/CA9ZCSXmOfb+EMrKCGn/B0M8f4dEJjgOefo9v2nX/jA9fpbZx12Fv+oQLNqvm63lnvpfagTZJKCzTe0Xx0yEh/z9NXFse90LIwEFDWhqXqk/2zo4uyaEDPp1jWkvUCqXvnl8XzRltrgzO9yA5r0PKxHAnMSuuguxsS/qpPCzW5/UQDM0h4f6gRg1j5kOZLOzOmu3dWfMTj1HEZ3sgx63CIig6hcXvsbPsb2dqtiPU5L+84fmVJC0mRi+LMT4xft/n7gA3602NMwqLfKw0f3Vedbotod9vb9MQpKz43NwlgJrgtvM10mEifukBoUrycbhic52cZOIUPdYDVTLiTzC+OFf7q5NBJLGPTS17FIEOTu2HQ+78OKfd4yiePB+PWriQccjyOUJqYC4O3c/hyvF85rDPVoBEgLLCHKQpW+XMAIp1zzB1dSKXeNR3aEbjLZ0T5GWZw+bKWaWX6yQojRVEqMoMmv7SZNBaj0mFc7+D2ky0mCobBHWyIkNPKtRG4oGSzgUpq6fd7miS+D023+wzxtlVCOj3ANoqFQpMkdB0dPaH90lFLmVXTA1UcXdFqbAeVhfO/fcuTJ+ujrwJG7VyaTOywocRemY+F03p68O6bxUKTai/4GK2p6/Zba368UHbiBU9AX164ZOFYlMdYBKGHtKnXrJ0YCHCdJh74diK2NxKVAsSAgUjlHE+cYrEvN4Mpe/nFJO6jd5JFmzpTJHLKVKTkmhp0axMUSroSmnJ72JI2uSQd9GMR38EeBGrbR5vH9A7L5K9/wAo1DitQLMYgdHyTQRMw1Bc9vkTtIzfRk3aAzGAwQwvXR/wdcZV0jkbB8NyjG+MiL0NQ4fyX9LXpLEYcWwchq/UWKrlCRxDDy2/AAwat/G0nrRVWZ7Bwm/ji7iF99dJsxEFaI7aIGdhXqx9QAbWEKH/bwH7GlCRPQsE5GHwWPinFkqEjvYAAAAAAAAAAA==" alt="Credion"></div>
+                <div class="doc-id">${searchNumber}</div>
+            </div>
+            
+            <div class="section-title">Registration #${regNum} - ${isVehicle ? 'Motor Vehicle' : (isBlanket ? 'General Security' : collateralType)}</div>
+            ${isVehicle && motorVehicles.filter(v => v.securedPartySummary === reg.securedPartySummary).length > 1 
+              ? `<div class="section-subtitle">${reg.securedPartySummary} (Vehicle ${motorVehicles.filter(v => v.securedPartySummary === reg.securedPartySummary && registrations.indexOf(v) <= registrations.indexOf(reg)).length} of ${motorVehicles.filter(v => v.securedPartySummary === reg.securedPartySummary).length})</div>`
+              : `<div class="section-subtitle">${reg.securedPartySummary || 'N/A'}</div>`
+            }
+            
+            ${isBlanket ? `
+            <div class="card alert" style="margin-bottom: 20px;">
+                <div style="font-size: 11px; line-height: 1.7; color: #1E293B;">
+                    <strong>IMPORTANT:</strong> This registration provides ${reg.securedPartySummary || 'the secured party'} with security over EVERYTHING the company owns or acquires. This is the most comprehensive security interest on file.
+                </div>
+            </div>
+            ` : ''}
+            
+            <div class="card" style="border: 2px solid #CBD5E1;">
+                <div class="data-grid" style="grid-template-columns: repeat(2, 1fr);">
+                    <div class="data-item">
+                        <div class="data-label">Registration Number</div>
+                        <div class="data-value">${reg.registrationNumber || 'N/A'}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Secured Party</div>
+                        <div class="data-value">${reg.securedPartySummary || 'N/A'}</div>
+                    </div>
+                    ${securedPartyAcn !== 'N/A' ? `
+                    <div class="data-item">
+                        <div class="data-label">ACN</div>
+                        <div class="data-value">${securedPartyAcn}</div>
+                    </div>
+                    ` : ''}
+                    ${isVehicle && vin ? `
+                    <div class="data-item">
+                        <div class="data-label">${serialNumberType || 'VIN'}</div>
+                        <div class="data-value">${vin}</div>
+                    </div>
+                    ` : ''}
+                    ${isVehicle && !vin && serialNumberType ? `
+                    <div class="data-item">
+                        <div class="data-label">Serial Number</div>
+                        <div class="data-value">${reg.serialNumber || 'N/A'}</div>
+                    </div>
+                    <div class="data-item" style="grid-column: 1 / -1;">
+                        <div class="data-label">Serial Number Type</div>
+                        <div class="data-value">${serialNumberType}</div>
+                    </div>
+                    ` : ''}
+                    <div class="data-item">
+                        <div class="data-label">Registration Start</div>
+                        <div class="data-value">${regStart}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Registration End</div>
+                        <div class="data-value" style="${!reg.registrationEndTime ? 'font-weight: 700;' : ''}">${regEnd}</div>
+                    </div>
+                    ${lastChanged !== 'N/A' ? `
+                    <div class="data-item">
+                        <div class="data-label">Last Changed</div>
+                        <div class="data-value">${lastChanged}</div>
+                    </div>
+                    ` : ''}
+                    <div class="data-item">
+                        <div class="data-label">Collateral Type</div>
+                        <div class="data-value">${reg.collateralSummary || collateralType}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">PMSI</div>
+                        <div class="data-value">${pmsi}</div>
+                    </div>
+                    ${collateralDesc !== 'N/A' && !isBlanket ? `
+                    <div class="data-item" style="grid-column: 1 / -1;">
+                        <div class="data-label">Collateral Description</div>
+                        <div class="data-value">${collateralDesc}</div>
+                    </div>
+                    ` : ''}
+                    ${isBlanket ? `
+                    <div class="data-item" style="grid-column: 1 / -1;">
+                        <div class="data-label">Collateral Type</div>
+                        <div class="data-value" style="font-weight: 600;">All present and after-acquired property - No exceptions</div>
+                    </div>
+                    ` : ''}
+                    ${proceedsDesc !== 'N/A' ? `
+                    <div class="data-item" style="grid-column: 1 / -1;">
+                        <div class="data-label">Proceeds</div>
+                        <div class="data-value">${proceedsDesc}</div>
+                    </div>
+                    ` : ''}
+                    ${isVehicle && vehicleDescription ? `
+                    <div class="data-item" style="grid-column: 1 / -1;">
+                        <div class="data-label">Vehicle Description</div>
+                        <div class="data-value">${vehicleDescription}</div>
+                    </div>
+                    ` : ''}
+                    <div class="data-item">
+                        <div class="data-label">Contact Email</div>
+                        <div class="data-value">${contactEmail}</div>
+                    </div>
+                    ${contactFax ? `
+                    <div class="data-item" style="grid-column: 1 / -1;">
+                        <div class="data-label">Contact Email / Fax</div>
+                        <div class="data-value">${contactEmail} / Fax: ${contactFax}</div>
+                    </div>
+                    ` : ''}
+                    <div class="data-item">
+                        <div class="data-label">Contact Address</div>
+                        <div class="data-value">${contactAddress}</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="page-number">Page ${pageNum} of ${totalPages}</div>
+        </div>
+    `;
+  });
+  
+  // Generate secured party contacts for Page 11
+  const uniqueSecuredParties = new Map();
+  registrations.forEach(r => {
+    const partySummary = r.securedPartySummary || '';
+    const addressForService = r.addressForService || {};
+    if (!uniqueSecuredParties.has(partySummary)) {
+      uniqueSecuredParties.set(partySummary, {
+        name: partySummary,
+        email: addressForService.emailAddress || '-',
+        fax: addressForService.faxNumber || '-'
+      });
+    }
+  });
+  
+  let securedPartyContactsRows = '';
+  uniqueSecuredParties.forEach(party => {
+    securedPartyContactsRows += `
+                <div class="data-grid" style="grid-template-columns: 2fr 2fr 1.5fr; gap: 12px; margin-bottom: 12px;">
+                    <div class="data-value">${party.name}</div>
+                    <div class="data-value" style="font-size: 10px;">${party.email}</div>
+                    <div class="data-value">${party.fax !== '-' ? party.fax : '-'}</div>
+                </div>
+    `;
+  });
+  
+  return {
+    // Cover page
+    cover_company_name: entityName || 'N/A',
+    cover_report_date: searchDate,
+    cover_entity_name: entityName || 'N/A',
+    cover_acn: formattedAcn || 'N/A',
+    cover_document_id: searchNumber,
+    
+    // Page 2 - Executive Summary
+    search_date: searchDateTime,
+    total_security_interests: `${activeRegistrations.length} active registrations`,
+    search_status: activeRegistrations.length === resultCount ? 'All registrations current and valid' : `${activeRegistrations.length} active, ${resultCount - activeRegistrations.length} expired`,
+    security_breakdown: securityBreakdown,
+    secured_parties_rows: securedPartiesRows,
+    page_number_2: `Page 2 of ${Math.min(12, 4 + Math.min(registrations.length, 7))}`,
+    
+    // Page 3 - Key Risk Indicators
+    critical_security_section: criticalSecurityHtml,
+    vehicle_finance_count: motorVehicles.length,
+    vehicle_finance_financiers_count: new Set(motorVehicles.map(v => v.securedPartySummary)).size,
+    vehicle_expiry_timeline: vehicleExpiryTimeline,
+    page_number_3: `Page 3 of ${Math.min(12, 4 + Math.min(registrations.length, 7))}`,
+    
+    // Registration pages (4-10)
+    registration_pages: registrationPagesHtml,
+    
+    // Page 11 - Contacts
+    secured_party_contacts_rows: securedPartyContactsRows,
+    page_number_11: `Page 11 of ${Math.min(12, 4 + Math.min(registrations.length, 7))}`,
+    
+    // Page 12 - Document Information
+    search_number: searchNumber,
+    search_performed: searchDateTime,
+    page_number_12: `Page 12 of ${Math.min(12, 4 + Math.min(registrations.length, 7))}`,
+    
+    // Common fields
+    company_type: 'ppsr',
+    acn: formattedAcn,
+    abn: entityAbn,
+    companyName: entityName || 'N/A'
+  };
+}
+
+// Function to replace variables in HTML
+function replaceVariables(htmlContent, data, reportype) {
+  // Extract report-specific data based on report type
+  let extractedData;
+  
+  if (reportype === 'ato') {
+    extractedData = extractAtoData(data);
+  } else if (reportype === 'court') {
+    extractedData = extractCourtData(data);
+  } else if (reportype === 'asic-current') {
+    extractedData = extractAsicCurrentData(data);
+  } else if (reportype === 'asic-historical') {
+    extractedData = extractAsicHistoricalData(data);
+  } else if (reportype === 'asic-company') {
+    extractedData = extractAsicCompanyData(data);
+  } else if (reportype === 'ppsr') {
+    extractedData = extractPpsrData(data);
+  } else if (reportype === 'director-ppsr') {
+    extractedData = extractPpsrData(data);
+  } else if (reportype === 'director-bankruptcy') {
+    extractedData = extractBankruptcyData(data);
+  } else if (reportype === 'director-related') {
+    extractedData = extractDirectorRelatedEntitiesData(data);
+  } else {
+    // Default fallback - try to extract common fields
+    const entity = data.entity || {};
+    extractedData = {
+      company_type: reportype || 'N/A',
+      acn: data.acn || entity.acn || 'N/A',
+      abn: data.abn || entity.abn || 'N/A',
+      companyName: entity.name || 'N/A',
+      entity_abn: entity.abn || 'N/A',
+      entity_acn: entity.acn || 'N/A',
+      entity_name: entity.name || 'N/A',
+      entity_review_date: entity.review_date ? moment(entity.review_date).format('DD/MM/YYYY') : 'N/A',
+      entity_registered_in: entity.registered_in || 'N/A',
+      entity_abr_gst_status: entity.abr_gst_status || 'N/A',
+      entity_document_number: entity.document_number || 'N/A',
+      entity_organisation_type: entity.organisation_type || 'N/A',
+      entity_asic_date_of_registration: entity.asic_date_of_registration ? moment(entity.asic_date_of_registration).format('DD/MM/YYYY') : 'N/A',
+      abn_state: data.abn_state || 'N/A',
+      abn_status: data.abn_status || 'N/A',
+      actionSummaryRows: '',
+      insolvency_notice_id: 'N/A',
+      insolvency_type: 'N/A',
+      insolvency_publish_date: 'N/A',
+      insolvency_status: 'N/A',
+      insolvency_appointee: 'N/A',
+      insolvency_parties_rows: '',
+      insolvency_court: 'N/A',
+      case_case_id: 'N/A',
+      case_source: 'N/A',
+      case_jurisdiction: 'N/A',
+      case_type: 'N/A',
+      case_status: 'N/A',
+      case_location: 'N/A',
+      case_most_recent_event: 'N/A',
+      case_notification_date: 'N/A',
+      case_next_event: 'N/A',
+      orders_rows: '',
+      case_parties_rows: '',
+      hearings_rows: '',
+      documents_rows: '',
+      caseNumber: 'N/A',
+      current_tax_debt_amount: 'N/A',
+      current_tax_debt_ato_updated_at: 'N/A'
+    };
+  }
+
+  // Format ACN and ABN with spaces if they are numbers
+  const formattedAcn = extractedData.acn.length === 9 && /^\d+$/.test(extractedData.acn.replace(/\s/g, '')) 
+    ? extractedData.acn.replace(/\D/g, '').replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3') 
+    : extractedData.acn;
+  const formattedAbn = extractedData.abn.length === 11 && /^\d+$/.test(extractedData.abn.replace(/\s/g, '')) 
+    ? extractedData.abn.replace(/\D/g, '').replace(/(\d{2})(\d{3})(\d{3})(\d{3})/, '$1 $2 $3 $4') 
+    : extractedData.abn;
+
+  // Current date for report
+  const reportDate = new Date().toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+
+  const current_date_and_time = moment().format('DD MMMM YYYY');
+
+  console.log(`Replacing variables - Report Type: ${reportype}, ACN: ${formattedAcn}, ABN: ${formattedAbn}, Company: ${extractedData.companyName}`);
+
+  // Replace all variables in HTML
+  // Support both ${variable} and {{variable}} syntax
+  let updatedHtml = htmlContent;
+
+  // Helper function to replace variables in both syntaxes
+  const replaceVar = (pattern, value) => {
+    // Replace ${variable} syntax
+    updatedHtml = updatedHtml.replace(new RegExp(`\\$\\{${pattern}\\}`, 'g'), value);
+    // Replace {{variable}} syntax
+    updatedHtml = updatedHtml.replace(new RegExp(`\\{\\{${pattern}\\}\\}`, 'g'), value);
+  };
+
+  // Replace common variables
+  replaceVar('acn', formattedAcn);
+  replaceVar('abn', formattedAbn);
+  replaceVar('companyName', extractedData.companyName);
+  replaceVar('company_type', extractedData.company_type);
+  replaceVar('reportDate', reportDate);
+  replaceVar('current_date_and_time', current_date_and_time);
+
+  // Replace entity variables
+  replaceVar('abn_state', extractedData.abn_state || '');
+  replaceVar('abn_status', extractedData.abn_status || '');
+  replaceVar('entity_abn', extractedData.entity_abn || '');
+  replaceVar('entity_acn', extractedData.entity_acn || '');
+  replaceVar('entity_name', extractedData.entity_name || '');
+  replaceVar('entity_review_date', extractedData.entity_review_date || '');
+  replaceVar('entity_registered_in', extractedData.entity_registered_in || '');
+  replaceVar('entity_abr_gst_status', extractedData.entity_abr_gst_status || '');
+  replaceVar('entity_document_number', extractedData.entity_document_number || '');
+  replaceVar('entity_organisation_type', extractedData.entity_organisation_type || '');
+  replaceVar('entity_asic_date_of_registration', extractedData.entity_asic_date_of_registration || '');
+  
+  // ASIC Current specific variables
+  replaceVar('entity_asic_status', extractedData.entity_asic_status || '');
+  replaceVar('entity_abn_status', extractedData.entity_abn_status || '');
+  replaceVar('entity_gst_status', extractedData.entity_gst_status || '');
+  replaceVar('report_date', extractedData.report_date || '');
+  replaceVar('cover_company_name', extractedData.cover_company_name || '');
+  replaceVar('cover_report_title', extractedData.cover_report_title || '');
+  replaceVar('cover_report_date', extractedData.cover_report_date || '');
+  replaceVar('cover_acn', extractedData.cover_acn || '');
+  replaceVar('cover_abn', extractedData.cover_abn || '');
+  replaceVar('cover_document_number', extractedData.cover_document_number || '');
+  replaceVar('tax_debt_section', extractedData.tax_debt_section || '');
+  
+  // Page 3 - ASIC Extract Summary variables
+  replaceVar('extract_report_type', extractedData.extract_report_type || '');
+  replaceVar('extract_addresses_count', extractedData.extract_addresses_count || '0');
+  replaceVar('extract_directors_count', extractedData.extract_directors_count || '0');
+  replaceVar('extract_secretaries_count', extractedData.extract_secretaries_count || '0');
+  replaceVar('extract_shareholders_count', extractedData.extract_shareholders_count || '0');
+  replaceVar('address_boxes', extractedData.address_boxes || '');
+  replaceVar('contact_address_section', extractedData.contact_address_section || '');
+  
+  // Page 4 - Address Change History & Key Personnel variables
+  replaceVar('address_change_history_rows', extractedData.address_change_history_rows || '');
+  replaceVar('directors_summary', extractedData.directors_summary || '');
+  replaceVar('secretaries_summary', extractedData.secretaries_summary || '');
+  replaceVar('shareholders_summary', extractedData.shareholders_summary || '');
+  
+  // Page 5 & 6 - ASIC Documents & Filings variables
+  replaceVar('documents_total_count', extractedData.documents_total_count || '0');
+  replaceVar('documents_date_range', extractedData.documents_date_range || 'N/A');
+  replaceVar('documents_2025_filings', extractedData.documents_2025_filings || '0');
+  replaceVar('documents_form_types_count', extractedData.documents_form_types_count || '0');
+  replaceVar('documents_table_rows', extractedData.documents_table_rows || '');
+  
+  // Page 7 - Board of Directors & Shareholders variables
+  replaceVar('directors_secretaries_table_rows', extractedData.directors_secretaries_table_rows || '');
+  replaceVar('shareholders_ownership_section', extractedData.shareholders_ownership_section || '');
+  
+  // Page 8 - Share Structure variables
+  replaceVar('share_structure_section', extractedData.share_structure_section || '');
+  
+  // Page Numbers (dynamic)
+  replaceVar('page_number_1', extractedData.page_number_1 || 'Page 1 of 7');
+  replaceVar('page_number_2', extractedData.page_number_2 || 'Page 2 of 7');
+  replaceVar('page_number_3', extractedData.page_number_3 || 'Page 3 of 7');
+  replaceVar('page_number_4', extractedData.page_number_4 || 'Page 4 of 7');
+  replaceVar('page_number_5', extractedData.page_number_5 || 'Page 5 of 7');
+  replaceVar('page_number_7', extractedData.page_number_7 || 'Page 7 of 7');
+  replaceVar('page_number_8', extractedData.page_number_8 || '');
+  replaceVar('page_number_9', extractedData.page_number_9 || 'Page 9 of 11');
+  replaceVar('page_number_10', extractedData.page_number_10 || 'Page 10 of 11');
+  replaceVar('page_number_11', extractedData.page_number_11 || 'Page 11 of 11');
+  replaceVar('total_pages', extractedData.total_pages || '7');
+  
+  // ASIC Historical specific variables (Pages 9-11)
+  replaceVar('historical_extract_date', extractedData.historical_extract_date || 'N/A');
+  replaceVar('historical_company_names_rows', extractedData.historical_company_names_rows || '');
+  replaceVar('historical_addresses_rows', extractedData.historical_addresses_rows || '');
+  replaceVar('previous_officeholders_rows', extractedData.previous_officeholders_rows || '');
+  replaceVar('historical_shareholders_rows', extractedData.historical_shareholders_rows || '');
+  replaceVar('historical_share_structure_rows', extractedData.historical_share_structure_rows || '');
+
+  // ASIC Company specific variables (Pages 1-4)
+  replaceVar('entity_location', extractedData.entity_location || 'N/A');
+  replaceVar('entity_registration_date', extractedData.entity_registration_date || 'N/A');
+  replaceVar('current_shareholdings_count', extractedData.current_shareholdings_count || '0');
+  replaceVar('former_shareholdings_count', extractedData.former_shareholdings_count || '0');
+  replaceVar('current_licences_count', extractedData.current_licences_count || '0');
+  replaceVar('asic_documents_count', extractedData.asic_documents_count || '0');
+  replaceVar('current_shareholdings_rows', extractedData.current_shareholdings_rows || '');
+  replaceVar('former_shareholdings_rows', extractedData.former_shareholdings_rows || '');
+  replaceVar('licences_rows', extractedData.licences_rows || '');
+  replaceVar('asic_documents_rows', extractedData.asic_documents_rows || '');
+  replaceVar('page_number_3', extractedData.page_number_3 || 'Page 3 of 4');
+  replaceVar('page_number_4', extractedData.page_number_4 || 'Page 4 of 4');
+
+  // PPSR specific variables
+  replaceVar('cover_entity_name', extractedData.cover_entity_name || 'N/A');
+  replaceVar('cover_document_id', extractedData.cover_document_id || 'N/A');
+  replaceVar('search_date', extractedData.search_date || 'N/A');
+  replaceVar('total_security_interests', extractedData.total_security_interests || '0 active registrations');
+  replaceVar('search_status', extractedData.search_status || 'N/A');
+  replaceVar('security_breakdown', extractedData.security_breakdown || '');
+  replaceVar('secured_parties_rows', extractedData.secured_parties_rows || '');
+  replaceVar('critical_security_section', extractedData.critical_security_section || '');
+  replaceVar('vehicle_finance_count', extractedData.vehicle_finance_count || '0');
+  replaceVar('vehicle_finance_financiers_count', extractedData.vehicle_finance_financiers_count || '0');
+  replaceVar('vehicle_expiry_timeline', extractedData.vehicle_expiry_timeline || '');
+  replaceVar('registration_pages', extractedData.registration_pages || '');
+  replaceVar('secured_party_contacts_rows', extractedData.secured_party_contacts_rows || '');
+  replaceVar('search_number', extractedData.search_number || 'N/A');
+  replaceVar('search_performed', extractedData.search_performed || 'N/A');
+
+  // Bankruptcy specific variables
+  replaceVar('cover_search_id', extractedData.cover_search_id || 'N/A');
+  replaceVar('cover_full_name', extractedData.cover_full_name || 'N/A');
+  replaceVar('cover_search_date', extractedData.cover_search_date || 'N/A');
+  replaceVar('cover_date_of_birth', extractedData.cover_date_of_birth || 'N/A');
+  replaceVar('result_status_text', extractedData.result_status_text || 'N/A');
+  replaceVar('result_status_badge', extractedData.result_status_badge || 'ok');
+  replaceVar('verification_text', extractedData.verification_text || 'N/A');
+  replaceVar('search_time', extractedData.search_time || 'N/A');
+  replaceVar('what_this_means_items', extractedData.what_this_means_items || '');
+  replaceVar('search_details_rows', extractedData.search_details_rows || '');
+  replaceVar('document_search_id', extractedData.document_search_id || 'N/A');
+  replaceVar('document_search_date', extractedData.document_search_date || 'N/A');
+
+  // Director Related Entities specific variables
+  replaceVar('cover_director_name', extractedData.cover_director_name || 'N/A');
+  replaceVar('cover_report_date', extractedData.cover_report_date || 'N/A');
+  replaceVar('cover_company_name', extractedData.cover_company_name || 'N/A');
+  replaceVar('cover_company_acn', extractedData.cover_company_acn || 'N/A');
+  replaceVar('director_name', extractedData.director_name || 'N/A');
+  replaceVar('director_date_of_birth', extractedData.director_date_of_birth || 'N/A');
+  replaceVar('director_address', extractedData.director_address || 'N/A');
+  replaceVar('director_report_date', extractedData.director_report_date || 'N/A');
+  replaceVar('directorships_count', extractedData.directorships_count || '0');
+  replaceVar('shareholdings_count', extractedData.shareholdings_count || '0');
+  replaceVar('data_extract_date', extractedData.data_extract_date || 'N/A');
+  replaceVar('current_directorships_rows', extractedData.current_directorships_rows || '');
+  replaceVar('ceased_directorships_rows', extractedData.ceased_directorships_rows || '');
+  replaceVar('current_shareholdings_name_dob_rows', extractedData.current_shareholdings_name_dob_rows || '');
+  replaceVar('ceased_shareholdings_name_dob_rows', extractedData.ceased_shareholdings_name_dob_rows || '');
+  replaceVar('current_shareholdings_name_only_rows', extractedData.current_shareholdings_name_only_rows || '');
+  replaceVar('ceased_shareholdings_name_only_rows', extractedData.ceased_shareholdings_name_only_rows || '');
+  replaceVar('document_id', extractedData.document_id || 'N/A');
+
+  // Replace ATO-specific variables
+  replaceVar('current_tax_debt_amount', extractedData.current_tax_debt_amount || '');
+  replaceVar('current_tax_debt_ato_updated_at', extractedData.current_tax_debt_ato_updated_at || '');
+
+  // Replace court-specific variables
+  replaceVar('caseNumber', extractedData.caseNumber || '');
+  replaceVar('actionSummaryRows', extractedData.actionSummaryRows || '');
+  replaceVar('insolvency_notice_id', extractedData.insolvency_notice_id || '');
+  replaceVar('insolvency_type', extractedData.insolvency_type || '');
+  replaceVar('insolvency_publish_date', extractedData.insolvency_publish_date || '');
+  replaceVar('insolvency_status', extractedData.insolvency_status || '');
+  replaceVar('insolvency_appointee', extractedData.insolvency_appointee || '');
+  replaceVar('insolvency_parties_rows', extractedData.insolvency_parties_rows || '');
+  replaceVar('insolvency_court', extractedData.insolvency_court || '');
+  replaceVar('case_case_id', extractedData.case_case_id || '');
+  replaceVar('case_source', extractedData.case_source || '');
+  replaceVar('case_jurisdiction', extractedData.case_jurisdiction || '');
+  replaceVar('case_type', extractedData.case_type || '');
+  replaceVar('case_status', extractedData.case_status || '');
+  replaceVar('case_location', extractedData.case_location || '');
+  replaceVar('case_most_recent_event', extractedData.case_most_recent_event || '');
+  replaceVar('case_notification_date', extractedData.case_notification_date || '');
+  replaceVar('case_next_event', extractedData.case_next_event || '');
+  replaceVar('orders_rows', extractedData.orders_rows || '');
+  replaceVar('case_parties_rows', extractedData.case_parties_rows || '');
+  replaceVar('hearings_rows', extractedData.hearings_rows || '');
+  replaceVar('documents_rows', extractedData.documents_rows || '');
+
+  return updatedHtml;
+}
+
+// Enhanced CSS for proper page breaks and styling
+const getEnhancedCSS = () => `
+  <style>
+    /* Ensure proper page breaks and dimensions */
+    .page {
+      page-break-after: always;
+      page-break-inside: avoid;
+      break-after: page;
+      width: 210mm;
+      height: 297mm;
+      position: relative;
+      background: white;
+      margin: 0;
+      padding: 60px 50px;
+      box-sizing: border-box;
+    }
+    
+    .page:last-child {
+      page-break-after: auto;
+    }
+    
+    /* Ensure all content is visible */
+    body {
+      margin: 0;
+      padding: 0;
+      background: white;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    
+    .page-container {
+      margin: 0;
+      padding: 0;
+    }
+    
+    /* Print styles */
+    @media print {
+      body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: white !important;
+      }
+      
+      .page {
+        margin: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        page-break-after: always !important;
+      }
+      
+      .page:last-child {
+        page-break-after: auto !important;
+      }
+    }
+    
+    @page {
+      size: A4;
+      margin: 0;
+    }
+  </style>
+`;
+
+// Function to generate PDF from HTML
+async function generatePDF(htmlContent, outputPath) {
+  let browser = null;
+
+  try {
+    console.log('Launching browser for PDF generation...');
+
+    // Launch puppeteer browser
+    browser = await puppeteer.launch({
+      headless: 'new',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu'
+      ]
+    });
+
+    const page = await browser.newPage();
+
+    // Inject enhanced CSS into the HTML
+    const finalHtml = htmlContent.replace('</head>', `${getEnhancedCSS()}</head>`);
+
+    // Set viewport
+    await page.setViewport({
+      width: 1200,
+      height: 800
+    });
+
+    // Set content with modified HTML
+    await page.setContent(finalHtml, {
+      waitUntil: 'networkidle0',
+      timeout: 30000
+    });
+
+    // Count the number of page elements
+    const pageCount = await page.evaluate(() => {
+      return document.querySelectorAll('.page').length;
+    });
+
+    console.log(`Found ${pageCount} page elements`);
+
+    // Generate PDF with proper settings
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: {
+        top: '0mm',
+        right: '0mm',
+        bottom: '0mm',
+        left: '0mm'
+      },
+      displayHeaderFooter: false,
+      preferCSSPageSize: true
+    });
+
+    console.log('PDF generated successfully');
+
+    // Save locally
+    await fs.writeFile(outputPath, pdfBuffer);
+    console.log('PDF saved locally:', outputPath);
+
+    await browser.close();
+    browser = null;
+
+    return {
+      pdfBuffer,
+      pageCount
+    };
+  } catch (error) {
+    if (browser) {
+      await browser.close();
+    }
+    throw error;
+  }
+}
+
+// Function to convert HTML to PDF with variables (for /convert-with-variables endpoint)
+async function convertWithVariables(data, templateName = 'task1.html') {
+  // Ensure media directory exists
+  await ensureMediaDir();
+
+  // Read the HTML template file
+  const htmlTemplatePath = path.join(mediaDir, templateName);
+  let htmlContent;
+
+  try {
+    htmlContent = await fs.readFile(htmlTemplatePath, 'utf-8');
+  } catch (error) {
+    throw new Error(`HTML template file '${templateName}' not found in media folder`);
+  }
+
+  // Replace variables in HTML
+  const updatedHtml = replaceVariables(htmlContent, data, data?.reportype);
+
+  // Generate filename
+  const timestamp = data?.reportName || new Date().getTime();
+  const pdfFilename = timestamp + '.pdf';
+  const outputPath = path.join(mediaDir, pdfFilename);
+
+  // Generate PDF
+  const { pdfBuffer, pageCount } = await generatePDF(updatedHtml, outputPath);
+
+  // Upload to S3
+  console.log('Uploading PDF to S3...');
+  const s3UploadResult = await uploadToS3(pdfBuffer, pdfFilename);
+
+  if (!s3UploadResult.success) {
+    throw new Error(`S3 upload failed: ${s3UploadResult.error}`);
+  }
+
+  const formattedAmount = new Intl.NumberFormat('en-AU', {
+    style: 'currency',
+    currency: 'AUD',
+  }).format(data.rdata?.current_tax_debt?.amount);
+
+  await UserReport.create({
+    userId: data.userId || null,
+    matterId: data.matterId || null,
+    reportId: data.reportId || null,
+    reportName: `${data.reportName}.pdf` || null,
+    isPaid: true
+  });
+
+  return {
+    pdfFilename,
+    outputPath,
+    s3UploadResult,
+    pageCount,
+    pdfBuffer
+  };
+}
+
+// Function to add download report to DB
+async function addDownloadReportInDB(rdata, userId, matterId, reportId, reportName, reportype) {
+  console.log(reportype);
+  let templateName;
+  
+  if (reportype == "asic-current") {
+    templateName = 'asic-current-report.html';
+  } else if (reportype == "asic-historical") {
+    templateName = 'asic-current-historical-report.html';
+  } else if (reportype == "asic-company") {
+    templateName = 'asic-company-report.html';
+  } else if (reportype == "court") {
+    templateName = 'court-report.html';
+  } else if (reportype == "ato") {
+    templateName = 'ato-report.html';
+  } else if (reportype == "ppsr") {
+    templateName = 'abn-acn-ppsr-report.html';
+  } else if (reportype == "director-ppsr") {
+    templateName = 'director-ppsr-report.html';
+  } else if (reportype == "director-bankruptcy") {
+    templateName = 'director-bankruptcy-report.html';
+  } else if (reportype == "director-related") {
+    templateName = 'director-related-entities-report.html';
+  } else {
+    throw new Error(`Unknown report type: ${reportype}`);
+  }
+
+  await ensureMediaDir();
+
+  const htmlTemplatePath = path.join(mediaDir, templateName);
+  let htmlContent;
+  console.log("htmlTemplatePath", htmlTemplatePath);
+
+  try {
+    htmlContent = await fs.readFile(htmlTemplatePath, 'utf-8');
+  } catch (error) {
+    throw new Error(`HTML template file '${templateName}' not found in media folder`);
+  }
+
+  // Replace variables in HTML - use rdata.data if rdata is an axios response object
+  const dataForTemplate = rdata.data || rdata;
+  const updatedHtml = replaceVariables(htmlContent, dataForTemplate, reportype);
+
+  // Generate filename
+  const timestamp = reportName || new Date().getTime();
+  const pdfFilename = timestamp + '.pdf';
+  const outputPath = path.join(mediaDir, pdfFilename);
+
+  // Generate PDF
+  const { pdfBuffer } = await generatePDF(updatedHtml, outputPath);
+
+  // Upload to S3
+  console.log('Uploading PDF to S3...');
+  const s3UploadResult = await uploadToS3(pdfBuffer, pdfFilename);
+
+  if (!s3UploadResult.success) {
+    throw new Error(`S3 upload failed: ${s3UploadResult.error}`);
+  }
+
+  await UserReport.create({
+    userId: userId || null,
+    matterId: matterId || null,
+    reportId: reportId || null,
+    reportName: `${reportName}.pdf` || null,
+    isPaid: true
+  });
+
+  return pdfFilename;
+}
+
+module.exports = {
+  replaceVariables,
+  convertWithVariables,
+  addDownloadReportInDB,
+  ensureMediaDir,
+  generatePDF,
+  mediaDir
+};
+
