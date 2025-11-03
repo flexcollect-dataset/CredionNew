@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<!-- saved from url=(0077)file:///Users/williampike/Downloads/ATO_Tax_Debt_Report_DIGICALL_NETWORK.html -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Credion ATO Tax Debt Report - DIGICALL NETWORK PTY. LTD.</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        @page {
+            size: A4 portrait;
+            margin: 0;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #F5F7FA;
+            color: #1E293B;
+            line-height: 1.5;
+            font-size: 11px;
+        }
+        
+        @media print {
+            body {
+                background: white;
+            }
+            .page {
+                margin: 0;
+                box-shadow: none;
+                page-break-after: always;
+            }
+            .page:last-child {
+                page-break-after: auto;
+            }
+        }
+        
+        .page-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            max-width: 210mm;
+            margin: 0 auto;
+        }
+        
+        .page {
+            width: 210mm;
+            height: 297mm;
+            background: white;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            position: relative;
+            padding: 60px 50px;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+        
+        .page-number {
+            position: absolute;
+            bottom: 30px;
+            right: 50px;
+            color: #94A3B8;
+            font-size: 10px;
+        }
+        
+        /* Brand Header */
+        .brand-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #E2E8F0;
+            margin-bottom: 40px;
+        }
+        
+        .logo {
+            height: 60px;
+            display: block;
+        }
+        
+        .logo img {
+            height: 60px;
+            width: auto;
+        }
+        
+        .doc-id {
+            font-size: 15px;
+            color: #64748B;
+            font-weight: 600;
+        }
+        
+        .page-title {
+            font-size: 26px;
+            font-weight: 700;
+            color: #0F172A;
+            margin-bottom: 30px;
+            page-break-after: avoid;
+        }
+        
+        /* Card System */
+        .card {
+            background: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            page-break-inside: avoid;
+        }
+        
+        .card-header {
+            font-size: 12px;
+            font-weight: 700;
+            color: #475569;
+            margin-bottom: 16px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .data-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+            page-break-inside: avoid;
+        }
+        
+        .data-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .data-label {
+            font-size: 9px;
+            color: #64748B;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .data-value {
+            font-size: 13px;
+            font-weight: 600;
+            color: #0F172A;
+        }
+    </style>
+</head>
+<body>
+    <div class="page-container">
+        <!-- SINGLE PAGE REPORT -->
+        <div class="page" style="padding: 50px 50px; display: flex; flex-direction: column;">
+            <!-- Logo and Header -->
+            <div style="text-align: left; margin-bottom: 30px;">
+                <img src="data:image/png;base64,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" alt="Credion" style="height: 50px; width: auto;">
+            </div>
+            
+            <!-- Title Section -->
+            <div style="margin-bottom: 30px;">
+                <div style="font-size: 12px; font-weight: 500; color: #64748B; letter-spacing: 1px; margin-bottom: 8px; text-transform: uppercase;">
+                    Digicall Network Pty. Ltd.
+                </div>
+                
+                <div style="font-size: 28px; font-weight: 600; color: #0F172A; line-height: 1.2; margin-bottom: 12px;">
+                    ${company_type}
+                </div>
+                
+                <div style="font-size: 10px; color: #94A3B8; line-height: 1.6;">
+                    Report Date: ${current_date_and_time} | ACN: ${acn} | ABN: ${abn}
+                </div>
+            </div>
+            
+            <!-- Company Details Card -->
+            <div class="card" style="border: 2px solid #CBD5E1; margin-bottom: 20px;">
+                <div class="card-header" style="background: #F8FAFC; color: #475569; font-weight: 600; font-size: 11px; margin-bottom: 12px;">COMPANY DETAILS</div>
+                <div class="data-grid" style="grid-template-columns: repeat(2, 1fr); row-gap: 12px; gap: 12px;">
+                    <div class="data-item">
+                        <div class="data-label" style="font-size: 8px;">Company Name</div>
+                        <div class="data-value" style="font-weight: 700; font-size: 12px;">${entity_name}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label" style="font-size: 8px;">ABN</div>
+                        <div class="data-value" style="font-size: 11px;">${entity_abn}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label" style="font-size: 8px;">ACN</div>
+                        <div class="data-value" style="font-size: 11px;">${entity_acn}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label" style="font-size: 8px;">ASIC Status</div>
+                        <div class="data-value" style="font-size: 11px;">${abn_state}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label" style="font-size: 8px;">ABN Status</div>
+                        <div class="data-value" style="font-size: 11px;">${abn_status}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label" style="font-size: 8px;">GST Status</div>
+                        <div class="data-value" style="font-size: 11px;">${entity_abr_gst_status}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label" style="font-size: 8px;">Type</div>
+                        <div class="data-value" style="font-size: 11px;">${entity_organisation_type}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label" style="font-size: 8px;">ASIC Registration</div>
+                        <div class="data-value" style="font-size: 11px;">${entity_asic_date_of_registration}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label" style="font-size: 8px;">Review Date</div>
+                        <div class="data-value" style="font-size: 11px;">${entity_review_date}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label" style="font-size: 8px;">Registered In</div>
+                        <div class="data-value" style="font-size: 11px;">${entity_registered_in}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label" style="font-size: 8px;">Report Date</div>
+                        <div class="data-value" style="font-size: 11px;">${current_date_and_time}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label" style="font-size: 8px;">Document ID</div>
+                        <div class="data-value" style="font-size: 11px;">${entity_document_number}</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- ATO Tax Debt Card -->
+            <div class="card" style="border: 3px solid #CBD5E1; background: #F8FAFC; margin-bottom: 20px;">
+                <div style="font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 12px; display: flex; align-items: center; text-transform: uppercase; letter-spacing: 0.5px;">
+                    ⚠ CRITICAL: ATO TAX DEBT
+                </div>
+                <div style="font-size: 24px; font-weight: 700; color: #0F172A; margin-bottom: 8px;">
+                    ${current_tax_debt_amount}
+                </div>
+                <div style="font-size: 10px; color: #64748B;">
+                    Outstanding/Updated as of ${current_tax_debt_ato_updated_at} AEDT
+                </div>
+            </div>
+            
+            <!-- Footer -->
+            <div style="margin-top: auto; padding-top: 20px;">
+                <div style="border-top: 1px solid #E2E8F0; padding-top: 12px;">
+                    <div style="font-size: 9px; color: #CBD5E1; text-align: center;">
+                        Credion Risk Intelligence
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body></html>

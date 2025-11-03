@@ -5,7 +5,7 @@ import { apiService } from '../services/api';
 type CategoryType = 'ORGANISATION' | 'INDIVIDUAL' | 'LAND TITLE';
 type SearchType = 'SELECT ALL' | 'ASIC' | 'COURT' | 'ATO' | 'ABN/ACN PPSR' | 'ADD DOCUMENT SEARCH' | 'BANKRUPTCY' | 'LAND TITLE';
 type AsicType = 'SELECT ALL' | 'CURRENT' | 'CURRENT/HISTORICAL' | 'COMPANY';
-type AdditionalSearchType = 'SELECT ALL' | 'ABN/ACN PPSR' | 'ABN/ACN PROPERTY TITLE' | 'DIRECTOR RELATED ENTITIES' | 'DIRECTOR PROPERTY TITLE' | 'DIRECTOR PPSR' | 'DIRECTOR BANKRUPTCY' | 'ACN/ABN COURT FILES';
+type AdditionalSearchType = 'SELECT ALL' | 'ABN/ACN PPSR' | 'ABN/ACN PROPERTY TITLE' | 'DIRECTOR RELATED ENTITIES' | 'DIRECTOR PROPERTY TITLE' | 'DIRECTOR PPSR' | 'DIRECTOR BANKRUPTCY' | 'ABN/ACN COURT FILES' | 'ASIC-CURRENT';
 
 interface SearchPrices {
   [key: string]: number;
@@ -76,14 +76,20 @@ const Search: React.FC = () => {
     'DIRECTOR PROPERTY TITLE': 80,
     'DIRECTOR PPSR': 50,
     'DIRECTOR BANKRUPTCY': 90,
-    'ACN/ABN COURT FILES': 60
+    'ABN/ACN COURT FILES': 60,
+    'ASIC-CURRENT': 25
   };
   
-  // Dynamic additional search options based on number of directors
+  // Dynamic additional search options based on number of directors and selected main searches
   const additionalSearchOptions: AdditionalSearchOption[] = useMemo(() => {
     const directorCount = companyDetails.directors || 0;
     
-    return [
+    // Check if ABN/ACN PPSR, ASIC, or COURT is selected in main searches
+    const isAbnPpsrSelected = selectedSearches.has('ABN/ACN PPSR');
+    const isAsicSelected = selectedSearches.has('ASIC');
+    const isCourtSelected = selectedSearches.has('COURT');
+    
+    const allOptions: AdditionalSearchOption[] = [
       { name: 'SELECT ALL', price: 0 },
       { name: 'ABN/ACN PPSR', price: additionalSearchBasePrices['ABN/ACN PPSR'] },
       { name: 'ABN/ACN PROPERTY TITLE', price: additionalSearchBasePrices['ABN/ACN PROPERTY TITLE'] },
@@ -107,14 +113,24 @@ const Search: React.FC = () => {
         available: directorCount,
         price: additionalSearchBasePrices['DIRECTOR BANKRUPTCY'] * directorCount
       },
-      { name: 'ACN/ABN COURT FILES', available: 1, price: additionalSearchBasePrices['ACN/ABN COURT FILES'] }
+      { name: 'ABN/ACN COURT FILES', available: 1, price: additionalSearchBasePrices['ABN/ACN COURT FILES'] },
+      { name: 'ASIC-CURRENT', price: additionalSearchBasePrices['ASIC-CURRENT'] }
     ];
-  }, [companyDetails.directors]);
+    
+    // Filter out options based on selected main searches
+    return allOptions.filter(option => {
+      if (option.name === 'SELECT ALL') return true; // Always keep SELECT ALL
+      if (isAbnPpsrSelected && option.name === 'ABN/ACN PPSR') return false;
+      if (isAsicSelected && option.name === 'ASIC-CURRENT') return false;
+      if (isCourtSelected && option.name === 'ABN/ACN COURT FILES') return false;
+      return true;
+    });
+  }, [companyDetails.directors, selectedSearches]);
   
   // Dynamic searches based on category - CHANGES PER CATEGORY!
   const categorySearches: Record<CategoryType, SearchType[]> = {
     'ORGANISATION': ['SELECT ALL', 'ASIC', 'COURT', 'ATO', 'ABN/ACN PPSR', 'ADD DOCUMENT SEARCH'],
-    'INDIVIDUAL': ['SELECT ALL', 'ASIC', 'BANKRUPTCY', 'COURT', 'LAND TITLE', 'ABN/ACN PPSR'],
+    'INDIVIDUAL': ['SELECT ALL', 'ASIC', 'BANKRUPTCY', 'COURT', 'LAND TITLE'],
     'LAND TITLE': [] // No options for Land Title as of now
   };
   
@@ -138,15 +154,10 @@ const Search: React.FC = () => {
     return individualSearches.length > 0 && individualSearches.every(o => selectedAdditionalSearches.has(o.name));
   }, [selectedAdditionalSearches]);
 
-  // Show "Enter Search Details" when ORGANISATION is selected and searches/ASIC types are chosen
+  // Show "Enter Search Details" when ORGANISATION is selected (show by default)
   const showEnterSearchDetails = useMemo(() => {
-    if (selectedCategory !== 'ORGANISATION') return false;
-    
-    const hasSearches = Array.from(selectedSearches).some(s => s !== 'SELECT ALL');
-    const hasAsicTypes = Array.from(selectedAsicTypes).some(t => t !== 'SELECT ALL');
-    
-    return hasSearches || hasAsicTypes;
-  }, [selectedCategory, selectedSearches, selectedAsicTypes]);
+    return selectedCategory === 'ORGANISATION';
+  }, [selectedCategory]);
   
   const searchPrices: SearchPrices = {
     'ASIC': 50.00,
@@ -313,6 +324,50 @@ const Search: React.FC = () => {
       window.removeEventListener('resize', updateStepperProgress);
     };
   }, [hasSelectedCompany, selectedSearches, selectedCategory]);
+
+  // Clean up selectedAdditionalSearches when options are filtered out
+  useEffect(() => {
+    const isAbnPpsrSelected = selectedSearches.has('ABN/ACN PPSR');
+    const isAsicSelected = selectedSearches.has('ASIC');
+    const isCourtSelected = selectedSearches.has('COURT');
+    
+    const filteredOptions = new Set(additionalSearchOptions.map(opt => opt.name));
+    const newSelected = new Set(selectedAdditionalSearches);
+    let hasChanges = false;
+    
+    // Remove selections that are no longer available
+    selectedAdditionalSearches.forEach(selected => {
+      if (!filteredOptions.has(selected)) {
+        newSelected.delete(selected);
+        hasChanges = true;
+      }
+    });
+    
+    // Also remove ABN/ACN PPSR if it's selected in main searches
+    if (isAbnPpsrSelected && newSelected.has('ABN/ACN PPSR')) {
+      newSelected.delete('ABN/ACN PPSR');
+      newSelected.delete('SELECT ALL'); // Remove SELECT ALL if any item is removed
+      hasChanges = true;
+    }
+    
+    // Also remove ASIC-CURRENT if ASIC is selected in main searches
+    if (isAsicSelected && newSelected.has('ASIC-CURRENT')) {
+      newSelected.delete('ASIC-CURRENT');
+      newSelected.delete('SELECT ALL'); // Remove SELECT ALL if any item is removed
+      hasChanges = true;
+    }
+    
+    // Also remove ABN/ACN COURT FILES if COURT is selected in main searches
+    if (isCourtSelected && newSelected.has('ABN/ACN COURT FILES')) {
+      newSelected.delete('ABN/ACN COURT FILES');
+      newSelected.delete('SELECT ALL'); // Remove SELECT ALL if any item is removed
+      hasChanges = true;
+    }
+    
+    if (hasChanges) {
+      setSelectedAdditionalSearches(newSelected);
+    }
+  }, [selectedSearches, additionalSearchOptions]);
 
   const handleSuggestionSelect = async (suggestion: ABNSuggestion) => {
     hasSelectedRef.current = true; // Mark as selected to prevent re-searching
@@ -548,8 +603,10 @@ const Search: React.FC = () => {
           reportType = 'ppsr';
         } else if (reportItem.type === 'ABN/ACN PROPERTY TITLE') {
           reportType = 'property';
-        } else if (reportItem.type === 'ACN/ABN COURT FILES') {
+        } else if (reportItem.type === 'ABN/ACN COURT FILES') {
           reportType = 'court';
+        } else if (reportItem.type === 'ASIC-CURRENT') {
+          reportType = 'asic-current';
         } else if (reportItem.type.includes('DIRECTOR')) {
           if (reportItem.type.includes('PPSR')) {
             reportType = 'director-ppsr';
@@ -562,6 +619,8 @@ const Search: React.FC = () => {
           }
         } else if (reportItem.type === 'ADD DOCUMENT SEARCH') {
           reportType = 'asic-document-search';
+        } else if ( reportItem.type === 'ASIC-CURRENT' ) {
+          reportType = 'asic-current';
         } else {
           // Default fallback
           reportType = reportItem.type.toLowerCase().replace(/\s+/g, '-');
@@ -579,8 +638,8 @@ const Search: React.FC = () => {
             isCompany: selectedCategory
           },
           type: reportType,
-          userId: user.userId,
-          matterId: currentMatter?.matterId || null
+          userId: localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user") || '{}').userId : null,
+          matterId: localStorage.getItem('currentMatter') ? JSON.parse(localStorage.getItem('currentMatter') || '{}').matterId : null
         };
 
         console.log('Creating report with data:', reportData);
@@ -589,29 +648,31 @@ const Search: React.FC = () => {
         const reportResponse = await apiService.createReport(reportData);
         console.log('Report created:', reportResponse);
         
-        createdReports.push({
-          type: reportType,
-          name: reportItem.name,
-          response: reportResponse
-        });
+        // createdReports.push({
+        //   type: reportType,
+        //   name: reportItem.name,
+        //   response: reportResponse
+        // });
       }
 
-      console.log('All reports created:', createdReports);
-      setProccessReportStatus(true);
-      setTotalDownloadReports(createdReports.length);
-      if(createdReports && createdReports.length > 0 && createdReports[0]?.response?.report?.existingReport){
-        const reportId = createdReports[0]?.response?.report?.existingReport?.id
-        const userId = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user") || '{}').userId : null;
-        const matterId = localStorage.getItem('currentMatter') ? JSON.parse(localStorage.getItem('currentMatter') || '{}').matterId : null;
-        await addDownloadReportInDB({
-          ...createdReports[0]?.response?.report?.existingReport, company_type: company_type,
-          userId: userId || null,
-          matterId: matterId || null,
-          reportId: reportId || null,
-          reportName: `${uuidv4()}`
-        })
-      }
-      alert(`${createdReports.length} report(s) created successfully!`);
+      // console.log('All reports created:', createdReports);
+      // setProccessReportStatus(true);
+      // setTotalDownloadReports(createdReports.length);
+      // if(createdReports && createdReports.length > 0 && createdReports[0]?.response?.report?.existingReport){
+      //   const reportId = createdReports[0]?.response?.report?.existingReport?.id
+      //   const userId = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user") || '{}').userId : null;
+      //   const matterId = localStorage.getItem('currentMatter') ? JSON.parse(localStorage.getItem('currentMatter') || '{}').matterId : null;
+      //   await addDownloadReportInDB({
+      //     ...createdReports[0]?.response?.report?.existingReport, company_type: company_type,
+      //     userId: userId || null,
+      //     matterId: matterId || null,
+      //     reportId: reportId || null,
+      //     reportName: `${uuidv4()}`,
+      //     reportype: createdReports[0].type
+
+      //   })
+      // }
+      // alert(`${createdReports.length} report(s) created successfully!`);
       
     } catch (error: any) {
       console.error('Error processing reports:', error);
@@ -983,8 +1044,8 @@ const Search: React.FC = () => {
                 </div>
             )}
             
-            {/* Select Additional Searches - Show when ORGANISATION category and searches are selected */}
-            {selectedCategory === 'ORGANISATION' && selectedSearches.size > 0 && Array.from(selectedSearches).some(s => s !== 'SELECT ALL') && (
+            {/* Select Additional Searches - Show when ORGANISATION category is selected */}
+            {selectedCategory === 'ORGANISATION' && (
             <div ref={additionalCardRef} className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
               <h2 className="text-[32px] font-bold text-center mb-10 text-gray-900 tracking-tight">
                 Select <span className="text-red-600 relative after:content-[''] after:absolute after:bottom-[-5px] after:left-0 after:right-0 after:h-[3px] after:bg-red-600 after:opacity-20">Additional Searches</span>
@@ -1035,9 +1096,8 @@ const Search: React.FC = () => {
                           </div>
                         )}
 
-            {/* Selected Searches Summary Section - Show when any searches/additional searches are selected */}
-            {((selectedSearches.size > 0 && Array.from(selectedSearches).some(s => s !== 'SELECT ALL')) || 
-              (selectedAdditionalSearches.size > 0 && Array.from(selectedAdditionalSearches).some(s => s !== 'SELECT ALL'))) && (
+            {/* Selected Searches Summary Section - Show when ORGANISATION category is selected */}
+            {selectedCategory === 'ORGANISATION' && (
             <div className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100">
               <h2 className="text-base font-bold text-[#2c3e50] mb-[18px] uppercase tracking-wide">
                 Selected Searches:
