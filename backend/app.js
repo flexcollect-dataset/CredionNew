@@ -443,7 +443,9 @@ app.post('/api/create-report', async (req, res) => {
     // Call the createReport function (it will handle cache checking internally)
     const reportResponse = await createReport({
       business,
-      type
+      type,
+      userId,
+      matterId
     });
 
     res.json({

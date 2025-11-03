@@ -1,4 +1,5 @@
 const express = require('express');
+const { v4: uuidv4 } = require('uuid');
 const router = express.Router();
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { User, UserPaymentMethod, Report, ApiData } = require('../models');
@@ -9,6 +10,7 @@ const moment = require('moment');
 const puppeteer = require('puppeteer');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const UserReport = require('../models/UserReport');
+
 
 // Middleware to check if user is authenticated
 const authenticateSession = (req, res, next) => {
@@ -182,9 +184,8 @@ const s3Client = new S3Client({
   }
 });
 
-const BUCKET_NAME = process.env.AWS_BUCKET_NAME;
-
 // S3 Upload function for PDF
+const BUCKET_NAME = process.env.AWS_BUCKET_NAME;
 const uploadToS3 = async (fileBuffer, filename, contentType = 'application/pdf') => {
   try {
     const params = {
@@ -216,7 +217,6 @@ const uploadToS3 = async (fileBuffer, filename, contentType = 'application/pdf')
 
 // Create media directory if it doesn't exist
 const mediaDir = path.join(__dirname, '../media');
-
 async function ensureMediaDir() {
   try {
     await fs.access(mediaDir);
@@ -226,34 +226,34 @@ async function ensureMediaDir() {
 }
 
 // Function to replace variables in HTML
-function replaceVariables(htmlContent, data) {
+function replaceVariables(htmlContent, data, reportype) {
   // Extract values from data
-  const company_type = data.company_type || 'N/A';
-  const acn = data.acn || data.rdata?.entity?.acn || 'N/A';
-  const abn = data.abn || data.rdata?.entity?.abn || 'N/A';
-  const companyName = data.rdata?.entity?.name || 'DIGICALL NETWORK PTY. LTD.';
+  const company_type = reportype || 'N/A';
+  const acn = data.acn || data.entity?.acn || 'N/A';
+  const abn = data.abn || data.entity?.abn || 'N/A';
+  const companyName = data.entity?.name || 'DIGICALL NETWORK PTY. LTD.';
 
-  const abn_state = data.rdata?.abn_state || 'N/A';
-  const abn_status = data.rdata?.abn_status || 'N/A';
-  const entity_abn = data.rdata?.entity?.abn || 'N/A';
-  const entity_acn = data.rdata?.entity?.acn || 'N/A';
-  const entity_name = data.rdata?.entity?.name || 'N/A';
-  const entity_review_date = moment(data.rdata?.entity?.review_date).format('DD/MM/YYYY') || 'N/A';
-  const entity_registered_in = data.rdata?.entity?.registered_in || 'N/A';
-  const entity_abr_gst_status = data.rdata?.entity?.abr_gst_status || 'N/A';
-  const entity_document_number = data.rdata?.entity?.document_number || 'N/A';
-  const entity_organisation_type = data.rdata?.entity?.organisation_type || 'N/A';
-  const entity_asic_date_of_registration = moment(data.rdata?.entity?.asic_date_of_registration).format('DD/MM/YYYY') || 'N/A';
+  const abn_state = data.abn_state || 'N/A';
+  const abn_status = data.abn_status || 'N/A';
+  const entity_abn = data.entity?.abn || 'N/A';
+  const entity_acn = data.entity?.acn || 'N/A';
+  const entity_name = data.entity?.name || 'N/A';
+  const entity_review_date = moment(data.entity?.review_date).format('DD/MM/YYYY') || 'N/A';
+  const entity_registered_in = data.entity?.registered_in || 'N/A';
+  const entity_abr_gst_status = data.entity?.abr_gst_status || 'N/A';
+  const entity_document_number = data.entity?.document_number || 'N/A';
+  const entity_organisation_type = data.entity?.organisation_type || 'N/A';
+  const entity_asic_date_of_registration = moment(data.entity?.asic_date_of_registration).format('DD/MM/YYYY') || 'N/A';
 
   const current_date_and_time = moment().format('DD MMMM YYYY');
 
   const formattedAmount = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-  }).format(data.rdata?.current_tax_debt?.amount);
+  }).format(data.current_tax_debt?.amount);
 
   const current_tax_debt_amount = formattedAmount || 'N/A';
-  const current_tax_debt_ato_updated_at = moment.utc(data.rdata?.current_tax_debt?.ato_updated_at).format('MMMM D, YYYY, [at] h:mm:ss A') || 'N/A';
+  const current_tax_debt_ato_updated_at = moment.utc(data.current_tax_debt?.ato_updated_at).format('MMMM D, YYYY, [at] h:mm:ss A') || 'N/A';
 
   // Format ACN and ABN with spaces if they are numbers
   const formattedAcn = acn.length === 9 ? acn.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3') : acn;
@@ -309,9 +309,11 @@ router.post('/convert-with-variables', async (req, res) => {
   let browser = null;
 
   try {
+
     const templateName = 'task1.html';
     const data = req.body;
-    console.log(data)
+    console.log("************************************************")
+    console.log(data?.reportype);
 
     if (!data) {
       return res.status(400).json({
@@ -546,8 +548,259 @@ router.post('/convert-with-variables', async (req, res) => {
   }
 });
 
+async function asic_report_data(uuid) {
+    //Now call GET API to fetch the report data
+    const getApiUrl = `https://alares.com.au/api/reports/${uuid}/json`;
+
+    const response = await axios.get(getApiUrl, {
+        headers: {
+            'Authorization': `Bearer ${bearerToken}`,
+            'Content-Type': 'application/json'
+        },
+        timeout: 30000 // 30 second timeout
+    });
+    return response;
+}
+
+async function addDownloadReportInDB(rdata, userId, matterId, reportId, reportName, reportype ) {
+    console.log("]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]");
+     console.log(rdata);
+        console.log(userId);
+        console.log(matterId);
+        console.log(reportId);
+        console.log(reportName);
+        
+        console.log(reportype);
+        console.log("]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]");
+    let browser = null;
+    if( reportype == "asic-current") {
+      templateName = 'task10.html';        
+    } else if ( reportype == "court" ) {
+       templateName = 'task1.html';
+    } else if ( reportype == "ato" ) {
+       templateName = 'task2.html';
+    } else if ( reportype == "asic-historical" ) {
+       templateName = 'task3.html';
+    } else if ( reportype == "asic-company" ) {
+       templateName = 'task4.html';
+    } else if ( reportype == "ppsr" ){
+       templateName = 'task5.html';
+    } else if ( reportype == "director-ppsr" ){
+       templateName = 'task6.html';
+    } else if ( reportype = "director-bankruptcy" ){
+       templateName = 'task7.html';
+    } else if ( reportype = "director-related" ){
+       templateName = 'task8.html';
+    }
+    await ensureMediaDir();
+
+    const htmlTemplatePath = path.join(mediaDir, templateName);
+    let htmlContent;
+    console.log("htmlTemplatePath", htmlTemplatePath)
+
+    try {
+      htmlContent = await fs.readFile(htmlTemplatePath, 'utf-8');
+    } catch (error) {
+      return res.status(404).json({
+        success: false,
+        error: `HTML template file '${templateName}' not found in media folder`
+      });
+    }
+
+    // Replace variables in HTML
+    const updatedHtml = replaceVariables(htmlContent, rdata, reportype);
+
+    // Generate filename
+    const timestamp = reportName || new Date().getTime();
+    const pdfFilename = timestamp + '.pdf';
+
+    const outputPath = path.join(mediaDir, pdfFilename);
+
+    console.log('Launching browser for PDF generation...');
+    // Launch puppeteer browser
+    browser = await puppeteer.launch({
+      headless: 'new',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu'
+      ]
+    });
+
+    const page = await browser.newPage();
+
+    // Enhanced CSS for proper page breaks and styling
+    const enhancedCSS = `
+      <style>
+        /* Ensure proper page breaks and dimensions */
+        .page {
+          page-break-after: always;
+          page-break-inside: avoid;
+          break-after: page;
+          width: 210mm;
+          height: 297mm;
+          position: relative;
+          background: white;
+          margin: 0;
+          padding: 60px 50px;
+          box-sizing: border-box;
+        }
+        
+        .page:last-child {
+          page-break-after: auto;
+        }
+        
+        /* Ensure all content is visible */
+        body {
+          margin: 0;
+          padding: 0;
+          background: white;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        
+        .page-container {
+          margin: 0;
+          padding: 0;
+        }
+        
+        /* Print styles */
+        @media print {
+          body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: white !important;
+          }
+          
+          .page {
+            margin: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+            page-break-after: always !important;
+          }
+          
+          .page:last-child {
+            page-break-after: auto !important;
+          }
+        }
+        
+        @page {
+          size: A4;
+          margin: 0;
+        }
+      </style>
+    `;
+
+    // Inject enhanced CSS into the HTML
+    const finalHtml = updatedHtml.replace('</head>', `${enhancedCSS}</head>`);
+
+    // Set viewport
+    await page.setViewport({
+      width: 1200,
+      height: 800
+    });
+
+    // Set content with modified HTML
+    await page.setContent(finalHtml, {
+      waitUntil: 'networkidle0',
+      timeout: 30000
+    });
+
+    // Wait for all content to load
+    // await page.waitForTimeout(40000);
+
+    // Count the number of page elements
+    const pageCount = await page.evaluate(() => {
+      return document.querySelectorAll('.page').length;
+    });
+
+    console.log(`Found ${pageCount} page elements`);
+
+    // Generate PDF with proper settings
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: {
+        top: '0mm',
+        right: '0mm',
+        bottom: '0mm',
+        left: '0mm'
+      },
+      displayHeaderFooter: false,
+      preferCSSPageSize: true
+    });
+
+    console.log('PDF generated successfully');
+
+    // Save locally (optional)
+    await fs.writeFile(outputPath, pdfBuffer);
+    console.log('PDF saved locally:', outputPath);
+
+    // Upload to S3
+    console.log('Uploading PDF to S3...');
+    const s3UploadResult = await uploadToS3(pdfBuffer, pdfFilename);
+
+    if (!s3UploadResult.success) {
+      throw new Error(`S3 upload failed: ${s3UploadResult.error}`);
+    }
+
+    await browser.close();
+    browser = null;
+
+    const formattedAmount = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    }).format(rdata?.current_tax_debt?.amount);
+
+    await UserReport.create({
+                        userId: userId || null,
+                        matterId: matterId || null,
+                        reportId: reportId || null,
+                        reportName: `${reportName}.pdf` || null,
+                        isPaid: true
+                    });
+    return {
+        success: true,
+        message: 'PDF generated and uploaded to S3 successfully',
+        filename: pdfFilename,
+        local: {
+            downloadUrl: `/media/${pdfFilename}`,
+            fullPath: outputPath
+        },
+        s3: {
+            key: s3UploadResult.key,
+            location: s3UploadResult.location,
+            etag: s3UploadResult.etag
+        },
+        fileInfo: {
+            totalPages: pageCount,
+            fileSize: `${(pdfBuffer.length / 1024 / 1024).toFixed(2)} MB`,
+            generatedAt: new Date().toISOString()
+        },
+        replacedVariables: {
+            company_type: reportype,
+            acn: rdata?.entity?.acn,
+            abn: rdata?.entity?.abn,
+            companyName: rdata?.entity?.name,
+            entity_abn: rdata?.entity?.abn,
+            entity_acn: rdata?.entity?.acn,
+            entity_name: rdata?.entity?.name,
+            entity_review_date: moment(rdata?.entity?.review_date).format('DD/MM/YYYY'),
+            entity_registered_in: rdata?.entity?.registered_in,
+            entity_abr_gst_status: rdata?.entity?.abr_gst_status,
+            entity_document_number: rdata?.entity?.document_number,
+            entity_organisation_type: rdata?.entity?.organisation_type,
+            entity_asic_date_of_registration: moment(rdata?.entity?.asic_date_of_registration).format('DD/MM/YYYY'),
+            current_date_and_time: moment().format('DD MMMM YYYY'),
+            current_tax_debt_amount: formattedAmount,
+            current_tax_debt_ato_updated_at: moment.utc(rdata?.current_tax_debt?.ato_updated_at).format('MMMM D, YYYY, [at] h:mm:ss A'),
+        }
+    };
+}
+
 // Function to create report via external API
-async function createReport({ business, type }) {
+async function createReport({ business, type, userId, matterId }) {
     try {
         // Extract ABN from business data
         console.log(`🔍 BUSINESS DATA DEBUG:`);
@@ -568,12 +821,6 @@ async function createReport({ business, type }) {
         } else {
             existingReport = await checkExistingReportData(abn, type);
         }
-
-
-
-        console.log("========================");
-        console.log(existingReport);
-        console.log("========================");
         if (existingReport) {
             console.log(`✅ CACHE HIT: Found existing report in Reports table`);
             console.log(`   Report ID: ${existingReport.data}`);
@@ -581,7 +828,8 @@ async function createReport({ business, type }) {
             console.log(`   Created: ${existingReport.created_at}`);
             
             // Fetch the report data from Alares API for parsing and storing
-            reportData = existingReport.data;
+            reportId = existingReport?.id
+            reportData = existingReport.rdata;
         } else {
            if( type == "asic-current" || type == "court" || type == "ato" ) {
                 //const apiUrl = 'https://alares.com.au/api/reports/create';
@@ -822,69 +1070,49 @@ async function createReport({ business, type }) {
                     responseType: 'json',
                     timeout: 30000 // 30 second timeout
                 });
-
-
-                // const axios = require('axios');
-
-                // let config = {
-                // method: 'get',
-                // maxBodyLength: Infinity,
-                // url: 'https://services.afsa.gov.au/brs/api/v2/search-by-name?debtorSurname=adgemis&debtorGivenName=jon',
-                // headers: { 
-                //     'Authorization': 'Bearer eyJraWQiOiIwRDRXdDh3UiIsImFsZyI6IlJTMjU2IiwidHlwIjoiSldUIn0.eyJpc3MiOiJBdXN0cmFsaWFuIEZpbmFuY2lhbCBTZWN1cml0eSBBdXRob3JpdHkiLCJpYXQiOjE3NjIwNTAyMTcsInN1YiI6IjY3ODY4IiwidXNyIjoiOGQyZTIxMWEtODhkNS00NDZmLWIzNTUtNmIxMGE4Mjc4ZTNmIiwiYXBwIjoiQ1JFRElUT1JfUFJBQ1RJVElPTkVSIiwiZW1sIjpudWxsLCJpbnQiOmZhbHNlLCJjaGEiOiJBUElfS0VZIiwiZ24iOm51bGwsInNuIjoiOGQyZTIxMWEiLCJtZmEiOnRydWUsImV4cCI6MTc2MjA1MjAxN30.l7wyddWK6KWXEtHoca2t4DH4lBzVU-qg7a3Nblj16AKGZPaXrRPAQsEp2KvHNx2u8WnllqHH5DQQK4D7ce573-M70BG6Y9Jq6m1vNN7CgaSrKTR1BMFbd9bmzla9KiwgFqgZLOt4skT2yGQXjGa4H41EXxKGTBNXk3css5V4Ltq4VxTA7QJ35TdWwAbPyUM5t1Jad0JnpQRbCLGO2vrLuFHF8_wdcILsdXCve5gzumBq6-7fY3hOdFia2KKBc4XqVgJXNCzjqxATbq8C-t5nGXf-t543zdqEF4rdFKgvTOfOxk5PZjZjWBGxx3NzILFn2VNT1xYxtlT_o7k45fe-OeXr6020xeT9wNhacQnGXVZh8MkbnT-xytlJ_KxIWMotwaUCTspfie_eiyR0sa2cDtGedBKKsmjzdtC2CeEHl2Yydn-UNUIJxUV4E0DuCv3fIPvqNxPNNVbGBJJNvscbfjxNAm3bP_piDdWQ4NVUbl7EW3LQK7T4HvCNsfCufRb_', 
-                //     'Cookie': 'JSESSIONID=ED5D95A4C280E22EA88930BBCCDB68BF; TS01935e7b=016b8b0a5d5c7342e8acbb07b042095dccbd55791b2692e7bc89b3161ebff9bbf1b4f57978fe15339f73912e5a22fb5cb8560ab3cfc1556fe57d36d93a67d66e3b18040567d9644281dd40edf9fbfe87758d3bfba594cb29e1b23e9d5ef2dacb35a73493d3; BIGipServer~DMZ~pool-prd-sb-authentication-service=rd1o00000000000000000000ffff0a010264o8080; BIGipServer~DMZ~pool-prd-sb-npii=rd1o00000000000000000000ffff0a01026fo8085; SS_SESSION=4GG83597; TS01492af7=016b8b0a5dc8c56f84b15655285a88337d74b650d16ea465e42f124256adead638b4758db348ba8b8f89f84a18e047c04f8810611b966fcafc74dc9e5c151a71f7693c58370a618be0f1bf8653be696494e174ca4739ce3f88abc9a3a674a1d98fa72be5c8'
-                // }
-                // };
-
-                // axios.request(config)
-                // .then((response) => {
-                // console.log(JSON.stringify(response.data));
-                // })
-                // .catch((error) => {
-                // console.log(error);
-                // });
-
-
                 // console.log('Report creation API response:', createResponse.data);
                 response.data.uuid = response.data.insolvencySearchId;
                 reportData = response;
             } else if ( type = "director-related" ){
-                //const apiUrl = 'https://alares.com.au/api/reports/create';
-                //const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
-                // const params = {
-                //     type: 'indivisual',
-                //     abn: abn,
-                //     asic_current: '1'
-                // };
-                // createResponse = await axios.post(apiUrl, null, {
-                //     params: params,
-                //     headers: {
-                //         'Authorization': `Bearer ${bearerToken}`,
-                //         'Content-Type': 'application/json'
-                //     },
-                //     timeout: 30000 // 30 second timeout
-                // });
+                const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
+                const bapiURL = 'https://alares.com.au/api/asic/search'
+                const bparams = {
+                    first_name: "jon",
+                    last_name: "adgemis",
+                    dob_from: '24-04-1978',
+                };
+                bcreateResponse = await axios.get(bapiURL, {
+                    params: bparams,
+                    headers: {
+                        'Authorization': `Bearer ${bearerToken}`
+                    },
+                    timeout: 30000 // 30 second timeout
+                });
+                
+                const apiUrl = 'https://alares.com.au/api/reports/create';
+                const params = {
+                    type: 'individual',
+                    name: "jon adgemis",
+                    dob: '24-04-1978',
+                    asic_current: '1',
+                    person_id: bcreateResponse.data[0].person_id,
+                    acs_search_id: bcreateResponse.data[0].search_id
+                };
+                createResponse = await axios.post(apiUrl, null, {
+                    params: params,
+                    headers: {
+                        'Authorization': `Bearer ${bearerToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: 30000 // 30 second timeout
+                });
 
-                // console.log('Report creation API response:', createResponse.data);
-
-                // Now call GET API to fetch the report data
-                //const getApiUrl = `https://alares.com.au/api/reports/019a2e17-f011-7183-a3db-de2ef10aaebf/json`;
-
-                // console.log('Fetching report data from:', getApiUrl);
-
-                // const response = await axios.get(getApiUrl, {
-                //     headers: {
-                //         'Authorization': `Bearer ${bearerToken}`,
-                //         'Content-Type': 'application/json'
-                //     },
-                //     timeout: 30000 // 30 second timeout
-                // });
-                // response.data.uuid = "019a2e17-f011-7183-a3db-de2ef10aaebf";
-                // reportData = response;
+                reportData = await asic_report_data(createResponse.data.uuid);
+                reportData.data.uuid = createResponse.data.uuid;
             }  
 
             const { sequelize } = require('../config/db');
-            const [insertid] = await sequelize.query(`
+            const [iresult] = await sequelize.query(`
                      INSERT INTO Api_Data (
                          rtype, uuid, search_word, abn, 
                          acn, rdata, alert, created_at, updated_at
@@ -901,13 +1129,17 @@ async function createReport({ business, type }) {
                         false,
                     ]
                 });
+                console.log(iresult);
+                reportId = iresult[0].id;
         }
-        
-        return {
-            success: true,
-            existingReport: existingReport
-        };
-        
+        await addDownloadReportInDB(
+          reportData,
+          userId ,
+          matterId,
+          reportId,
+          `${uuidv4()}`,
+          type
+        )
     } catch (error) {
         console.error('Error creating report:', error);
         console.log("mital");
@@ -1185,6 +1417,8 @@ router.delete('/payment-methods/:id', authenticateSession, async (req, res) => {
 module.exports = {
     router,
     createReport,
-    checkExistingReportData
+    checkExistingReportData,
+    addDownloadReportInDB
+
 };
 
