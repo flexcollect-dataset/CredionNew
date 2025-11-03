@@ -418,7 +418,7 @@ const paymentRoutes = require('./routes/payment.routes');
 // Report Creation endpoint (without payment) - MUST be before API routes to avoid conflicts
 app.post('/api/create-report', async (req, res) => {
   try {
-    const { business, type, userId, matterId } = req.body;
+    const { business, type, userId, matterId, ispdfcreate } = req.body;
 
     if (!business || !type || !userId) {
       return res.status(400).json({
@@ -445,7 +445,8 @@ app.post('/api/create-report', async (req, res) => {
       business,
       type,
       userId,
-      matterId
+      matterId,
+      ispdfcreate
     });
 
     res.json({

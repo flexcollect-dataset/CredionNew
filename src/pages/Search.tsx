@@ -493,6 +493,9 @@ const Search: React.FC = () => {
     console.log("response", response);
   }
 
+  const handleReportsDownload = async () => {
+
+  }
   // Process reports handler
   const handleProcessReports = async () => {
     // Validation checks
@@ -626,10 +629,6 @@ const Search: React.FC = () => {
           reportType = reportItem.type.toLowerCase().replace(/\s+/g, '-');
         }
 
-        // Get matter ID if available
-        const currentMatterStr = localStorage.getItem('currentMatter');
-        const currentMatter = currentMatterStr ? JSON.parse(currentMatterStr) : null;
-
         // Create report data
         const reportData = {
           business: {
@@ -639,7 +638,8 @@ const Search: React.FC = () => {
           },
           type: reportType,
           userId: localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user") || '{}').userId : null,
-          matterId: localStorage.getItem('currentMatter') ? JSON.parse(localStorage.getItem('currentMatter') || '{}').matterId : null
+          matterId: localStorage.getItem('currentMatter') ? JSON.parse(localStorage.getItem('currentMatter') || '{}').matterId : null,
+		  ispdfcreate: true
         };
 
         console.log('Creating report with data:', reportData);
@@ -648,16 +648,15 @@ const Search: React.FC = () => {
         const reportResponse = await apiService.createReport(reportData);
         console.log('Report created:', reportResponse);
         
-        // createdReports.push({
-        //   type: reportType,
-        //   name: reportItem.name,
-        //   response: reportResponse
-        // });
+        createdReports.push({
+          reportResponse
+        });
       }
 
       // console.log('All reports created:', createdReports);
-      // setProccessReportStatus(true);
-      // setTotalDownloadReports(createdReports.length);
+      setProccessReportStatus(true);
+      setTotalDownloadReports(createdReports.length);
+	  //console.log(createdReports.);
       // if(createdReports && createdReports.length > 0 && createdReports[0]?.response?.report?.existingReport){
       //   const reportId = createdReports[0]?.response?.report?.existingReport?.id
       //   const userId = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user") || '{}').userId : null;
@@ -1179,7 +1178,7 @@ const Search: React.FC = () => {
                     <div className="reports-available">
                       Reports available: <span id="reportsCountOrg">{totalDownloadReport}</span>
                     </div>
-                    <button className="action-button send-button" id="downloadButtonOrg">Download</button>
+                    <button className="action-button send-button" id="downloadButtonOrg" onClick={handleReportsDownload}>Download</button>
                   </div>
                 </div>
               </div>

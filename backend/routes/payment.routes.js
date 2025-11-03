@@ -145,7 +145,8 @@ router.post('/get-report-data', async (req, res) => {
         // If exists: returns existing data
         // If not: fetches from API, stores, and returns data
         const business = { Abn: abn };
-        await createReport({ business, type });
+        ispdfcreate = false;
+        await createReport({ business, type, ispdfcreate});
         
         // Fetch the data (either existing or newly created)
         const data = await checkExistingReportData(abn, type);
@@ -563,15 +564,15 @@ async function asic_report_data(uuid) {
 }
 
 async function addDownloadReportInDB(rdata, userId, matterId, reportId, reportName, reportype ) {
-    console.log("]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]");
-     console.log(rdata);
-        console.log(userId);
-        console.log(matterId);
-        console.log(reportId);
-        console.log(reportName);
+    // console.log("]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]");
+    //  console.log(rdata);
+    //     console.log(userId);
+    //     console.log(matterId);
+    //     console.log(reportId);
+    //     console.log(reportName);
         
-        console.log(reportype);
-        console.log("]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]");
+    //     console.log(reportype);
+    //     console.log("]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]");
     let browser = null;
     if( reportype == "asic-current") {
       templateName = 'task10.html';        
@@ -760,58 +761,14 @@ async function addDownloadReportInDB(rdata, userId, matterId, reportId, reportNa
                         reportName: `${reportName}.pdf` || null,
                         isPaid: true
                     });
-    return {
-        success: true,
-        message: 'PDF generated and uploaded to S3 successfully',
-        filename: pdfFilename,
-        local: {
-            downloadUrl: `/media/${pdfFilename}`,
-            fullPath: outputPath
-        },
-        s3: {
-            key: s3UploadResult.key,
-            location: s3UploadResult.location,
-            etag: s3UploadResult.etag
-        },
-        fileInfo: {
-            totalPages: pageCount,
-            fileSize: `${(pdfBuffer.length / 1024 / 1024).toFixed(2)} MB`,
-            generatedAt: new Date().toISOString()
-        },
-        replacedVariables: {
-            company_type: reportype,
-            acn: rdata?.entity?.acn,
-            abn: rdata?.entity?.abn,
-            companyName: rdata?.entity?.name,
-            entity_abn: rdata?.entity?.abn,
-            entity_acn: rdata?.entity?.acn,
-            entity_name: rdata?.entity?.name,
-            entity_review_date: moment(rdata?.entity?.review_date).format('DD/MM/YYYY'),
-            entity_registered_in: rdata?.entity?.registered_in,
-            entity_abr_gst_status: rdata?.entity?.abr_gst_status,
-            entity_document_number: rdata?.entity?.document_number,
-            entity_organisation_type: rdata?.entity?.organisation_type,
-            entity_asic_date_of_registration: moment(rdata?.entity?.asic_date_of_registration).format('DD/MM/YYYY'),
-            current_date_and_time: moment().format('DD MMMM YYYY'),
-            current_tax_debt_amount: formattedAmount,
-            current_tax_debt_ato_updated_at: moment.utc(rdata?.current_tax_debt?.ato_updated_at).format('MMMM D, YYYY, [at] h:mm:ss A'),
-        }
-    };
+    return pdfFilename;
 }
 
 // Function to create report via external API
-async function createReport({ business, type, userId, matterId }) {
+async function createReport({ business, type, userId, matterId, ispdfcreate }) {
     try {
-        // Extract ABN from business data
-        console.log(`🔍 BUSINESS DATA DEBUG:`);
-        console.log(`   Full business object:`, JSON.stringify(business, null, 2));
-        
         const abn = business?.Abn;
         const acn = abn.substring(2);
-                console.log(acn)
-        console.log(`   Extracted ABN: "${abn}"`);
-        console.log(`   Report Type: "${type}"`);
-        
         if (!abn) {
             throw new Error('ABN not found in business data');
         }
@@ -1132,14 +1089,15 @@ async function createReport({ business, type, userId, matterId }) {
                 console.log(iresult);
                 reportId = iresult[0].id;
         }
-        await addDownloadReportInDB(
-          reportData,
-          userId ,
-          matterId,
-          reportId,
-          `${uuidv4()}`,
-          type
-        )
+        if(ispdfcreate) {
+            pdffilename = await addDownloadReportInDB( reportData, userId , matterId, reportId, `${uuidv4()}`, type );
+            return pdffilename;
+        }else {
+            return {
+                success: true
+            }
+        }
+        
     } catch (error) {
         console.error('Error creating report:', error);
         console.log("mital");
