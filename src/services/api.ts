@@ -345,6 +345,7 @@ class ApiService {
     type: string;
     userId: number;
     matterId?: number;
+    ispdfcreate: true;
   }) {
     return this.request<{
       success: boolean;
