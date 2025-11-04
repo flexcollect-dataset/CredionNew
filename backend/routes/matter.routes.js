@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
-const { Matter } = require('../models');
+const { Matter, UserReport } = require('../models');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
@@ -169,6 +169,67 @@ router.get('/list', authenticateToken, async (req, res) => {
     res.status(500).json({
       error: 'MATTER_LIST_FAILED',
       message: error.message || 'Failed to get matters'
+    });
+  }
+});
+
+// Get reports for a specific matter (must be before /:matterId route)
+router.get('/:matterId/reports', authenticateToken, async (req, res) => {
+  try {
+    const { matterId } = req.params;
+    const userId = req.userId;
+
+    // Verify matter belongs to user
+    const matter = await Matter.findOne({
+      where: { 
+        matterId: matterId,
+        userId: userId 
+      }
+    });
+
+    if (!matter) {
+      return res.status(404).json({
+        error: 'MATTER_NOT_FOUND',
+        message: 'Matter not found'
+      });
+    }
+
+    // Get all reports for this matter and user
+    const reports = await UserReport.findAll({
+      where: {
+        matterId: matterId,
+        userId: userId
+      },
+      order: [['created_at', 'DESC']],
+      attributes: ['id', 'reportName', 'isPaid', 'reportId', 'createdAt', 'updatedAt']
+    });
+
+    // Generate S3 URLs for each report
+    const BUCKET_NAME = process.env.AWS_BUCKET_NAME;
+    const AWS_REGION = process.env.AWS_REGION;
+    
+    const reportsWithUrls = reports.map(report => ({
+      id: report.id,
+      reportName: report.reportName,
+      isPaid: report.isPaid,
+      reportId: report.reportId,
+      createdAt: report.createdAt,
+      updatedAt: report.updatedAt,
+      downloadUrl: BUCKET_NAME && AWS_REGION 
+        ? `https://${BUCKET_NAME}.s3.${AWS_REGION}.amazonaws.com/${report.reportName}`
+        : `/media/${report.reportName}`
+    }));
+
+    res.json({
+      success: true,
+      reports: reportsWithUrls
+    });
+
+  } catch (error) {
+    console.error('Error getting matter reports:', error);
+    res.status(500).json({
+      error: 'REPORTS_GET_FAILED',
+      message: error.message || 'Failed to get reports'
     });
   }
 });

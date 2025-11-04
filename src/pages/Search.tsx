@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { v4 as uuidv4 } from 'uuid';
 import { apiService } from '../services/api';
 
 type CategoryType = 'ORGANISATION' | 'INDIVIDUAL' | 'LAND TITLE';
@@ -58,6 +57,7 @@ const Search: React.FC = () => {
   // download report
   const [proccessReportStatus, setProccessReportStatus] = useState(false);
   const [totalDownloadReport, setTotalDownloadReports] = useState(0);
+  const [pdfFilenames, setPdfFilenames] = useState<string[]>([]);
 
   const categories: CategoryType[] = ['ORGANISATION', 'INDIVIDUAL', 'LAND TITLE'];
   const asicTypes: AsicType[] = ['SELECT ALL', 'CURRENT', 'CURRENT/HISTORICAL', 'COMPANY'];
@@ -488,13 +488,54 @@ const Search: React.FC = () => {
     setSelectedAdditionalSearches(newSelected);
   };
 
-  const addDownloadReportInDB = async (payload: any) => {
-    const response = await apiService.addReportDownloadInPdf(payload);
-    console.log("response", response);
-  }
+  // const addDownloadReportInDB = async (payload: any) => {
+  //   const response = await apiService.addReportDownloadInPdf(payload);
+  //   console.log("response", response);
+  // }
 
   const handleReportsDownload = async () => {
+    if (pdfFilenames.length === 0) {
+      alert('No reports available for download');
+      return;
+    }
 
+    try {
+      // Get S3 configuration from environment or use local media path
+      const BUCKET_NAME = import.meta.env.VITE_AWS_BUCKET_NAME;
+      const AWS_REGION = import.meta.env.VITE_AWS_REGION;
+      
+        console.log(BUCKET_NAME);
+        console.log(AWS_REGION);
+      // Download each PDF
+      for (const filename of pdfFilenames) {
+        let downloadUrl: string;
+        console.log(filename);
+        console.log(BUCKET_NAME);
+        console.log(AWS_REGION);
+        //if (BUCKET_NAME && AWS_REGION) {
+          // Use S3 URL
+          downloadUrl = `https://credion-reports.s3.ap-southeast-2.amazonaws.com/${filename}`;
+          console.log(downloadUrl);
+        //}
+        
+        // Create a temporary anchor element to trigger download
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Small delay between downloads to avoid browser blocking
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      alert(`Downloaded ${pdfFilenames.length} report(s) successfully!`);
+    } catch (error: any) {
+      console.error('Error downloading reports:', error);
+      alert(`Error downloading reports: ${error?.message || 'Unknown error'}`);
+    }
   }
   // Process reports handler
   const handleProcessReports = async () => {
@@ -516,6 +557,8 @@ const Search: React.FC = () => {
 
     console.log('Processing reports...');
     setIsProcessingReports(true);
+    // Reset PDF filenames array for new batch
+    setPdfFilenames([]);
     
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -576,10 +619,10 @@ const Search: React.FC = () => {
 
       // Process each report
       const createdReports = [];
-      let company_type = 'N/A';
+      //let company_type = 'N/A';
       for (const reportItem of reportsToCreate) {
         console.log('Processing report:', reportItem);
-        company_type = reportItem.type
+        //company_type = reportItem.type
         
         // Map report display name to API type
         let reportType = '';
@@ -630,16 +673,19 @@ const Search: React.FC = () => {
         }
 
         // Create report data
+        const user = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user") || '{}') : null;
+        const currentMatter = localStorage.getItem('currentMatter') ? JSON.parse(localStorage.getItem('currentMatter') || '{}') : null;
+        
         const reportData = {
           business: {
             Abn: abn,
             Name: companyName || 'Unknown',
-            isCompany: selectedCategory
+            isCompany: selectedCategory as string
           },
           type: reportType,
-          userId: localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user") || '{}').userId : null,
-          matterId: localStorage.getItem('currentMatter') ? JSON.parse(localStorage.getItem('currentMatter') || '{}').matterId : null,
-		  ispdfcreate: true
+          userId: user?.userId || 0,
+          matterId: currentMatter?.matterId,
+          ispdfcreate: true as const
         };
 
         console.log('Creating report with data:', reportData);
@@ -648,15 +694,35 @@ const Search: React.FC = () => {
         const reportResponse = await apiService.createReport(reportData);
         console.log('Report created:', reportResponse);
         
+        // Extract PDF filename from response
+        // The response always has the filename in the 'report' property and always ends with .pdf
+        const pdfFilename = reportResponse?.report;
+        
+        if (pdfFilename && typeof pdfFilename === 'string') {
+          // Add PDF filename to the array
+          setPdfFilenames(prev => [...prev, pdfFilename]);
+        }
+        
         createdReports.push({
-          reportResponse
+          reportResponse,
+          pdfFilename: pdfFilename || undefined
         });
       }
 
       // console.log('All reports created:', createdReports);
       setProccessReportStatus(true);
       setTotalDownloadReports(createdReports.length);
-	  //console.log(createdReports.);
+      
+      // Ensure PDF filenames are set (they should already be set in the loop)
+      const collectedFilenames = createdReports
+        .map(r => r.pdfFilename)
+        .filter(f => f); // Filter out undefined/null values
+      
+      if (collectedFilenames.length > 0) {
+        setPdfFilenames(collectedFilenames);
+      }
+
+	    //console.log(createdReports.);
       // if(createdReports && createdReports.length > 0 && createdReports[0]?.response?.report?.existingReport){
       //   const reportId = createdReports[0]?.response?.report?.existingReport?.id
       //   const userId = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user") || '{}').userId : null;

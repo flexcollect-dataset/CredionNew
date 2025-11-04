@@ -165,6 +165,10 @@ class ApiService {
     return this.request<{ success: boolean; matter: any }>(`/api/matters/${matterId}`);
   }
 
+  async getMatterReports(matterId: number) {
+    return this.request<{ success: boolean; reports: any[] }>(`/api/matters/${matterId}/reports`);
+  }
+
   async updateMatter(matterId: number, data: { matterName?: string; description?: string; status?: string }) {
     return this.request<{ success: boolean; message: string; matter: any }>(`/api/matters/${matterId}`, {
       method: 'PUT',

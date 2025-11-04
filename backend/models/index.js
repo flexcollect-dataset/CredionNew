@@ -5,6 +5,7 @@ const PasswordResetToken = require('./PasswordResetToken');
 const UserPaymentMethod = require('./UserPaymentMethod');
 const Matter = require('./Matter');
 const ApiData = require('./ApiData');
+const UserReport = require('./UserReport');
 
 // Define associations
 User.hasMany(UserPaymentMethod, { 
@@ -29,5 +30,6 @@ module.exports = {
     PasswordResetToken,
     UserPaymentMethod,
     Matter,
-    ApiData
+    ApiData,
+    UserReport
 };

@@ -512,7 +512,7 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
                 response.data.ppsrCloudId = auSearchIdentifier;
                 //console.log('✅ PPSR API Response:', response.data);
                 let reportData = response;
-            } else if ( type = "director-bankruptcy" ){
+            } else if ( type == "director-bankruptcy" ){
                 const apiUrl = 'https://services.afsa.gov.au/brs/api/v2/search-by-name';
                 const bearerToken = 'eyJraWQiOiIwRDRXdDh3UiIsImFsZyI6IlJTMjU2IiwidHlwIjoiSldUIn0.eyJpc3MiOiJBdXN0cmFsaWFuIEZpbmFuY2lhbCBTZWN1cml0eSBBdXRob3JpdHkiLCJpYXQiOjE3NjIwNDYzNjQsInN1YiI6IjY3ODY4IiwidXNyIjoiOGQyZTIxMWEtODhkNS00NDZmLWIzNTUtNmIxMGE4Mjc4ZTNmIiwiYXBwIjoiQ1JFRElUT1JfUFJBQ1RJVElPTkVSIiwiZW1sIjpudWxsLCJpbnQiOmZhbHNlLCJjaGEiOiJBUElfS0VZIiwiZ24iOm51bGwsInNuIjoiOGQyZTIxMWEiLCJtZmEiOnRydWUsImV4cCI6MTc2MjA0ODE2NH0.jmjek8ph0AWJ7AWNJLefhw02e9-CDZy-Y6eShwNUqOzYQMB0bsUruRkUmTdTsCvIy27IWNmE-Tm7AttDyJoW551_1A1hMbvdtzG88kQbVyoumeHCniRbvc2-IZxNEgaaNkOQTdc7Lq7RTLcMfj8H694KGSLwzLzR8hnPiQIbz12eC4gsazxgdgBNvSg4ugxAk4xRLFvJ_liSEi-17tmfJiHnFbUBi6YA1mjWKU_p-q266BCm3pp4uDbu0qo5RILyPoNVBaoiVcEpLSuRoOGXUQk07IyR2A7lehnRHmsLM7WFHTN6H2AOqGKdL09044xuNViauEP4aschOCCoW1MdRPj9pWVS0LyVPc1oo8qzeJJ0oxeJuAz1Z40ZQoo-8JTDb0_XM6WwYu8p17LSSdq2aBMBcP9hzwyMXBn8N0WVOAtJ4O_HbVXuOe0lYGUa5E0xq1lZiawrrdPSW0TPNpbMuFaBl4SaaSGmwt4sk54_u0b3Il1yCjeTk0df_QZwj6jK';
                 const params = {
@@ -531,7 +531,7 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
                 // console.log('Report creation API response:', createResponse.data);
                 response.data.uuid = response.data.insolvencySearchId;
                 reportData = response;
-            } else if ( type = "director-related" ){
+            } else if ( type == "director-related" ){
                 const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
                 const bapiURL = 'https://alares.com.au/api/asic/search'
                 const bparams = {
