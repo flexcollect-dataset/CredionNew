@@ -361,6 +361,24 @@ class ApiService {
     });
   }
 
+  // Send reports via email
+  async sendReports(email: string, pdfFilenames: string[], matterName?: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      reportsSent: number;
+      messageId: string;
+      recipient: string;
+    }>('/api/send-reports', {
+      method: 'POST',
+      body: JSON.stringify({
+        email,
+        pdfFilenames,
+        matterName
+      })
+    });
+  }
+
 }
 
 export const apiService = new ApiService();

@@ -468,6 +468,55 @@ app.post('/api/create-report', async (req, res) => {
 app.use('/api/payment', paymentRoutes.router);
 app.use('/api', paymentRoutes.router); // Mount at /api for check-data endpoint
 
+// Email Service
+const emailService = require('./services/email.service');
+
+// Send Reports via Email endpoint
+app.post('/api/send-reports', async (req, res) => {
+  try {
+    const { email, pdfFilenames, matterName } = req.body;
+
+    if (!email || !pdfFilenames || !Array.isArray(pdfFilenames) || pdfFilenames.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'MISSING_PARAMETERS',
+        message: 'Email and PDF filenames array are required'
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_EMAIL',
+        message: 'Please provide a valid email address'
+      });
+    }
+
+    console.log(`📧 Email request received: ${email}, ${pdfFilenames.length} report(s)`);
+
+    // Send reports via email
+    const result = await emailService.sendReports(email, pdfFilenames, matterName || 'Matter');
+
+    res.json({
+      success: true,
+      message: `Reports sent successfully to ${email}`,
+      reportsSent: result.reportsSent,
+      messageId: result.messageId,
+      recipient: result.recipient
+    });
+
+  } catch (error) {
+    console.error('Error sending reports:', error);
+    res.status(500).json({
+      success: false,
+      error: 'EMAIL_SENDING_FAILED',
+      message: error.message || 'Failed to send reports'
+    });
+  }
+});
+
 // General API Routes
 const apiRoutes = require('./routes/api.routes');
 app.use('/api', apiRoutes);

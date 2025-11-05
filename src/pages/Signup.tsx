@@ -40,12 +40,15 @@ const Signup = () => {
     }
     
     try {
+      // Sanitize mobile number - remove all non-digit characters
+      const sanitizedMobile = formData.mobile.replace(/\D/g, '');
+      
       const signupData: SignupRequest = {
         email: formData.email,
         password: formData.password,
         firstName: formData.firstName,
         lastName: formData.lastName,
-        mobileNumber: formData.mobile,
+        mobileNumber: sanitizedMobile,
         currentPlan: formData.plan as 'Monthly' | 'Pay as you go'
       };
 

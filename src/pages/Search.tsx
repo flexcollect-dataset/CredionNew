@@ -38,6 +38,10 @@ const Search: React.FC = () => {
   const [selectedAdditionalSearches, setSelectedAdditionalSearches] = useState<Set<AdditionalSearchType>>(new Set());
   const [companyDetails, setCompanyDetails] = useState({ directors: 0, pastDirectors: 0, shareholders: 0 });
   const [isProcessingReports, setIsProcessingReports] = useState(false);
+  // Company confirmation state
+  const [pendingCompany, setPendingCompany] = useState<{ name: string; abn: string } | null>(null);
+  const [isCompanyConfirmed, setIsCompanyConfirmed] = useState(false);
+  const [isConfirmingCompany, setIsConfirmingCompany] = useState(false);
   // Individual search details
   const [individualFirstName, setIndividualFirstName] = useState('');
   const [individualLastName, setIndividualLastName] = useState('');
@@ -58,6 +62,11 @@ const Search: React.FC = () => {
   const [proccessReportStatus, setProccessReportStatus] = useState(false);
   const [totalDownloadReport, setTotalDownloadReports] = useState(0);
   const [pdfFilenames, setPdfFilenames] = useState<string[]>([]);
+  
+  // email sending state
+  const [emailAddress, setEmailAddress] = useState('');
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
 
   const categories: CategoryType[] = ['ORGANISATION', 'INDIVIDUAL', 'LAND TITLE'];
   const asicTypes: AsicType[] = ['SELECT ALL', 'CURRENT', 'CURRENT/HISTORICAL', 'COMPANY'];
@@ -377,14 +386,58 @@ const Search: React.FC = () => {
     setOrganisationSearchTerm(displayText);
     setShowSuggestions(false);
     setSuggestions([]);
-    setHasSelectedCompany(true); // Show additional searches section
     
-    // Check data availability and extract company details
+    // Store pending company for confirmation
     if (suggestion.Abn) {
+      setPendingCompany({
+        name: suggestion.Name || 'Unknown',
+        abn: suggestion.Abn
+      });
+      setIsCompanyConfirmed(false);
+    }
+  };
+
+  // Handle company confirmation - call createReport with type "asic-current"
+  const handleConfirmCompany = async () => {
+    if (!pendingCompany) return;
+    
+    setIsConfirmingCompany(true);
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      if (!user.userId) {
+        alert('Please log in to continue');
+        return;
+      }
+
+      const currentMatter = localStorage.getItem('currentMatter') 
+        ? JSON.parse(localStorage.getItem('currentMatter') || '{}') 
+        : null;
+
+      const reportData = {
+        business: {
+          Abn: pendingCompany.abn,
+          Name: pendingCompany.name,
+          isCompany: 'ORGANISATION'
+        },
+        type: 'asic-current',
+        userId: user.userId,
+        matterId: currentMatter?.matterId,
+        ispdfcreate: true as const
+      };
+
+      console.log('Creating report with data:', reportData);
+      const reportResponse = await apiService.createReport(reportData);
+      console.log('Report created:', reportResponse);
+
+      // Mark as confirmed and show additional searches section
+      setIsCompanyConfirmed(true);
+      setHasSelectedCompany(true);
+      
+      // Check data availability and extract company details
       setCheckingData(true);
       setDataAvailable(null);
       try {
-        const result = await apiService.checkDataAvailability(suggestion.Abn, 'asic-current');
+        const result = await apiService.checkDataAvailability(pendingCompany.abn, 'asic-current');
         setDataAvailable(result.available);
         
         // Extract company details from rdata if available
@@ -403,7 +456,7 @@ const Search: React.FC = () => {
               shareholders: shareholders
             });
           }
-          } else {
+        } else {
           // Reset to 0 if no data available
           setCompanyDetails({ directors: 0, pastDirectors: 0, shareholders: 0 });
         }
@@ -414,7 +467,27 @@ const Search: React.FC = () => {
       } finally {
         setCheckingData(false);
       }
+    } catch (error) {
+      console.error('Error creating report:', error);
+      alert('Failed to create report. Please try again.');
+    } finally {
+      setIsConfirmingCompany(false);
     }
+  };
+
+  // Handle changing company selection
+  const handleChangeCompany = () => {
+    setPendingCompany(null);
+    setIsCompanyConfirmed(false);
+    setHasSelectedCompany(false);
+    setOrganisationSearchTerm('');
+    setShowSuggestions(false);
+    setSuggestions([]);
+    hasSelectedRef.current = false;
+    setSelectedAdditionalSearches(new Set());
+    setDataAvailable(null);
+    setCheckingData(false);
+    setCompanyDetails({ directors: 0, pastDirectors: 0, shareholders: 0 });
   };
 
   // Clear selections when category changes
@@ -431,6 +504,8 @@ const Search: React.FC = () => {
     setDataAvailable(null);
     setCheckingData(false);
     setCompanyDetails({ directors: 0, pastDirectors: 0, shareholders: 0 });
+    setPendingCompany(null);
+    setIsCompanyConfirmed(false);
     
     // Clear individual details
     setIndividualFirstName('');
@@ -452,6 +527,15 @@ const Search: React.FC = () => {
         newSelected.delete(asicType);
         newSelected.delete('SELECT ALL');
         } else {
+        // If selecting "CURRENT/HISTORICAL", deselect "CURRENT" since it's already included
+        if (asicType === 'CURRENT/HISTORICAL' && newSelected.has('CURRENT')) {
+          newSelected.delete('CURRENT');
+        }
+        // If selecting "CURRENT" when "CURRENT/HISTORICAL" is already selected, deselect "CURRENT/HISTORICAL"
+        if (asicType === 'CURRENT' && newSelected.has('CURRENT/HISTORICAL')) {
+          newSelected.delete('CURRENT/HISTORICAL');
+        }
+        
         newSelected.add(asicType);
         const allIndividualSelected = asicTypes.filter(t => t !== 'SELECT ALL').every(t => newSelected.has(t) || t === asicType);
         if (allIndividualSelected) {
@@ -492,6 +576,53 @@ const Search: React.FC = () => {
   //   const response = await apiService.addReportDownloadInPdf(payload);
   //   console.log("response", response);
   // }
+
+  const handleSendEmail = async () => {
+    if (!emailAddress.trim()) {
+      alert('Please enter an email address');
+      return;
+    }
+
+    if (pdfFilenames.length === 0) {
+      alert('No reports available to send');
+      return;
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailAddress.trim())) {
+      alert('Please enter a valid email address');
+      return;
+    }
+
+    setIsSendingEmail(true);
+    setEmailSent(false);
+
+    try {
+      const currentMatter = localStorage.getItem('currentMatter')
+        ? JSON.parse(localStorage.getItem('currentMatter') || '{}')
+        : null;
+
+      const response = await apiService.sendReports(
+        emailAddress.trim(),
+        pdfFilenames,
+        currentMatter?.matterName || 'Matter'
+      );
+
+      if (response.success) {
+        setEmailSent(true);
+        alert(`Reports sent successfully to ${emailAddress.trim()}!`);
+        setEmailAddress(''); // Clear email field
+      } else {
+        alert('Failed to send reports. Please try again.');
+      }
+    } catch (error: any) {
+      console.error('Error sending email:', error);
+      alert(error.message || 'Failed to send reports. Please try again.');
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
 
   const handleReportsDownload = async () => {
     if (pdfFilenames.length === 0) {
@@ -540,8 +671,8 @@ const Search: React.FC = () => {
   // Process reports handler
   const handleProcessReports = async () => {
     // Validation checks
-    if (selectedCategory === 'ORGANISATION' && !hasSelectedCompany) {
-      alert('Please select an organization first');
+    if (selectedCategory === 'ORGANISATION' && !isCompanyConfirmed) {
+      alert('Please select and confirm a company first');
       return;
     }
 
@@ -549,6 +680,12 @@ const Search: React.FC = () => {
     const hasMainSearches = Array.from(selectedSearches).some(s => s !== 'SELECT ALL');
     const hasAdditionalSearches = Array.from(selectedAdditionalSearches).some(s => s !== 'SELECT ALL');
     const hasAsicTypes = Array.from(selectedAsicTypes).some(t => t !== 'SELECT ALL');
+    
+    // Validation: If ASIC is selected, ASIC type must be selected
+    if (selectedSearches.has('ASIC') && !hasAsicTypes) {
+      alert('Please select an ASIC type (Current, Current/Historical, or Company) when ASIC is selected');
+      return;
+    }
     
     if (!hasMainSearches && !hasAdditionalSearches && !hasAsicTypes) {
       alert('Please select at least one search option');
@@ -722,22 +859,6 @@ const Search: React.FC = () => {
         setPdfFilenames(collectedFilenames);
       }
 
-	    //console.log(createdReports.);
-      // if(createdReports && createdReports.length > 0 && createdReports[0]?.response?.report?.existingReport){
-      //   const reportId = createdReports[0]?.response?.report?.existingReport?.id
-      //   const userId = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user") || '{}').userId : null;
-      //   const matterId = localStorage.getItem('currentMatter') ? JSON.parse(localStorage.getItem('currentMatter') || '{}').matterId : null;
-      //   await addDownloadReportInDB({
-      //     ...createdReports[0]?.response?.report?.existingReport, company_type: company_type,
-      //     userId: userId || null,
-      //     matterId: matterId || null,
-      //     reportId: reportId || null,
-      //     reportName: `${uuidv4()}`,
-      //     reportype: createdReports[0].type
-
-      //   })
-      // }
-      // alert(`${createdReports.length} report(s) created successfully!`);
       
     } catch (error: any) {
       console.error('Error processing reports:', error);
@@ -949,7 +1070,13 @@ const Search: React.FC = () => {
                       className="block w-full px-4 py-3 border-2 border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 text-base transition-all duration-200"
                       placeholder="Type to search..."
                       value={organisationSearchTerm}
-                      onChange={(e) => setOrganisationSearchTerm(e.target.value)}
+                      onChange={(e) => {
+                        setOrganisationSearchTerm(e.target.value);
+                        // Clear pending company if user starts typing
+                        if (pendingCompany && !isCompanyConfirmed) {
+                          setPendingCompany(null);
+                        }
+                      }}
                     onFocus={() => {
                         hasSelectedRef.current = false; // Reset flag when field is focused
                         if (organisationSearchTerm.trim().length >= 2 && suggestions.length > 0) {
@@ -961,15 +1088,7 @@ const Search: React.FC = () => {
                   <button
                         type="button"
                     onClick={() => {
-                          setOrganisationSearchTerm('');
-                          setShowSuggestions(false);
-                          setSuggestions([]);
-                          hasSelectedRef.current = false;
-                          setHasSelectedCompany(false);
-                          setSelectedAdditionalSearches(new Set());
-                          setDataAvailable(null);
-                          setCheckingData(false);
-                          setCompanyDetails({ directors: 0, pastDirectors: 0, shareholders: 0 });
+                          handleChangeCompany();
                         }}
                         className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-red-600 focus:outline-none transition-colors duration-200"
                         aria-label="Clear search"
@@ -1014,37 +1133,87 @@ const Search: React.FC = () => {
                           ))
                 )}
                     </div>
-                  )}
-                </div>
-                
-                {/* Data Availability Status */}
-                {hasSelectedCompany && (
-                  <div className="mt-6">
-                    {checkingData ? (
-                      <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
-                        <p className="text-sm font-semibold text-blue-800">
-                          Checking data availability...
-                        </p>
-              </div>
-                    ) : dataAvailable !== null && (
-                      <div className={`border-l-4 p-4 rounded ${
-                        dataAvailable 
-                          ? 'bg-green-50 border-green-500' 
-                          : 'bg-yellow-50 border-yellow-500'
-                      }`}>
-                        <p className={`text-sm font-semibold ${
-                          dataAvailable 
-                            ? 'text-green-800' 
-                            : 'text-yellow-800'
-                        }`}>
-                          {dataAvailable 
-                            ? '✅ ASIC Current data is AVAILABLE' 
-                            : '⚠️ ASIC Current data is NOT AVAILABLE'}
-                        </p>
-            </div>
                     )}
                 </div>
-              )}
+                
+                {/* Company Confirmation Section */}
+                {pendingCompany && !isCompanyConfirmed && (
+                  <div className="mt-6 bg-blue-50 border-2 border-blue-200 rounded-xl p-6 shadow-md">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Selected Company</h3>
+                        <div className="space-y-1">
+                          <p className="text-base font-medium text-gray-800">
+                            <span className="font-bold">Company:</span> {pendingCompany.name}
+                          </p>
+                          <p className="text-base font-medium text-gray-800">
+                            <span className="font-bold">ABN:</span> {pendingCompany.abn}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3 ml-4">
+                        <button
+                          type="button"
+                          onClick={handleChangeCompany}
+                          className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors duration-200"
+                        >
+                          Change
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleConfirmCompany}
+                          disabled={isConfirmingCompany}
+                          className="px-6 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                        >
+                          {isConfirmingCompany ? (
+                            <span className="flex items-center">
+                              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              Confirming...
+                            </span>
+                          ) : (
+                            'Confirm'
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Confirmed Company Display */}
+                {isCompanyConfirmed && pendingCompany && (
+                  <div className="mt-6 bg-green-50 border-2 border-green-200 rounded-xl p-6 shadow-md">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <svg className="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <h3 className="text-lg font-semibold text-gray-900">Company Confirmed</h3>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-base font-medium text-gray-800">
+                            <span className="font-bold">Company:</span> {pendingCompany.name}
+                          </p>
+                          <p className="text-base font-medium text-gray-800">
+                            <span className="font-bold">ABN:</span> {pendingCompany.abn}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleChangeCompany}
+                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors duration-200"
+                      >
+                        Change Company
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
+
                 </div>
                 </div>
                 </div>
@@ -1236,8 +1405,36 @@ const Search: React.FC = () => {
                 <div className="payment-actions" id="paymentActionsOrg">
                   <div className="action-box">
                     <h3>Send Reports via Email</h3>
-                    <input type="email" className="email-input" id="emailInputOrg" placeholder="Enter your email address" />
-                    <button className="action-button send-button" id="sendButtonOrg">Send</button>
+                    <input 
+                      type="email" 
+                      className="email-input" 
+                      id="emailInputOrg" 
+                      placeholder="Enter your email address"
+                      value={emailAddress}
+                      onChange={(e) => {
+                        setEmailAddress(e.target.value);
+                        setEmailSent(false); // Reset success state when user types
+                      }}
+                      disabled={isSendingEmail}
+                    />
+                    {emailSent && (
+                      <div style={{ 
+                        color: '#10b981', 
+                        fontSize: '12px', 
+                        marginTop: '8px',
+                        fontWeight: 'bold'
+                      }}>
+                        ✓ Email sent successfully!
+                      </div>
+                    )}
+                    <button 
+                      className="action-button send-button" 
+                      id="sendButtonOrg"
+                      onClick={handleSendEmail}
+                      disabled={isSendingEmail || pdfFilenames.length === 0}
+                    >
+                      {isSendingEmail ? 'Sending...' : 'Send'}
+                    </button>
                   </div>
                   <div className="action-box">
                     <h3>Download Report</h3>

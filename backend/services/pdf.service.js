@@ -1863,8 +1863,9 @@ function extractPpsrData(data) {
     if (partyIndex >= 4) break; // Limit to 4 parties on page 2
     
     const assetCount = info.total;
+    const hasVehicles = motorVehicles.filter(r => r.securedPartySummary === partyName).length > 0;
     const assetText = assetCount === 1 ? 'All Company Assets' : 
-                     motorVehicles.filter(r => r.securedPartySummary === partyName).length > 0 
+                     hasVehicles 
                        ? `${motorVehicles.filter(r => r.securedPartySummary === partyName).length} Vehicles`
                        : `${assetCount} Assets`;
     
@@ -1872,10 +1873,12 @@ function extractPpsrData(data) {
       ? 'CRITICAL' 
       : 'HIGH';
     
+    const typeLabel = hasVehicles ? 'Vehicle Finance' : 'General Security';
+    
     securedPartiesRows += `
                 <div class="data-grid" style="grid-template-columns: 2fr 1.5fr 1fr 1fr; gap: 12px;">
                     <div class="data-value">${partyName}</div>
-                    <div class="data-value">${collateralType === 'Motor Vehicle' ? 'Vehicle Finance' : 'General Security'}</div>
+                    <div class="data-value">${typeLabel}</div>
                     <div class="data-value">${assetText}</div>
                     <div><span class="badge ${priority.toLowerCase()}">${priority}</span></div>
                 </div>
@@ -1940,6 +1943,10 @@ function extractPpsrData(data) {
     vehicleExpiryTimeline += `• <strong>${year}:</strong> ${vehicleExpiryGroups[year]} vehicles<br>`;
   });
   
+  // Calculate total pages: 3 base pages + registration pages (max 7) + 2 (glossary + document info) = max 12
+  const numRegistrationPages = Math.min(registrations.length, 7);
+  const totalPages = 3 + numRegistrationPages + 2; // Always include Pages 11 and 12
+  
   // Generate registration detail pages HTML (one page per registration, starting from page 4)
   let registrationPagesHtml = '';
   registrations.slice(0, 7).forEach((reg, index) => { // Limit to 7 registrations (pages 4-10)
@@ -1989,7 +1996,6 @@ function extractPpsrData(data) {
     const vehicleDescription = reg.vehicleDescriptiveText || 'Unknown/Unknown/Unknown';
     
     const pageNum = 4 + index; // Pages start at 4
-    const totalPages = registrations.length > 7 ? Math.min(12, 4 + registrations.length) : 12;
     
     registrationPagesHtml += `
         <!-- PAGE ${pageNum}: REGISTRATION #${regNum} -->
@@ -2129,14 +2135,143 @@ function extractPpsrData(data) {
   
   let securedPartyContactsRows = '';
   uniqueSecuredParties.forEach(party => {
+    const faxDisplay = party.fax !== '-' ? `Fax: ${party.fax}` : '-';
     securedPartyContactsRows += `
                 <div class="data-grid" style="grid-template-columns: 2fr 2fr 1.5fr; gap: 12px; margin-bottom: 12px;">
                     <div class="data-value">${party.name}</div>
-                    <div class="data-value" style="font-size: 10px;">${party.email}</div>
-                    <div class="data-value">${party.fax !== '-' ? party.fax : '-'}</div>
+                    <div class="data-value" style="font-size: ${party.email.length > 30 ? '9px' : '10px'};">${party.email}</div>
+                    <div class="data-value" style="font-size: ${faxDisplay.length > 15 ? '9px' : '10px'};">${faxDisplay}</div>
                 </div>
     `;
   });
+  
+  // Generate Page 11 - Glossary & Contacts
+  const glossaryPageHtml = `
+        <!-- PAGE 11: GLOSSARY & CONTACTS -->
+        <div class="page">
+            <div class="brand-header">
+                <div class="logo"><img src="data:image/webp;base64,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" alt="Credion"></div>
+                <div class="doc-id">${searchNumber}</div>
+            </div>
+            
+            <div class="page-title" style="font-size: 18px; margin-bottom: 16px;">Glossary of Terms</div>
+            
+            <div class="card info" style="margin-bottom: 10px;">
+                <div class="data-label" style="margin-bottom: 6px;">PPSR - Personal Property Securities Register</div>
+                <div class="text-sm">A national online register of security interests in personal property in Australia</div>
+            </div>
+            
+            <div class="card info" style="margin-bottom: 10px;">
+                <div class="data-label" style="margin-bottom: 6px;">PMSI - Purchase Money Security Interest</div>
+                <div class="text-sm">A special type of security where the lender financed the specific purchase of the asset</div>
+            </div>
+            
+            <div class="card info" style="margin-bottom: 10px;">
+                <div class="data-label" style="margin-bottom: 6px;">Grantor</div>
+                <div class="text-sm">The party granting the security interest (${entityName || 'N/A'})</div>
+            </div>
+            
+            <div class="card info" style="margin-bottom: 10px;">
+                <div class="data-label" style="margin-bottom: 6px;">Secured Party</div>
+                <div class="text-sm">The lender or financier holding the security interest</div>
+            </div>
+            
+            <div class="card info" style="margin-bottom: 10px;">
+                <div class="data-label" style="margin-bottom: 6px;">Collateral</div>
+                <div class="text-sm">The property securing the debt</div>
+            </div>
+            
+            <div class="card info" style="margin-bottom: 10px;">
+                <div class="data-label" style="margin-bottom: 6px;">After-Acquired Property</div>
+                <div class="text-sm">Property obtained after the security agreement, but still covered by it</div>
+            </div>
+            
+            <div class="card info" style="margin-bottom: 10px;">
+                <div class="data-label" style="margin-bottom: 6px;">Proceeds</div>
+                <div class="text-sm">What's received when collateral is sold, including insurance payouts</div>
+            </div>
+            
+            <div class="section-title" style="margin-top: 24px;">Secured Party Contacts</div>
+            
+            <div class="card" style="border: 2px solid #E2E8F0;">
+                <div class="data-grid" style="grid-template-columns: 2fr 2fr 1.5fr; gap: 12px;">
+                    <div class="data-label">Institution</div>
+                    <div class="data-label">Email</div>
+                    <div class="data-label">Phone / Fax</div>
+                </div>
+                <div class="divider" style="margin: 12px 0;"></div>
+                ${securedPartyContactsRows || '<div class="data-value" style="text-align: center; color: #64748B; font-style: italic; grid-column: 1 / -1;">No secured party contacts available</div>'}
+            </div>
+            
+            <div class="page-number">Page 11 of ${totalPages}</div>
+        </div>
+  `;
+  
+  // Generate Page 12 - Document Information
+  const documentInfoPageHtml = `
+        <!-- PAGE 12: DOCUMENT INFORMATION -->
+        <div class="page">
+            <div class="brand-header">
+                <div class="logo"><img src="data:image/webp;base64,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" alt="Credion"></div>
+                <div class="doc-id">${searchNumber}</div>
+            </div>
+            
+            <div class="page-title">Document Information</div>
+            
+            <div class="card primary">
+                <div class="card-header">SEARCH DETAILS</div>
+                <div class="data-grid" style="grid-template-columns: repeat(2, 1fr);">
+                    <div class="data-item">
+                        <div class="data-label">Source</div>
+                        <div class="data-value">Australian Financial Security Authority (AFSA)</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Register</div>
+                        <div class="data-value">Personal Property Securities Register (PPSR)</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Search Number</div>
+                        <div class="data-value">${searchNumber}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Search Performed</div>
+                        <div class="data-value">${searchDateTime} (Canberra Time)</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="section-title" style="margin-top: 30px;">Contact PPSR</div>
+            
+            <div class="card" style="border: 2px solid #CBD5E1;">
+                <div class="data-grid" style="grid-template-columns: 1fr;">
+                    <div class="data-item">
+                        <div class="data-label">Email</div>
+                        <div class="data-value">enquiries@ppsr.gov.au</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Phone</div>
+                        <div class="data-value">1300 00 77 77</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Website</div>
+                        <div class="data-value">www.ppsr.gov.au</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Mail</div>
+                        <div class="data-value">GPO Box 1944, Adelaide SA 5001</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card warning" style="margin-top: 30px;">
+                <div class="text-sm" style="line-height: 1.8;">
+                    <strong>Important Notice:</strong> This report is based on PPSR data current as at the search date. Security interests may have been added, removed, or modified since this search was performed.
+                </div>
+            </div>
+            
+            <div class="page-number">Page 12 of ${totalPages}</div>
+        </div>
+  `;
   
   return {
     // Cover page
@@ -2152,26 +2287,17 @@ function extractPpsrData(data) {
     search_status: activeRegistrations.length === resultCount ? 'All registrations current and valid' : `${activeRegistrations.length} active, ${resultCount - activeRegistrations.length} expired`,
     security_breakdown: securityBreakdown,
     secured_parties_rows: securedPartiesRows,
-    page_number_2: `Page 2 of ${Math.min(12, 4 + Math.min(registrations.length, 7))}`,
+    page_number_2: `Page 2 of ${totalPages}`,
     
     // Page 3 - Key Risk Indicators
     critical_security_section: criticalSecurityHtml,
     vehicle_finance_count: motorVehicles.length,
     vehicle_finance_financiers_count: new Set(motorVehicles.map(v => v.securedPartySummary)).size,
     vehicle_expiry_timeline: vehicleExpiryTimeline,
-    page_number_3: `Page 3 of ${Math.min(12, 4 + Math.min(registrations.length, 7))}`,
+    page_number_3: `Page 3 of ${totalPages}`,
     
-    // Registration pages (4-10)
-    registration_pages: registrationPagesHtml,
-    
-    // Page 11 - Contacts
-    secured_party_contacts_rows: securedPartyContactsRows,
-    page_number_11: `Page 11 of ${Math.min(12, 4 + Math.min(registrations.length, 7))}`,
-    
-    // Page 12 - Document Information
-    search_number: searchNumber,
-    search_performed: searchDateTime,
-    page_number_12: `Page 12 of ${Math.min(12, 4 + Math.min(registrations.length, 7))}`,
+    // Registration pages (4-10) + Glossary (11) + Document Info (12)
+    registration_pages: registrationPagesHtml + glossaryPageHtml + documentInfoPageHtml,
     
     // Common fields
     company_type: 'ppsr',

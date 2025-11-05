@@ -145,8 +145,8 @@ router.post('/get-report-data', async (req, res) => {
         // If exists: returns existing data
         // If not: fetches from API, stores, and returns data
         const business = { Abn: abn };
-        ispdfcreate = false;
-        await createReport({ business, type, ispdfcreate});
+        const ispdfcreate = false;
+        await createReport({ business, type, ispdfcreate, userId: null, matterId: null});
         
         // Fetch the data (either existing or newly created)
         const data = await checkExistingReportData(abn, type);
@@ -267,27 +267,40 @@ async function asic_report_data(uuid) {
 
 // Function to create report via external API
 async function createReport({ business, type, userId, matterId, ispdfcreate }) {
+    let existingReport = null;
+    let reportId = null;
+    let reportData = null;
+    let pdffilename = null;
+    
     try {
         const abn = business?.Abn;
-        const acn = abn.substring(2);
-        if (!abn) {
-            throw new Error('ABN not found in business data');
+        if (!abn || abn.length < 2) {
+            throw new Error('ABN not found in business data or invalid ABN');
         }
+        const acn = abn.substring(2);
         
         if (type == "asic-current" || type == "court" || type == "ato") {
             existingReport = await checkExistingReportData(abn, "asic-current");
         } else {
             existingReport = await checkExistingReportData(abn, type);
         }
+        
         if (existingReport) {
             console.log(`✅ CACHE HIT: Found existing report in Reports table`);
-            console.log(`   Report ID: ${existingReport.data}`);
+            console.log(`   Report ID: ${existingReport.id}`);
             console.log(`   UUID: ${existingReport.uuid}`);
             console.log(`   Created: ${existingReport.created_at}`);
             
-            // Fetch the report data from Alares API for parsing and storing
-            reportId = existingReport?.id
-            reportData = existingReport.rdata;
+            // Normalize reportData structure - wrap rdata in { data: ... } format to match axios response
+            reportId = existingReport.id;
+            // If rdata is already an object, wrap it in { data: ... } format
+            const rdataObj = typeof existingReport.rdata === 'string' 
+                ? JSON.parse(existingReport.rdata) 
+                : existingReport.rdata;
+            
+            reportData = {
+                data: rdataObj
+            };
         } else {
            if( type == "asic-current" || type == "court" || type == "ato" ) {
                 //const apiUrl = 'https://alares.com.au/api/reports/create';
@@ -511,7 +524,7 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
                 });
                 response.data.ppsrCloudId = auSearchIdentifier;
                 //console.log('✅ PPSR API Response:', response.data);
-                let reportData = response;
+                reportData = response;
             } else if ( type == "director-bankruptcy" ){
                 const apiUrl = 'https://services.afsa.gov.au/brs/api/v2/search-by-name';
                 const bearerToken = 'eyJraWQiOiIwRDRXdDh3UiIsImFsZyI6IlJTMjU2IiwidHlwIjoiSldUIn0.eyJpc3MiOiJBdXN0cmFsaWFuIEZpbmFuY2lhbCBTZWN1cml0eSBBdXRob3JpdHkiLCJpYXQiOjE3NjIwNDYzNjQsInN1YiI6IjY3ODY4IiwidXNyIjoiOGQyZTIxMWEtODhkNS00NDZmLWIzNTUtNmIxMGE4Mjc4ZTNmIiwiYXBwIjoiQ1JFRElUT1JfUFJBQ1RJVElPTkVSIiwiZW1sIjpudWxsLCJpbnQiOmZhbHNlLCJjaGEiOiJBUElfS0VZIiwiZ24iOm51bGwsInNuIjoiOGQyZTIxMWEiLCJtZmEiOnRydWUsImV4cCI6MTc2MjA0ODE2NH0.jmjek8ph0AWJ7AWNJLefhw02e9-CDZy-Y6eShwNUqOzYQMB0bsUruRkUmTdTsCvIy27IWNmE-Tm7AttDyJoW551_1A1hMbvdtzG88kQbVyoumeHCniRbvc2-IZxNEgaaNkOQTdc7Lq7RTLcMfj8H694KGSLwzLzR8hnPiQIbz12eC4gsazxgdgBNvSg4ugxAk4xRLFvJ_liSEi-17tmfJiHnFbUBi6YA1mjWKU_p-q266BCm3pp4uDbu0qo5RILyPoNVBaoiVcEpLSuRoOGXUQk07IyR2A7lehnRHmsLM7WFHTN6H2AOqGKdL09044xuNViauEP4aschOCCoW1MdRPj9pWVS0LyVPc1oo8qzeJJ0oxeJuAz1Z40ZQoo-8JTDb0_XM6WwYu8p17LSSdq2aBMBcP9hzwyMXBn8N0WVOAtJ4O_HbVXuOe0lYGUa5E0xq1lZiawrrdPSW0TPNpbMuFaBl4SaaSGmwt4sk54_u0b3Il1yCjeTk0df_QZwj6jK';
@@ -519,7 +532,7 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
                     debtorSurname: 'adgemis',
                     debtorGivenName: 'jon',
                 };
-                response = await axios.get(apiUrl, {
+                const response = await axios.get(apiUrl, {
                     params: params,
                     headers: {
                         'Authorization': `Bearer ${bearerToken}`
@@ -539,13 +552,18 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
                     last_name: "adgemis",
                     dob_from: '24-04-1978',
                 };
-                bcreateResponse = await axios.get(bapiURL, {
+                const bcreateResponse = await axios.get(bapiURL, {
                     params: bparams,
                     headers: {
                         'Authorization': `Bearer ${bearerToken}`
                     },
                     timeout: 30000 // 30 second timeout
                 });
+                
+                // Check if bcreateResponse.data is an array and has at least one element
+                if (!bcreateResponse.data || !Array.isArray(bcreateResponse.data) || bcreateResponse.data.length === 0) {
+                    throw new Error('No person found in ASIC search for director-related entities');
+                }
                 
                 const apiUrl = 'https://alares.com.au/api/reports/create';
                 const params = {
@@ -556,7 +574,7 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
                     person_id: bcreateResponse.data[0].person_id,
                     acs_search_id: bcreateResponse.data[0].search_id
                 };
-                createResponse = await axios.post(apiUrl, null, {
+                const createResponse = await axios.post(apiUrl, null, {
                     params: params,
                     headers: {
                         'Authorization': `Bearer ${bearerToken}`,
@@ -567,10 +585,19 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 
                 reportData = await asic_report_data(createResponse.data.uuid);
                 reportData.data.uuid = createResponse.data.uuid;
+            } else {
+                throw new Error(`Unsupported report type: ${type}`);
             }  
 
-            const { sequelize } = require('../config/db');
-            const [iresult] = await sequelize.query(`
+            // Only insert into database if we don't have an existing report
+            if (!existingReport && reportData) {
+                const { sequelize } = require('../config/db');
+                
+                // Ensure reportData has the correct structure
+                const reportDataForDb = reportData.data || reportData;
+                const uuid = reportDataForDb.uuid || reportDataForDb.ppsrCloudId || reportDataForDb.insolvencySearchId || null;
+                
+                const [iresult] = await sequelize.query(`
                      INSERT INTO Api_Data (
                          rtype, uuid, search_word, abn, 
                          acn, rdata, alert, created_at, updated_at
@@ -579,21 +606,34 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
                  `, {
                     bind: [
                         type,
-                        reportData.data.uuid || null,
+                        uuid,
                         null,
                         abn || null,
                         acn || null,
-                        JSON.stringify(reportData.data) || null,
+                        JSON.stringify(reportDataForDb) || null,
                         false,
                     ]
                 });
                 console.log(iresult);
                 reportId = iresult[0].id;
+            }
         }
+        
+        // Validate reportData before proceeding
+        if (!reportData) {
+            throw new Error('Report data is missing. Failed to fetch or retrieve report data.');
+        }
+        
+        // Ensure reportData has the correct structure for addDownloadReportInDB
+        // It expects either { data: ... } or the data object directly
+        if (!reportData.data && typeof reportData === 'object') {
+            reportData = { data: reportData };
+        }
+        
         if(ispdfcreate) {
             pdffilename = await addDownloadReportInDB( reportData, userId , matterId, reportId, `${uuidv4()}`, type );
             return pdffilename;
-        }else {
+        } else {
             return {
                 success: true
             }
