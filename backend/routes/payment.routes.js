@@ -504,8 +504,8 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
                 reportData = await director_related_report(business.fname, business.lname, business.dob);
             }  
             // Ensure reportData has the correct structure
-            const reportDataForDb = reportData.data || reportData;
-            const uuid = reportDataForDb.uuid || reportDataForDb.ppsrCloudId || reportDataForDb.insolvencySearchId || null;
+            const reportDataForDb = reportData;
+            const uuid = reportDataForDb.uuid;
             if (!existingReport && reportData) {
                 if(business?.isCompany == "ORGANISATION") {
                     [iresult] = await sequelize.query(`

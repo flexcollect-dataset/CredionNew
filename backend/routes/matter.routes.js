@@ -215,9 +215,7 @@ router.get('/:matterId/reports', authenticateToken, async (req, res) => {
       reportId: report.reportId,
       createdAt: report.createdAt,
       updatedAt: report.updatedAt,
-      downloadUrl: BUCKET_NAME && AWS_REGION 
-        ? `https://${BUCKET_NAME}.s3.${AWS_REGION}.amazonaws.com/${report.reportName}`
-        : `/media/${report.reportName}`
+      downloadUrl: `https://${BUCKET_NAME}.s3.${AWS_REGION}.amazonaws.com/${report.reportName}`
     }));
 
     res.json({
