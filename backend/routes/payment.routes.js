@@ -10,7 +10,8 @@ const moment = require('moment');
 const { uploadToS3 } = require('../services/s3.service');
 const { replaceVariables, convertWithVariables, addDownloadReportInDB, ensureMediaDir, mediaDir } = require('../services/pdf.service');
 const UserReport = require('../models/UserReport');
-
+const { sequelize } = require('../config/db');
+const { apiClients, getToken } = require("./apiClients.js");
 
 // Middleware to check if user is authenticated
 const authenticateSession = (req, res, next) => {
@@ -144,7 +145,7 @@ router.post('/get-report-data', async (req, res) => {
         // Call createReport - it will check if data exists internally
         // If exists: returns existing data
         // If not: fetches from API, stores, and returns data
-        const business = { Abn: abn };
+        const business = { Abn: abn, isCompany: 'ORGANISATION' };
         const ispdfcreate = false;
         await createReport({ business, type, ispdfcreate, userId: null, matterId: null});
         
@@ -176,79 +177,6 @@ router.post('/get-report-data', async (req, res) => {
     }
 });
 
-
-router.post('/convert-with-variables', async (req, res) => {
-  try {
-    const templateName = 'task1.html'; // This was a placeholder, now dynamically determined in pdf.service.js
-    const data = req.body;
-    console.log("************************************************")
-    console.log(data?.reportype);
-
-    if (!data) {
-      return res.status(400).json({
-        success: false,
-        error: 'Data is required'
-      });
-    }
-
-    // Use the service to convert with variables
-    const result = await convertWithVariables(data, templateName); // templateName is now passed but largely ignored in favor of reportype
-
-    const formattedAmount = new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(data.rdata?.current_tax_debt?.amount);
-
-    // Return success response with both local and S3 URLs
-    res.json({
-      success: true,
-      message: 'PDF generated and uploaded to S3 successfully',
-      filename: result.pdfFilename,
-      local: {
-        downloadUrl: `/media/${result.pdfFilename}`,
-        fullPath: result.outputPath
-      },
-      s3: {
-        key: result.s3UploadResult.key,
-        location: result.s3UploadResult.location,
-        etag: result.s3UploadResult.etag
-      },
-      fileInfo: {
-        totalPages: result.pageCount,
-        fileSize: `${(result.pdfBuffer.length / 1024 / 1024).toFixed(2)} MB`,
-        generatedAt: new Date().toISOString()
-      },
-      replacedVariables: {
-        company_type: data.company_type,
-        acn: data.acn || data.rdata?.entity?.acn,
-        abn: data.abn || data.rdata?.entity?.abn,
-        companyName: data.rdata?.entity?.name,
-        entity_abn: data.rdata?.entity?.abn,
-        entity_acn: data.rdata?.entity?.acn,
-        entity_name: data.rdata?.entity?.name,
-        entity_review_date: moment(data.rdata?.entity?.review_date).format('DD/MM/YYYY'),
-        entity_registered_in: data.rdata?.entity?.registered_in,
-        entity_abr_gst_status: data.rdata?.entity?.abr_gst_status,
-        entity_document_number: data.rdata?.entity?.document_number,
-        entity_organisation_type: data.rdata?.entity?.organisation_type,
-        entity_asic_date_of_registration: moment(data.rdata?.entity?.asic_date_of_registration).format('DD/MM/YYYY'),
-        current_date_and_time: moment().format('DD MMMM YYYY'),
-        current_tax_debt_amount: formattedAmount,
-        current_tax_debt_ato_updated_at: moment.utc(data.rdata?.current_tax_debt?.ato_updated_at).format('MMMM D, YYYY, [at] h:mm:ss A'),
-      }
-    });
-
-  } catch (error) {
-    console.error('Error converting HTML to PDF:', error);
-
-    res.status(500).json({
-      success: false,
-      error: 'Failed to convert HTML to PDF or upload to S3',
-      details: error.message
-    });
-  }
-});
-
 async function asic_report_data(uuid) {
     //Now call GET API to fetch the report data
     const getApiUrl = `https://alares.com.au/api/reports/${uuid}/json`;
@@ -261,50 +189,209 @@ async function asic_report_data(uuid) {
         },
         timeout: 30000 // 30 second timeout
     });
+    response.data.uuid = uuid;
     return response;
 }
 
+async function fetchPpsrReportData(auSearchIdentifier) {
+
+    // Get dynamic token for PPSR
+    const ppsrToken = await getToken('ppsr');
+    await delay(3000);
+
+    // Step 2: Fetch actual data using the auSearchIdentifier
+    const fetchUrl = 'https://uat-gateway.ppsrcloud.com/api/b2b/ausearch/result-details';
+    const fetchData = {
+        auSearchIdentifier: auSearchIdentifier,
+        pageNumber: 1,
+        pageSize: 50
+    };
+
+    const response = await axios.post(fetchUrl, fetchData, {
+        headers: {
+            'Authorization': `Bearer ${ppsrToken}`,
+            'Content-Type': 'application/json'
+        },
+        timeout: 30000 // 30 second timeout
+    });
+    
+    // Set the appropriate field based on the report type
+    response.data.uuid = auSearchIdentifier;
+    return response;
+}
+
+async function director_ppsr_report(fname, lname, dob) {
+    // Get dynamic token for PPSR
+    const ppsrToken = await getToken('ppsr');
+    
+    // Convert dob to YYYY-MM-DD format
+    let formattedDob = "1993-03-01"; // Default fallback
+    if (dob) {
+        try {
+            // Try to parse the date with explicit format (DD/MM/YYYY is common)
+            // Try multiple formats to handle different input formats
+            let parsedDate;
+            if (typeof dob === 'string') {
+                // Try DD/MM/YYYY format first (most common based on error)
+                if (dob.includes('/')) {
+                    parsedDate = moment(dob, 'DD/MM/YYYY', true); // strict mode
+                    if (!parsedDate.isValid()) {
+                        // Try MM/DD/YYYY as fallback
+                        parsedDate = moment(dob, 'MM/DD/YYYY', true);
+                    }
+                } else if (dob.includes('-')) {
+                    // Already in ISO format or similar
+                    parsedDate = moment(dob, ['YYYY-MM-DD', 'DD-MM-YYYY'], true);
+                } else {
+                    // Try moment's default parsing as last resort
+                    parsedDate = moment(dob);
+                }
+            } else {
+                // If it's already a Date object or moment object
+                parsedDate = moment(dob);
+            }
+            
+            if (parsedDate && parsedDate.isValid()) {
+                formattedDob = parsedDate.format('YYYY-MM-DD');
+            } else {
+                console.warn('Invalid date format for dob:', dob);
+            }
+        } catch (error) {
+            console.error('Error formatting date of birth:', error, 'dob:', dob);
+            // If parsing fails, use default
+        }
+    }
+    
+    // Step 1: Submit search request
+    const submitUrl = 'https://uat-gateway.ppsrcloud.com/api/b2b/ausearch/submit-grantor-session-cmd';
+    const requestData = {
+        customerRequestId: `flexcollect-001`,
+        clientReference: "Credion Company Search",
+        pointInTime: null,
+        criteria: [
+            {
+                grantorType: "individual",
+                individualDateOfBirth: formattedDob,
+                individualFamilyName: lname,
+                individualGivenNames: fname,
+                acceptIndividualGrantorSearchDeclaration: true,
+            }
+        ]
+    };
+
+    // Step 1: Submit the search request
+    const submitResponse = await axios.post(submitUrl, requestData, {
+        headers: {
+            'Authorization': `Bearer ${ppsrToken}`,
+            'Content-Type': 'application/json'
+        },
+        timeout: 30000 // 30 second timeout
+    });
+
+    // Extract auSearchIdentifier from the response
+    // The response contains ppsrCloudId which should be used as auSearchIdentifier
+    const auSearchIdentifier = submitResponse.data.resource?.ppsrCloudId;
+    
+    if (!auSearchIdentifier) {
+        throw new Error('No auSearchIdentifier (ppsrCloudId) returned from PPSR submit request');
+    }
+    
+    // Step 2: Fetch actual data using the auSearchIdentifier
+    return await fetchPpsrReportData(auSearchIdentifier);
+}
+
+async function director_bankrupcty_report(fname, lname, dob) {
+    // Get dynamic token for Bankruptcy
+    const bearerToken = await getToken('bankruptcy');
+    console.log(bearerToken);
+    const apiUrl = 'https://services.afsa.gov.au/brs/api/v2/search-by-name';
+    const params = {
+        debtorSurname: lname,
+        debtorGivenName: fname,
+    };
+    const response = await axios.get(apiUrl, {
+        params: params,
+        headers: {
+            'Authorization': `Bearer ${bearerToken}`
+        },
+        Accept: 'application/json',
+        responseType: 'json',
+        timeout: 30000 // 30 second timeout
+    });
+    // console.log('Report creation API response:', createResponse.data);
+    response.data.uuid = response.data.insolvencySearchId;
+    return response;
+}
+
+async function director_related_report( fname, lname, dob ) {
+    const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
+    // const bapiURL = 'https://alares.com.au/api/asic/search'
+    // const bparams = {
+    //     first_name: "jon",
+    //     last_name: "adgemis",
+    //     dob_from: '24-04-1978',
+    // };
+    // bcreateResponse = await axios.get(bapiURL, {
+    //     params: bparams,
+    //     headers: {
+    //         'Authorization': `Bearer ${bearerToken}`
+    //     },
+    //     timeout: 30000 // 30 second timeout
+    // });
+    
+    // const apiUrl = 'https://alares.com.au/api/reports/create';
+    // const params = {
+    //     type: 'individual',
+    //     name: "jon adgemis",
+    //     dob: '24-04-1978',
+    //     asic_current: '1',
+    //     person_id: bcreateResponse.data[0].person_id,
+    //     acs_search_id: bcreateResponse.data[0].search_id
+    // };
+    // createResponse = await axios.post(apiUrl, null, {
+    //     params: params,
+    //     headers: {
+    //         'Authorization': `Bearer ${bearerToken}`,
+    //         'Content-Type': 'application/json'
+    //     },
+    //     timeout: 30000 // 30 second timeout
+    // });
+    //reportData = await asic_report_data(createResponse.data.uuid);
+    reportData = await asic_report_data('019a53e1-b608-723a-9398-6562a6c50303');
+    return reportData; 
+}
 
 // Function to create report via external API
 async function createReport({ business, type, userId, matterId, ispdfcreate }) {
-    let existingReport = null;
-    let reportId = null;
-    let reportData = null;
-    let pdffilename = null;
-    
+    console.log(ispdfcreate);
     try {
-        const abn = business?.Abn;
-        if (!abn || abn.length < 2) {
-            throw new Error('ABN not found in business data or invalid ABN');
+        let existingReport = null;
+        let iresult = null;
+        if(business?.isCompany == "ORGANISATION") {
+            abn = business?.Abn;
+            acn = abn.substring(2);
+            if (!abn) {
+                throw new Error('ABN not found in business data');
+            }
         }
-        const acn = abn.substring(2);
-        
-        if (type == "asic-current" || type == "court" || type == "ato") {
-            existingReport = await checkExistingReportData(abn, "asic-current");
-        } else {
-            existingReport = await checkExistingReportData(abn, type);
+
+        if(business?.isCompany == "ORGANISATION") {
+            if (type == "asic-current" || type == "court" || type == "ato") {
+                existingReport = await checkExistingReportData(abn, "asic-current");
+            } else {
+                existingReport = await checkExistingReportData(abn, type);
+            }
         }
         
         if (existingReport) {
-            console.log(`✅ CACHE HIT: Found existing report in Reports table`);
-            console.log(`   Report ID: ${existingReport.id}`);
-            console.log(`   UUID: ${existingReport.uuid}`);
-            console.log(`   Created: ${existingReport.created_at}`);
-            
-            // Normalize reportData structure - wrap rdata in { data: ... } format to match axios response
-            reportId = existingReport.id;
-            // If rdata is already an object, wrap it in { data: ... } format
-            const rdataObj = typeof existingReport.rdata === 'string' 
-                ? JSON.parse(existingReport.rdata) 
-                : existingReport.rdata;
-            
-            reportData = {
-                data: rdataObj
-            };
+            // Fetch the report data from Alares API for parsing and storing
+            reportId = existingReport?.id
+            reportData = existingReport.rdata;
+
         } else {
-           if( type == "asic-current" || type == "court" || type == "ato" ) {
-                //const apiUrl = 'https://alares.com.au/api/reports/create';
-                const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
+            if( type == "asic-current" || type == "court" || type == "ato" ) {
+                // const apiUrl = 'https://alares.com.au/api/reports/create';
+                // const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
                 // const params = {
                 //     type: 'company',
                 //     abn: abn,
@@ -319,25 +406,13 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
                 //     timeout: 30000 // 30 second timeout
                 // });
 
-                // console.log('Report creation API response:', createResponse.data);
-
                 // Now call GET API to fetch the report data
-                const getApiUrl = `https://alares.com.au/api/reports/019a2e17-f011-7183-a3db-de2ef10aaebf/json`;
+                reportData = await asic_report_data('019a5245-a55e-71e0-b61d-711411a81b5e');
 
-                console.log('Fetching report data from:', getApiUrl);
-
-                const response = await axios.get(getApiUrl, {
-                    headers: {
-                        'Authorization': `Bearer ${bearerToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    timeout: 30000 // 30 second timeout
-                });
-                response.data.uuid = "019a2e17-f011-7183-a3db-de2ef10aaebf";
-                reportData = response;
             } else if ( type == "asic-historical" ) {
-                //const apiUrl = 'https://alares.com.au/api/reports/create';
-                const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
+
+                // const apiUrl = 'https://alares.com.au/api/reports/create';
+                // const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
                 // const params = {
                 //     type: 'company',
                 //     abn: abn,
@@ -352,31 +427,17 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
                 //     timeout: 30000 // 30 second timeout
                 // });
 
-                //console.log('Report creation API response:', createResponse.data);
-
                 // Now call GET API to fetch the report data
-                //const getApiUrl = `https://alares.com.au/api/reports/${createResponse.data.uuid}/json`;
-                const getApiUrl = `https://alares.com.au/api/reports/019a375e-b08e-7181-96b7-8ff9880c2e07/json`;
+                reportData = await asic_report_data('019a2349-f1c5-738a-b306-950e842370d3');
 
-                console.log('Fetching report data from:', getApiUrl);
-
-                const response = await axios.get(getApiUrl, {
-                    headers: {
-                        'Authorization': `Bearer ${bearerToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    timeout: 30000 // 30 second timeout
-                });
-                response.data.uuid = "019a375e-b08e-7181-96b7-8ff9880c2e07";
-                reportData = response;
             } else if ( type == "asic-company" ) {
-                const apiUrl = 'https://alares.com.au/api/reports/create';
-                const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
-                const params = {
-                    type: 'company',
-                    abn: abn,
-                    asic_relational: '1'
-                };
+                // const apiUrl = 'https://alares.com.au/api/reports/create';
+                // const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
+                // const params = {
+                //     type: 'company',
+                //     abn: abn,
+                //     asic_relational: '1'
+                // };
                 // createResponse = await axios.post(apiUrl, null, {
                 //     params: params,
                 //     headers: {
@@ -386,26 +447,12 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
                 //     timeout: 30000 // 30 second timeout
                 // });
 
-                //console.log('Report creation API response:', createResponse.data);
-
                 // Now call GET API to fetch the report data
-                const getApiUrl = `https://alares.com.au/api/reports/019a375e-b08e-7181-96b7-8ff9880c2e07/json`;
-
-                console.log('Fetching report data from:', getApiUrl);
-
-                const response = await axios.get(getApiUrl, {
-                    headers: {
-                        'Authorization': `Bearer ${bearerToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    timeout: 30000 // 30 second timeout
-                });
-                response.data.uuid = "019a375e-b08e-7181-96b7-8ff9880c2e07";
-                reportData = response;
+                //reportData = await asic_report_data(createResponse.data.uuid);
+                reportData = await asic_report_data('019a375e-b08e-7181-96b7-8ff9880c2e07')
             } else if ( type == "ppsr" ){
-                const ppsrTokenn = 'eyJhbGciOiJSUzI1NiIsImtpZCI6IkY2NThCODUzNDlCODc3MTVGOUM1QjI1ODgzNDcwNTVERjM5NTk1QjlSUzI1NiIsInR5cCI6ImF0K2p3dCIsIng1dCI6IjlsaTRVMG00ZHhYNXhiSllnMGNGWGZPVmxiayJ9.eyJuYmYiOjE3NjIwNDA3MzMsImV4cCI6MTc2MjA0MjUzMywiaXNzIjoiaHR0cDovL2xvY2FsaG9zdDo2MjE5NyIsImF1ZCI6ImludGVncmF0aW9uLWFwaSIsImNsaWVudF9pZCI6ImZsZXhjb2xsZWN0LWFwaS1pbnRlZ3JhdGlvbiIsImlkIjoiMTAyNzkiLCJuYW1lIjoiZmxleGNvbGxlY3QtYXBpLWludGVncmF0aW9uIiwic3ViIjoiZThiMjEwMDYtYzgxYy00YWE4LThhMDYtYWFjMzZjNzY5ODE0Iiwibmlja25hbWUiOiJGbGV4Y29sbGVjdCBJTlRFR1JBVElPTiIsInV1aWQiOiJlOGIyMTAwNi1jODFjLTRhYTgtOGEwNi1hYWMzNmM3Njk4MTQiLCJqdGkiOiJGMjcyRUU5QUVGM0QyMUIxQzAwNEE1QTdBRUMyOTg2RSIsImlhdCI6MTc2MjA0MDczMywic2NvcGUiOlsidXNlcmFjY2VzcyIsImludGVncmF0aW9uYWNjZXNzIl19.kAOJHiPtNtYuaYOKMZFVXsVObcLS09L4jLIKr82hUm9q2EVnGlbXyFuellqochr9aK_3QaMQGFogHo2_r_NNuVJtVlAI82Pg0JRKOoYP0cQ381KCboZNcih6EIE47-XiU5CYSJ8SvkSWIibJeIkUR4hn2BEkocoKSDj8THoQx7yBIxWGQ9bxxkiujAcq7EeLePIOHNZg7rtCv-gtoMwts0LO6qi3T4QqDFtUyv2jQ7SBKZzBBp3eYpyTcSt_dyiVEgDWDmtB-en_zRUDgV5hN5_AbK43G1lCHd8dpsPkXgotqngfvNz_oMpuxZtorKf3ItaNtlWpOeyqs7UH4LfZbA';
-                
-                // Remove first 2 characters from ABN to get ACN
+                // Get dynamic token for PPSR
+                const ppsrToken = await getToken('ppsr');
                 
                 // Step 1: Submit search request
                 const submitUrl = 'https://uat-gateway.ppsrcloud.com/api/b2b/ausearch/submit-grantor-session-cmd';
@@ -422,218 +469,68 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
                     ]
                 };
 
-                // Step 1: Submit the search request
                 const submitResponse = await axios.post(submitUrl, requestData, {
                     headers: {
-                        'Authorization': `Bearer ${ppsrTokenn}`,
+                        'Authorization': `Bearer ${ppsrToken}`,
                         'Content-Type': 'application/json'
                     },
                     timeout: 30000 // 30 second timeout
                 });
 
                 // Extract auSearchIdentifier from the response
-                // The response contains ppsrCloudId which should be used as auSearchIdentifier
                 const auSearchIdentifier = submitResponse.data.resource?.ppsrCloudId;
-                
                 if (!auSearchIdentifier) {
                     throw new Error('No auSearchIdentifier (ppsrCloudId) returned from PPSR submit request');
                 }
                 
-                console.log('🔍 PPSR STEP 2 - Fetch Data:');
-                console.log('   auSearchIdentifier:', auSearchIdentifier);
-                
-                await delay(3000);
                 // Step 2: Fetch actual data using the auSearchIdentifier
-                const fetchUrl = 'https://uat-gateway.ppsrcloud.com/api/b2b/ausearch/result-details';
-                const fetchData = {
-                    auSearchIdentifier: auSearchIdentifier,
-                    pageNumber: 1,
-                    pageSize: 50
-                };
-
-                console.log('   Fetch Data:', JSON.stringify(fetchData, null, 2));
-
-                const response = await axios.post(fetchUrl, fetchData, {
-                    headers: {
-                        'Authorization': `Bearer ${ppsrTokenn}`,
-                        'Content-Type': 'application/json'
-                    },
-                    timeout: 30000 // 30 second timeout
-                });
-                response.data.uuid = auSearchIdentifier;
-                //console.log('✅ PPSR API Response:', response.data);
-                reportData = response;
+                reportData = await fetchPpsrReportData(auSearchIdentifier);
+                console.log(reportData);
             } else if ( type == "director-ppsr" ){
-                const ppsrTokenn = 'eyJhbGciOiJSUzI1NiIsImtpZCI6IkY2NThCODUzNDlCODc3MTVGOUM1QjI1ODgzNDcwNTVERjM5NTk1QjlSUzI1NiIsInR5cCI6ImF0K2p3dCIsIng1dCI6IjlsaTRVMG00ZHhYNXhiSllnMGNGWGZPVmxiayJ9.eyJuYmYiOjE3NjE3OTM5MzAsImV4cCI6MTc2MTc5NTczMCwiaXNzIjoiaHR0cDovL2xvY2FsaG9zdDo2MjE5NyIsImF1ZCI6ImludGVncmF0aW9uLWFwaSIsImNsaWVudF9pZCI6ImZsZXhjb2xsZWN0LWFwaS1pbnRlZ3JhdGlvbiIsImlkIjoiMTAyNzkiLCJuYW1lIjoiZmxleGNvbGxlY3QtYXBpLWludGVncmF0aW9uIiwic3ViIjoiZThiMjEwMDYtYzgxYy00YWE4LThhMDYtYWFjMzZjNzY5ODE0Iiwibmlja25hbWUiOiJGbGV4Y29sbGVjdCBJTlRFR1JBVElPTiIsInV1aWQiOiJlOGIyMTAwNi1jODFjLTRhYTgtOGEwNi1hYWMzNmM3Njk4MTQiLCJqdGkiOiI0RDM4QUY5MzVDMUQ1OUZGMzRFRDg5OTlGNDYxNjU0QyIsImlhdCI6MTc2MTc5MzkzMCwic2NvcGUiOlsidXNlcmFjY2VzcyIsImludGVncmF0aW9uYWNjZXNzIl19.kMPMLQCSbfCOd-Mc3lB8ijYYwWUfJikoYUmbfWcF7IWoiyQnyDkVMP_JrlKtoF0B0AB9IZQTHvVKbprJwbA5gPWJvnGI7pFQXNa21G0Srgdd8tioWY4UdxjujrQMpwaaQrvQOYV7-lmOIcXpj3SB3uQsWkRCWAvJ3HlukVjIMvOraJmg4tRQCerMuEn-oEOu_NHKguL0c0d7l-v-rPBJ11xPBa9RgEZJ0-E96kAPwHm5tk4yIvKHmu_WMmAxU56TnF3p8RFk_d566LHuVqTanzEaZS9m5PqMyUE5WRnUe5-S-FVSPetNTqGSNinplx90aBlI1XoRPiIlSt7J1noT_Q';
-                
-                // Remove first 2 characters from ABN to get ACN
-                const acn = abn.substring(2);
-                console.log(acn)
-                // Step 1: Submit search request
-                const submitUrl = 'https://uat-gateway.ppsrcloud.com/api/b2b/ausearch/submit-grantor-session-cmd';
-                const requestData = {
-                    customerRequestId: `flexcollect-001`,
-                    clientReference: "Credion Company Search",
-                    pointInTime: null,
-                    criteria: [
-                        {
-                            grantorType: "organisation",
-                            organisationNumberType: "acn",
-                            organisationNumber: "146939013"
-                        }
-                    ]
-                };
-
-                // Step 1: Submit the search request
-                const submitResponse = await axios.post(submitUrl, requestData, {
-                    headers: {
-                        'Authorization': `Bearer ${ppsrTokenn}`,
-                        'Content-Type': 'application/json'
-                    },
-                    timeout: 30000 // 30 second timeout
-                });
-
-                // Extract auSearchIdentifier from the response
-                // The response contains ppsrCloudId which should be used as auSearchIdentifier
-                const auSearchIdentifier = submitResponse.data.resource?.ppsrCloudId;
-                
-                if (!auSearchIdentifier) {
-                    throw new Error('No auSearchIdentifier (ppsrCloudId) returned from PPSR submit request');
-                }
-                
-                console.log('🔍 PPSR STEP 2 - Fetch Data:');
-                console.log('   auSearchIdentifier:', auSearchIdentifier);
-                
-                await delay(3000);
-                // Step 2: Fetch actual data using the auSearchIdentifier
-                const fetchUrl = 'https://uat-gateway.ppsrcloud.com/api/b2b/ausearch/result-details';
-                const fetchData = {
-                    auSearchIdentifier: auSearchIdentifier,
-                    pageNumber: 1,
-                    pageSize: 50
-                };
-
-                console.log('   Fetch Data:', JSON.stringify(fetchData, null, 2));
-
-                const response = await axios.post(fetchUrl, fetchData, {
-                    headers: {
-                        'Authorization': `Bearer ${ppsrTokenn}`,
-                        'Content-Type': 'application/json'
-                    },
-                    timeout: 30000 // 30 second timeout
-                });
-                response.data.ppsrCloudId = auSearchIdentifier;
-                //console.log('✅ PPSR API Response:', response.data);
-                reportData = response;
+                reportData = await director_ppsr_report(business.fname, business.lname, business.dob);
             } else if ( type == "director-bankruptcy" ){
-                const apiUrl = 'https://services.afsa.gov.au/brs/api/v2/search-by-name';
-                const bearerToken = 'eyJraWQiOiIwRDRXdDh3UiIsImFsZyI6IlJTMjU2IiwidHlwIjoiSldUIn0.eyJpc3MiOiJBdXN0cmFsaWFuIEZpbmFuY2lhbCBTZWN1cml0eSBBdXRob3JpdHkiLCJpYXQiOjE3NjIwNDYzNjQsInN1YiI6IjY3ODY4IiwidXNyIjoiOGQyZTIxMWEtODhkNS00NDZmLWIzNTUtNmIxMGE4Mjc4ZTNmIiwiYXBwIjoiQ1JFRElUT1JfUFJBQ1RJVElPTkVSIiwiZW1sIjpudWxsLCJpbnQiOmZhbHNlLCJjaGEiOiJBUElfS0VZIiwiZ24iOm51bGwsInNuIjoiOGQyZTIxMWEiLCJtZmEiOnRydWUsImV4cCI6MTc2MjA0ODE2NH0.jmjek8ph0AWJ7AWNJLefhw02e9-CDZy-Y6eShwNUqOzYQMB0bsUruRkUmTdTsCvIy27IWNmE-Tm7AttDyJoW551_1A1hMbvdtzG88kQbVyoumeHCniRbvc2-IZxNEgaaNkOQTdc7Lq7RTLcMfj8H694KGSLwzLzR8hnPiQIbz12eC4gsazxgdgBNvSg4ugxAk4xRLFvJ_liSEi-17tmfJiHnFbUBi6YA1mjWKU_p-q266BCm3pp4uDbu0qo5RILyPoNVBaoiVcEpLSuRoOGXUQk07IyR2A7lehnRHmsLM7WFHTN6H2AOqGKdL09044xuNViauEP4aschOCCoW1MdRPj9pWVS0LyVPc1oo8qzeJJ0oxeJuAz1Z40ZQoo-8JTDb0_XM6WwYu8p17LSSdq2aBMBcP9hzwyMXBn8N0WVOAtJ4O_HbVXuOe0lYGUa5E0xq1lZiawrrdPSW0TPNpbMuFaBl4SaaSGmwt4sk54_u0b3Il1yCjeTk0df_QZwj6jK';
-                const params = {
-                    debtorSurname: 'adgemis',
-                    debtorGivenName: 'jon',
-                };
-                const response = await axios.get(apiUrl, {
-                    params: params,
-                    headers: {
-                        'Authorization': `Bearer ${bearerToken}`
-                    },
-                    Accept: 'application/json',
-                    responseType: 'json',
-                    timeout: 30000 // 30 second timeout
-                });
-                // console.log('Report creation API response:', createResponse.data);
-                response.data.uuid = response.data.insolvencySearchId;
-                reportData = response;
+                reportData = await director_bankrupcty_report(business.fname, business.lname, business.dob);
             } else if ( type == "director-related" ){
-                const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
-                const bapiURL = 'https://alares.com.au/api/asic/search'
-                const bparams = {
-                    first_name: "jon",
-                    last_name: "adgemis",
-                    dob_from: '24-04-1978',
-                };
-                const bcreateResponse = await axios.get(bapiURL, {
-                    params: bparams,
-                    headers: {
-                        'Authorization': `Bearer ${bearerToken}`
-                    },
-                    timeout: 30000 // 30 second timeout
-                });
-                
-                // Check if bcreateResponse.data is an array and has at least one element
-                if (!bcreateResponse.data || !Array.isArray(bcreateResponse.data) || bcreateResponse.data.length === 0) {
-                    throw new Error('No person found in ASIC search for director-related entities');
-                }
-                
-                const apiUrl = 'https://alares.com.au/api/reports/create';
-                const params = {
-                    type: 'individual',
-                    name: "jon adgemis",
-                    dob: '24-04-1978',
-                    asic_current: '1',
-                    person_id: bcreateResponse.data[0].person_id,
-                    acs_search_id: bcreateResponse.data[0].search_id
-                };
-                const createResponse = await axios.post(apiUrl, null, {
-                    params: params,
-                    headers: {
-                        'Authorization': `Bearer ${bearerToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    timeout: 30000 // 30 second timeout
-                });
-
-                reportData = await asic_report_data(createResponse.data.uuid);
-                reportData.data.uuid = createResponse.data.uuid;
-            } else {
-                throw new Error(`Unsupported report type: ${type}`);
+                reportData = await director_related_report(business.fname, business.lname, business.dob);
             }  
 
-            // Only insert into database if we don't have an existing report
-            if (!existingReport && reportData) {
-                const { sequelize } = require('../config/db');
-                
-                // Ensure reportData has the correct structure
-                const reportDataForDb = reportData.data || reportData;
-                const uuid = reportDataForDb.uuid || reportDataForDb.ppsrCloudId || reportDataForDb.insolvencySearchId || null;
-                
-                const [iresult] = await sequelize.query(`
-                     INSERT INTO Api_Data (
-                         rtype, uuid, search_word, abn, 
-                         acn, rdata, alert, created_at, updated_at
-                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-                     RETURNING id
-                 `, {
-                    bind: [
-                        type,
-                        uuid,
-                        null,
-                        abn || null,
-                        acn || null,
-                        JSON.stringify(reportDataForDb) || null,
-                        false,
-                    ]
-                });
-                console.log(iresult);
-                reportId = iresult[0].id;
+            if(business?.isCompany == "ORGANISATION") {
+                [iresult] = await sequelize.query(`
+                    INSERT INTO api_data ( rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW()) RETURNING id`, 
+                    {
+                        bind: [
+                            type,
+                            reportData.data.uuid || null,
+                            null,
+                            abn || null,
+                            acn || null,
+                            JSON.stringify(reportData.data) || null,
+                            false,
+                        ]
+                    }
+                );
+            }else{
+                [iresult] = await sequelize.query(`
+                    INSERT INTO api_data ( rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW()) RETURNING id`, 
+                    {
+                        bind: [
+                            type,
+                            reportData.data.uuid || null,
+                            null,
+                            null,
+                            null,
+                            JSON.stringify(reportData.data) || null,
+                            false,
+                        ]
+                    }
+                );
             }
+            reportId = iresult[0].id;
         }
-        
-        // Validate reportData before proceeding
-        if (!reportData) {
-            throw new Error('Report data is missing. Failed to fetch or retrieve report data.');
-        }
-        
-        // Ensure reportData has the correct structure for addDownloadReportInDB
-        // It expects either { data: ... } or the data object directly
-        if (!reportData.data && typeof reportData === 'object') {
-            reportData = { data: reportData };
-        }
-        
         if(ispdfcreate) {
             pdffilename = await addDownloadReportInDB( reportData, userId , matterId, reportId, `${uuidv4()}`, type );
             return pdffilename;
-        } else {
+        }else {
             return {
                 success: true
             }

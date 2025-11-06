@@ -135,14 +135,6 @@ class ApiService {
     return this.request<{ status: string; message: string; timestamp: string }>('/health');
   }
 
-// Add Downalod PDF Report API methods
-  async addReportDownloadInPdf(data: any) {
-    return this.request<{ success: boolean; message: string; matter: any }>('/api/convert-with-variables', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    });
-  }
-
   // Matter API methods
   async createMatter(data: { matterName: string; description?: string | null }) {
     return this.request<{ success: boolean; message: string; matter: any }>('/api/matters/create', {

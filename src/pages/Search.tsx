@@ -23,6 +23,13 @@ interface AdditionalSearchOption {
   price: number;
 }
 
+interface DirectorInfo {
+  firstName: string;
+  lastName: string;
+  dob: string;
+  fullName?: string;
+}
+
 const Search: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('ORGANISATION');
   const [selectedSearches, setSelectedSearches] = useState<Set<SearchType>>(new Set());
@@ -36,7 +43,9 @@ const Search: React.FC = () => {
   const hasSelectedRef = useRef(false); // Track if user selected from dropdown
   const [hasSelectedCompany, setHasSelectedCompany] = useState(false);
   const [selectedAdditionalSearches, setSelectedAdditionalSearches] = useState<Set<AdditionalSearchType>>(new Set());
+  const [selectedIndividualAdditionalSearches, setSelectedIndividualAdditionalSearches] = useState<Set<SearchType>>(new Set());
   const [companyDetails, setCompanyDetails] = useState({ directors: 0, pastDirectors: 0, shareholders: 0 });
+  const [directorsList, setDirectorsList] = useState<DirectorInfo[]>([]);
   const [isProcessingReports, setIsProcessingReports] = useState(false);
   // Company confirmation state
   const [pendingCompany, setPendingCompany] = useState<{ name: string; abn: string } | null>(null);
@@ -139,8 +148,16 @@ const Search: React.FC = () => {
   // Dynamic searches based on category - CHANGES PER CATEGORY!
   const categorySearches: Record<CategoryType, SearchType[]> = {
     'ORGANISATION': ['SELECT ALL', 'ASIC', 'COURT', 'ATO', 'ABN/ACN PPSR', 'ADD DOCUMENT SEARCH'],
-    'INDIVIDUAL': ['SELECT ALL', 'ASIC', 'BANKRUPTCY', 'COURT', 'LAND TITLE'],
+    'INDIVIDUAL': ['SELECT ALL', 'ASIC', 'BANKRUPTCY', 'COURT', 'LAND TITLE', 'PPSR'],
     'LAND TITLE': [] // No options for Land Title as of now
+  };
+  
+  // Display names for searches (with INDIVIDUAL prefix for individual tab)
+  const getSearchDisplayName = (search: SearchType): string => {
+    if (selectedCategory === 'INDIVIDUAL' && search !== 'SELECT ALL') {
+      return `INDIVIDUAL ${search}`;
+    }
+    return search;
   };
   
   const searches = useMemo(() => categorySearches[selectedCategory], [selectedCategory]);
@@ -173,6 +190,7 @@ const Search: React.FC = () => {
     'COURT': 60.00,
     'ATO': 55.00,
     'ABN/ACN PPSR': 50.00,
+    'PPSR': 50.00,
     'ADD DOCUMENT SEARCH': 35.00,
     'BANKRUPTCY': 90.00,
     'LAND TITLE': 80.00
@@ -217,8 +235,11 @@ const Search: React.FC = () => {
 
       // Add main searches
     selectedSearches.forEach(search => {
-      if (search !== 'SELECT ALL' && search in searchPrices) {
-        total += searchPrices[search];
+      if (search !== 'SELECT ALL') {
+        const priceKey = search === 'PPSR' ? 'ABN/ACN PPSR' : search;
+        if (priceKey in searchPrices) {
+          total += searchPrices[priceKey as keyof SearchPrices];
+        }
       }
     });
     
@@ -229,15 +250,29 @@ const Search: React.FC = () => {
       }
     });
 
-      // Add additional searches
-    selectedAdditionalSearches.forEach(search => {
-      if (search !== 'SELECT ALL') {
-        const option = additionalSearchOptions.find(o => o.name === search);
-        if (option && option.price) {
-          total += option.price;
+      // Add additional searches for ORGANISATION
+    if (selectedCategory === 'ORGANISATION') {
+      selectedAdditionalSearches.forEach(search => {
+        if (search !== 'SELECT ALL') {
+          const option = additionalSearchOptions.find(o => o.name === search);
+          if (option && option.price) {
+            total += option.price;
+          }
         }
-      }
-    });
+      });
+    }
+    
+    // Add additional searches for INDIVIDUAL
+    if (selectedCategory === 'INDIVIDUAL') {
+      selectedIndividualAdditionalSearches.forEach(search => {
+        if (search !== 'SELECT ALL') {
+          const priceKey = search === 'PPSR' ? 'ABN/ACN PPSR' : search;
+          if (priceKey in searchPrices) {
+            total += searchPrices[priceKey as keyof SearchPrices];
+          }
+        }
+      });
+    }
     
     return total;
   };
@@ -377,6 +412,38 @@ const Search: React.FC = () => {
       setSelectedAdditionalSearches(newSelected);
     }
   }, [selectedSearches, additionalSearchOptions]);
+  
+  // Clean up selectedIndividualAdditionalSearches when options are selected in main searches
+  useEffect(() => {
+    if (selectedCategory === 'INDIVIDUAL') {
+      const newSelected = new Set(selectedIndividualAdditionalSearches);
+      let hasChanges = false;
+      
+      // Remove any searches that are now selected in main searches
+      selectedIndividualAdditionalSearches.forEach(selected => {
+        if (selected !== 'SELECT ALL' && selectedSearches.has(selected)) {
+          newSelected.delete(selected);
+          hasChanges = true;
+        }
+      });
+      
+      // Remove SELECT ALL if any item was removed
+      if (hasChanges && newSelected.size === 0) {
+        newSelected.delete('SELECT ALL');
+      } else if (hasChanges) {
+        // Check if all remaining items are selected
+        const availableSearches = searches.filter(s => s !== 'SELECT ALL' && !selectedSearches.has(s));
+        const allSelected = availableSearches.length > 0 && availableSearches.every(s => newSelected.has(s));
+        if (!allSelected) {
+          newSelected.delete('SELECT ALL');
+        }
+      }
+      
+      if (hasChanges) {
+        setSelectedIndividualAdditionalSearches(newSelected);
+      }
+    }
+  }, [selectedSearches, selectedCategory, searches]);
 
   const handleSuggestionSelect = async (suggestion: ABNSuggestion) => {
     hasSelectedRef.current = true; // Mark as selected to prevent re-searching
@@ -422,7 +489,7 @@ const Search: React.FC = () => {
         type: 'asic-current',
         userId: user.userId,
         matterId: currentMatter?.matterId,
-        ispdfcreate: true as const
+        ispdfcreate: false
       };
 
       console.log('Creating report with data:', reportData);
@@ -455,10 +522,58 @@ const Search: React.FC = () => {
               pastDirectors: pastDirectors,
               shareholders: shareholders
             });
+
+            // Extract director information (first name, last name, DOB) for current directors
+            if (currentDirectors > 0 && asicExtract.directors) {
+              const directorsInfo: DirectorInfo[] = asicExtract.directors
+                .filter((d: any) => d.status === 'Current')
+                .map((director: any) => {
+                  // Parse full name into first and last name
+                  const fullName = director.name || '';
+                  const nameParts = fullName.trim().split(/\s+/);
+                  const firstName = nameParts.length > 0 ? nameParts[0] : '';
+                  const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+                  
+                  // Format DOB - handle different formats
+                  let dob = '';
+                  if (director.dob) {
+                    // If DOB is already in DD/MM/YYYY format, use it
+                    if (typeof director.dob === 'string' && director.dob.includes('/')) {
+                      dob = director.dob;
+                    } else {
+                      // If it's a date object or ISO string, format it
+                      try {
+                        const dateObj = new Date(director.dob);
+                        if (!isNaN(dateObj.getTime())) {
+                          const day = String(dateObj.getDate()).padStart(2, '0');
+                          const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+                          const year = dateObj.getFullYear();
+                          dob = `${day}/${month}/${year}`;
+                        }
+                      } catch (e) {
+                        dob = director.dob.toString();
+                      }
+                    }
+                  }
+                  
+                  return {
+                    firstName,
+                    lastName,
+                    dob,
+                    fullName
+                  };
+                });
+              
+              setDirectorsList(directorsInfo);
+            } else {
+              setDirectorsList([]);
+            }
+
           }
         } else {
           // Reset to 0 if no data available
           setCompanyDetails({ directors: 0, pastDirectors: 0, shareholders: 0 });
+          setDirectorsList([]);
         }
       } catch (error) {
         console.error('Error checking data:', error);
@@ -504,6 +619,7 @@ const Search: React.FC = () => {
     setDataAvailable(null);
     setCheckingData(false);
     setCompanyDetails({ directors: 0, pastDirectors: 0, shareholders: 0 });
+    setDirectorsList([]);
     setPendingCompany(null);
     setIsCompanyConfirmed(false);
     
@@ -511,6 +627,7 @@ const Search: React.FC = () => {
     setIndividualFirstName('');
     setIndividualLastName('');
     setIndividualDateOfBirth('');
+    setSelectedIndividualAdditionalSearches(new Set());
   };
 
   const handleAsicTypeToggle = (asicType: AsicType) => {
@@ -572,10 +689,45 @@ const Search: React.FC = () => {
     setSelectedAdditionalSearches(newSelected);
   };
 
-  // const addDownloadReportInDB = async (payload: any) => {
-  //   const response = await apiService.addReportDownloadInPdf(payload);
-  //   console.log("response", response);
-  // }
+const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
+    const newSelected = new Set(selectedIndividualAdditionalSearches);
+    
+    if (searchName === 'SELECT ALL') {
+      if (selectedIndividualAdditionalSearches.has('SELECT ALL')) {
+        newSelected.clear();
+      } else {
+        // Only add searches that are not selected in main searches
+        searches.forEach(s => {
+          if (s !== 'SELECT ALL' && !selectedSearches.has(s)) {
+            newSelected.add(s);
+          }
+        });
+        if (newSelected.size > 0) {
+          newSelected.add('SELECT ALL');
+        }
+      }
+    } else {
+      if (newSelected.has(searchName)) {
+        newSelected.delete(searchName);
+        newSelected.delete('SELECT ALL');
+      } else {
+        newSelected.add(searchName);
+        const availableSearches = searches.filter(s => s !== 'SELECT ALL' && !selectedSearches.has(s));
+        const allIndividualSelected = availableSearches.every(s => newSelected.has(s) || s === searchName);
+        if (allIndividualSelected && availableSearches.length > 0) {
+          newSelected.add('SELECT ALL');
+        }
+      }
+    }
+    setSelectedIndividualAdditionalSearches(newSelected);
+  };
+
+  
+// Check if all individual additional searches are selected (excluding SELECT ALL)
+  const allIndividualAdditionalSearchesSelected = useMemo(() => {
+    const availableSearches = searches.filter(s => s !== 'SELECT ALL' && !selectedSearches.has(s));
+    return availableSearches.length > 0 && availableSearches.every(s => selectedIndividualAdditionalSearches.has(s));
+  }, [selectedIndividualAdditionalSearches, selectedSearches, searches]);
 
   const handleSendEmail = async () => {
     if (!emailAddress.trim()) {
@@ -623,7 +775,7 @@ const Search: React.FC = () => {
       setIsSendingEmail(false);
     }
   };
-
+  
   const handleReportsDownload = async () => {
     if (pdfFilenames.length === 0) {
       alert('No reports available for download');
@@ -675,14 +827,23 @@ const Search: React.FC = () => {
       alert('Please select and confirm a company first');
       return;
     }
+    
+    if (selectedCategory === 'INDIVIDUAL') {
+      if (!individualFirstName || !individualLastName) {
+        alert('Please enter first name and last name');
+        return;
+      }
+    }
 
     // Check if at least one search is selected
     const hasMainSearches = Array.from(selectedSearches).some(s => s !== 'SELECT ALL');
-    const hasAdditionalSearches = Array.from(selectedAdditionalSearches).some(s => s !== 'SELECT ALL');
+    const hasAdditionalSearches = selectedCategory === 'ORGANISATION' 
+      ? Array.from(selectedAdditionalSearches).some(s => s !== 'SELECT ALL')
+      : Array.from(selectedIndividualAdditionalSearches).some(s => s !== 'SELECT ALL');
     const hasAsicTypes = Array.from(selectedAsicTypes).some(t => t !== 'SELECT ALL');
     
     // Validation: If ASIC is selected, ASIC type must be selected
-    if (selectedSearches.has('ASIC') && !hasAsicTypes) {
+    if (selectedCategory === 'ORGANISATION' && selectedSearches.has('ASIC') && !hasAsicTypes) {
       alert('Please select an ASIC type (Current, Current/Historical, or Company) when ASIC is selected');
       return;
     }
@@ -745,12 +906,23 @@ const Search: React.FC = () => {
           });
       }
 
-      // Add additional searches
-      Array.from(selectedAdditionalSearches)
-        .filter(search => search !== 'SELECT ALL')
-        .forEach(search => {
-          reportsToCreate.push({ type: search, name: search });
-        });
+      // Add additional searches for ORGANISATION
+      if (selectedCategory === 'ORGANISATION') {
+        Array.from(selectedAdditionalSearches)
+          .filter(search => search !== 'SELECT ALL')
+          .forEach(search => {
+            reportsToCreate.push({ type: search, name: search });
+          });
+      }
+      
+      // Add additional searches for INDIVIDUAL
+      if (selectedCategory === 'INDIVIDUAL') {
+        Array.from(selectedIndividualAdditionalSearches)
+          .filter(search => search !== 'SELECT ALL')
+          .forEach(search => {
+            reportsToCreate.push({ type: search, name: search });
+          });
+      }
 
       console.log('Reports to create:', reportsToCreate);
 
@@ -775,15 +947,22 @@ const Search: React.FC = () => {
             reportType = 'asic-current'; // Default fallback
           }
         } else if (reportItem.type === 'COURT') {
-          reportType = 'court';
+          // For INDIVIDUAL category, use same type as directors (individual-court)
+          reportType = selectedCategory === 'INDIVIDUAL' ? 'director-court' : 'court';
         } else if (reportItem.type === 'ATO') {
           reportType = 'ato';
         } else if (reportItem.type === 'BANKRUPTCY') {
-          reportType = 'bankruptcy';
+          // For INDIVIDUAL category, use same type as directors (individual-bankruptcy)
+          reportType = selectedCategory === 'INDIVIDUAL' ? 'director-bankruptcy' : 'bankruptcy';
         } else if (reportItem.type === 'LAND TITLE') {
-          reportType = 'land';
-        } else if (reportItem.type === 'ABN/ACN PPSR') {
-          reportType = 'ppsr';
+          // For INDIVIDUAL category, use same type as directors (individual-property)
+          reportType = selectedCategory === 'INDIVIDUAL' ? 'director-property' : 'land';
+        } else if (reportItem.type === 'ABN/ACN PPSR' || reportItem.type === 'PPSR') {
+          // For INDIVIDUAL category, use same type as directors (director-ppsr)
+          reportType = selectedCategory === 'INDIVIDUAL' ? 'director-ppsr' : 'ppsr';
+        } else if (reportItem.type === 'ASIC') {
+          // For INDIVIDUAL category, use same type as directors (director-related)
+          reportType = selectedCategory === 'INDIVIDUAL' ? 'director-related' : 'asic-current';
         } else if (reportItem.type === 'ABN/ACN PROPERTY TITLE') {
           reportType = 'property';
         } else if (reportItem.type === 'ABN/ACN COURT FILES') {
@@ -813,40 +992,91 @@ const Search: React.FC = () => {
         const user = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user") || '{}') : null;
         const currentMatter = localStorage.getItem('currentMatter') ? JSON.parse(localStorage.getItem('currentMatter') || '{}') : null;
         
-        const reportData = {
-          business: {
-            Abn: abn,
-            Name: companyName || 'Unknown',
-            isCompany: selectedCategory as string
-          },
+        const reportData: any = {
           type: reportType,
           userId: user?.userId || 0,
           matterId: currentMatter?.matterId,
           ispdfcreate: true as const
         };
 
-        console.log('Creating report with data:', reportData);
+        const isDirectorReport = reportType.startsWith('director-');
+        const shouldLoopDirectors = isDirectorReport && selectedCategory === 'ORGANISATION' && directorsList.length > 0;
+        if (shouldLoopDirectors) {
+          // Loop through each director and create a report for each
+          console.log(`Creating ${reportType} reports for ${directorsList.length} directors`);
+          for (const director of directorsList) {
+            const reportData: any = {
+              type: reportType,
+              userId: user?.userId || 0,
+              matterId: currentMatter?.matterId,
+              ispdfcreate: true as const,
+              business: {
+                Abn: abn,
+                Name: companyName || 'Unknown',
+                isCompany: 'ORGANISATION',
+                fname: director.firstName,
+                lname: director.lastName,
+                dob: director.dob
+              }
+            };
 
-        // Call backend to create report
-        const reportResponse = await apiService.createReport(reportData);
-        console.log('Report created:', reportResponse);
-        
-        // Extract PDF filename from response
-        // The response always has the filename in the 'report' property and always ends with .pdf
-        const pdfFilename = reportResponse?.report;
-        
-        if (pdfFilename && typeof pdfFilename === 'string') {
-          // Add PDF filename to the array
-          setPdfFilenames(prev => [...prev, pdfFilename]);
+            console.log(`Creating report for director: ${director.fullName || `${director.firstName} ${director.lastName}`}`, reportData);
+
+            // Call backend to create report
+            const reportResponse = await apiService.createReport(reportData);
+            console.log('Report created:', reportResponse);
+            
+            // Extract PDF filename from response
+            const pdfFilename = reportResponse?.report;
+            
+            if (pdfFilename && typeof pdfFilename === 'string') {
+              // Add PDF filename to the array
+              setPdfFilenames(prev => [...prev, pdfFilename]);
+            }
+            
+            createdReports.push({
+              reportResponse,
+              pdfFilename: pdfFilename || undefined
+            });
+          }
+        } else {
+          if (selectedCategory === 'ORGANISATION') {
+            reportData.business = {
+              Abn: abn,
+              Name: companyName || 'Unknown',
+              isCompany: 'ORGANISATION'
+            };
+          } else if (selectedCategory === 'INDIVIDUAL') {
+            reportData.business = {
+              fname: individualFirstName,
+              lname: individualLastName,
+              dob: individualDateOfBirth,
+              isCompany: 'INDIVIDUAL'
+            };
+          }
+           console.log('Creating report with data:', reportData);
+
+          // Call backend to create report
+          const reportResponse = await apiService.createReport(reportData);
+          console.log('Report created:', reportResponse);
+          
+          // Extract PDF filename from response
+          // The response always has the filename in the 'report' property and always ends with .pdf
+          const pdfFilename = reportResponse?.report;
+          
+          if (pdfFilename && typeof pdfFilename === 'string') {
+            // Add PDF filename to the array
+            setPdfFilenames(prev => [...prev, pdfFilename]);
+          }
+          
+          createdReports.push({
+            reportResponse,
+            pdfFilename: pdfFilename || undefined
+          });
         }
-        
-        createdReports.push({
-          reportResponse,
-          pdfFilename: pdfFilename || undefined
-        });
       }
 
-      // console.log('All reports created:', createdReports);
+      console.log('All reports created:', createdReports);
       setProccessReportStatus(true);
       setTotalDownloadReports(createdReports.length);
       
@@ -980,8 +1210,7 @@ const Search: React.FC = () => {
                                   </div>
             </div>
 
-            {/* Select Searches Card - Only show if searches are available */}
-            {searches.length > 0 && (
+            {/* Select Searches Card - Always show */}
             <div ref={searchesCardRef} className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
               <h2 className="text-[32px] font-bold text-center mb-10 text-gray-900 tracking-tight">
                 Select <span className="text-red-600 relative after:content-[''] after:absolute after:bottom-[-5px] after:left-0 after:right-0 after:h-[3px] after:bg-red-600 after:opacity-20">Searches</span>
@@ -1007,13 +1236,12 @@ const Search: React.FC = () => {
                         }
                       `}
                     >
-                      {isSelectAll && allSearchesSelected ? 'DESELECT ALL' : search}
+                      {isSelectAll && allSearchesSelected ? 'DESELECT ALL' : getSearchDisplayName(search)}
                   </button>
                   );
                 })}
                   </div>
                   </div>
-                  )}
               
             {/* Select ASIC Type Card - Only show when ORGANISATION + ASIC selected */}
             {selectedCategory === 'ORGANISATION' && selectedSearches.has('ASIC') && (
@@ -1050,7 +1278,7 @@ const Search: React.FC = () => {
               </div>
             )}
 
-            {/* Enter Search Details Card - Show when ORGANISATION selected and searches/ASIC types chosen */}
+            {/* Enter Search Details Card - Show when ORGANISATION selected */}
             {showEnterSearchDetails && (
             <div ref={detailsCardRef} className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
               <h2 className="text-[32px] font-bold text-center mb-10 text-gray-900 tracking-tight">
@@ -1219,8 +1447,8 @@ const Search: React.FC = () => {
                 </div>
               )}
               
-            {/* Enter Person Details Card - Show when INDIVIDUAL selected and searches are chosen */}
-            {selectedCategory === 'INDIVIDUAL' && selectedSearches.size > 0 && Array.from(selectedSearches).some(s => s !== 'SELECT ALL') && (
+            {/* Enter Person Details Card - Show when INDIVIDUAL selected */}
+            {selectedCategory === 'INDIVIDUAL' && (
             <div ref={detailsCardRef} className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
               <h2 className="text-[32px] font-bold text-center mb-10 text-gray-900 tracking-tight">
                 Enter <span className="text-red-600 relative after:content-[''] after:absolute after:bottom-[-5px] after:left-0 after:right-0 after:h-[3px] after:bg-red-600 after:opacity-20">Person Details</span>
@@ -1278,6 +1506,48 @@ const Search: React.FC = () => {
                 </div>
             )}
             
+            {/* Select Additional Searches - Show when INDIVIDUAL category is selected */}
+            {selectedCategory === 'INDIVIDUAL' && (
+            <div ref={additionalCardRef} className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
+              <h2 className="text-[32px] font-bold text-center mb-10 text-gray-900 tracking-tight">
+                Select <span className="text-red-600 relative after:content-[''] after:absolute after:bottom-[-5px] after:left-0 after:right-0 after:h-[3px] after:bg-red-600 after:opacity-20">Additional Searches</span>
+              </h2>
+                
+              {/* Additional Search Options Grid - Filter out options already selected in main searches */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {searches.filter(search => {
+                  // Hide SELECT ALL if all searches are selected, or hide individual searches if they're selected in main
+                  if (search === 'SELECT ALL') {
+                    return true; // Always show SELECT ALL
+                  }
+                  return !selectedSearches.has(search); // Hide if already selected in main searches
+                }).map((search) => {
+                  const isSelected = selectedIndividualAdditionalSearches.has(search);
+                  const isSelectAll = search === 'SELECT ALL';
+                  
+                  return (
+                    <button 
+                      key={search}
+                      onClick={() => handleIndividualAdditionalSearchToggle(search)}
+                      className={`
+                        px-6 py-5 rounded-xl font-semibold text-[13px] uppercase tracking-wide
+                        transition-all duration-300 shadow-md min-h-[70px] flex items-center justify-center
+                        ${isSelected
+                          ? isSelectAll
+                            ? 'bg-white text-red-600 border-2 border-red-600 hover:bg-red-50 shadow-lg shadow-red-600/20'
+                            : 'bg-red-600 text-white border-2 border-red-600 shadow-lg shadow-red-600/30 -translate-y-0.5'
+                          : 'bg-gray-50 text-gray-600 border-2 border-gray-200 hover:border-red-600 hover:-translate-y-0.5 hover:shadow-lg'
+                        }
+                      `}
+                    >
+                      {isSelectAll && allIndividualAdditionalSearchesSelected ? 'DESELECT ALL' : getSearchDisplayName(search)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            )}
+            
             {/* Select Additional Searches - Show when ORGANISATION category is selected */}
             {selectedCategory === 'ORGANISATION' && (
             <div ref={additionalCardRef} className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
@@ -1330,8 +1600,8 @@ const Search: React.FC = () => {
                           </div>
                         )}
 
-            {/* Selected Searches Summary Section - Show when ORGANISATION category is selected */}
-            {selectedCategory === 'ORGANISATION' && (
+            {/* Selected Searches Summary Section - Show when ORGANISATION or INDIVIDUAL category is selected */}
+            {(selectedCategory === 'ORGANISATION' || selectedCategory === 'INDIVIDUAL') && (
             <div className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100">
               <h2 className="text-base font-bold text-[#2c3e50] mb-[18px] uppercase tracking-wide">
                 Selected Searches:
@@ -1347,7 +1617,7 @@ const Search: React.FC = () => {
                       key={search}
                       className="px-6 py-3 rounded-xl font-semibold text-sm uppercase tracking-wide bg-red-600 text-white shadow-md"
                     >
-                      {search}
+                      {getSearchDisplayName(search)}
                       </div>
                   ))}
                 
@@ -1365,8 +1635,8 @@ const Search: React.FC = () => {
                     ))
                 }
                 
-                {/* Additional searches */}
-                {Array.from(selectedAdditionalSearches)
+                {/* Additional searches for ORGANISATION */}
+                {selectedCategory === 'ORGANISATION' && Array.from(selectedAdditionalSearches)
                   .filter(search => search !== 'SELECT ALL')
                   .map((search) => {
                     const option = additionalSearchOptions.find(o => o.name === search);
@@ -1380,6 +1650,18 @@ const Search: React.FC = () => {
                   </div>
                     );
                   })}
+                
+                {/* Additional searches for INDIVIDUAL */}
+                {selectedCategory === 'INDIVIDUAL' && Array.from(selectedIndividualAdditionalSearches)
+                  .filter(search => search !== 'SELECT ALL')
+                  .map((search) => (
+                    <div
+                      key={search}
+                      className="px-6 py-3 rounded-xl font-semibold text-sm uppercase tracking-wide bg-red-600 text-white shadow-md"
+                    >
+                      {getSearchDisplayName(search)}
+                  </div>
+                  ))}
               </div>
 
               {/* Process Reports Button */}
@@ -1461,7 +1743,9 @@ const Search: React.FC = () => {
         {/* Items */}
         <div className="flex-1 overflow-y-auto px-6 py-5 bg-white custom-scrollbar">
           {(selectedSearches.size === 0 || (selectedSearches.size === 1 && selectedSearches.has('SELECT ALL'))) && 
-           (selectedAdditionalSearches.size === 0 || (selectedAdditionalSearches.size === 1 && selectedAdditionalSearches.has('SELECT ALL'))) ? (
+           (selectedCategory === 'ORGANISATION' 
+             ? (selectedAdditionalSearches.size === 0 || (selectedAdditionalSearches.size === 1 && selectedAdditionalSearches.has('SELECT ALL')))
+             : (selectedIndividualAdditionalSearches.size === 0 || (selectedIndividualAdditionalSearches.size === 1 && selectedIndividualAdditionalSearches.has('SELECT ALL')))) ? (
             <div className="text-center py-12">
               <div className="text-4xl mb-3 opacity-40">📋</div>
               <div className="text-[15px] font-semibold text-gray-700 mb-1.5">No reports selected</div>
@@ -1478,10 +1762,10 @@ const Search: React.FC = () => {
                     style={{ animationDelay: `${index * 50}ms` }}
                   >
                     <div className="flex-1 text-[13px] font-medium text-gray-600 pr-4 leading-relaxed">
-                      {search}
+                      {getSearchDisplayName(search)}
               </div>
                     <div className="text-sm font-semibold text-gray-800 whitespace-nowrap">
-                      ${searchPrices[search as keyof SearchPrices].toFixed(2)}
+                      ${(searchPrices[search as keyof SearchPrices] || searchPrices[search === 'PPSR' ? 'ABN/ACN PPSR' : search as keyof SearchPrices] || 0).toFixed(2)}
             </div>
               </div>
                 ))}
@@ -1508,8 +1792,8 @@ const Search: React.FC = () => {
               </div>
               )}
               
-              {/* Show selected additional searches if any */}
-              {Array.from(selectedAdditionalSearches).filter(s => s !== 'SELECT ALL').length > 0 && (
+              {/* Show selected additional searches for ORGANISATION if any */}
+              {selectedCategory === 'ORGANISATION' && Array.from(selectedAdditionalSearches).filter(s => s !== 'SELECT ALL').length > 0 && (
                 <div className="mt-2">
                   {Array.from(selectedAdditionalSearches)
                     .filter(search => search !== 'SELECT ALL')
@@ -1527,6 +1811,32 @@ const Search: React.FC = () => {
                   </div>
                           <div className="text-sm font-semibold text-gray-800 whitespace-nowrap">
                             ${option?.price.toFixed(2)}
+                        </div>
+                    </div>
+                      );
+                    })}
+                </div>
+              )}
+              
+              {/* Show selected additional searches for INDIVIDUAL if any */}
+              {selectedCategory === 'INDIVIDUAL' && Array.from(selectedIndividualAdditionalSearches).filter(s => s !== 'SELECT ALL').length > 0 && (
+                <div className="mt-2">
+                  {Array.from(selectedIndividualAdditionalSearches)
+                    .filter(search => search !== 'SELECT ALL')
+                    .map((search, index) => {
+                      const priceKey = search === 'PPSR' ? 'ABN/ACN PPSR' : search;
+                      const price = searchPrices[priceKey as keyof SearchPrices] || 0;
+                      return (
+                        <div 
+                          key={search}
+                          className="flex justify-between items-start py-3 border-b border-gray-100 last:border-b-0 animate-fadeIn"
+                          style={{ animationDelay: `${(selectedSearches.size + index) * 50}ms` }}
+                        >
+                          <div className="flex-1 text-[13px] font-medium text-gray-600 pr-4 leading-relaxed">
+                            {getSearchDisplayName(search)}
+                  </div>
+                          <div className="text-sm font-semibold text-gray-800 whitespace-nowrap">
+                            ${price.toFixed(2)}
                         </div>
                     </div>
                       );

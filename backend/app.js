@@ -429,12 +429,13 @@ app.post('/api/create-report', async (req, res) => {
 
     // Extract ABN for validation
     const abn = business?.Abn || business?.abn || business?.ABN;
-    
-    if (!abn) {
-      return res.status(400).json({
-        error: 'ABN_NOT_FOUND',
-        message: 'ABN not found in business data'
-      });
+    if(business?.isCompany == "ORGANISATION") {
+      if (!abn) {
+        return res.status(400).json({
+          error: 'ABN_NOT_FOUND',
+          message: 'ABN not found in business data'
+        });
+      }
     }
 
     // Import the createReport function from payment routes
