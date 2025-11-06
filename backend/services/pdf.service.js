@@ -1378,13 +1378,13 @@ function extractAsicCompanyData(data) {
 
 // Extract data for Director Bankruptcy Report
 function extractBankruptcyData(data) {
-  // Handle different data structures (could be rdata or data)
-  const rdata = data.rdata || data;
+  const rdata = data.rdata || data.data || data;
   
   // Extract search metadata
   const searchId = rdata.uuid || rdata.insolvencySearchId || data.uuid || 'N/A';
-  const resultCount = rdata.resultCount || (rdata.insolvencies ? rdata.insolvencies.length : 0);
-  const insolvencies = rdata.insolvencies || [];
+  // Safely get insolvencies array - ensure it's actually an array
+  const insolvencies = Array.isArray(rdata.insolvencies) ? rdata.insolvencies : [];
+  const resultCount = rdata.resultCount || insolvencies.length || 0;
   
   // Extract person information from first insolvency record (if available)
   let surname = '';
@@ -1499,6 +1499,9 @@ function extractBankruptcyData(data) {
     
     // Legacy/placeholder fields
     company_type: 'director-bankruptcy',
+    acn: 'N/A', // Not applicable for bankruptcy reports but required for replaceVariables
+    abn: 'N/A', // Not applicable for bankruptcy reports but required for replaceVariables
+    companyName: fullName, // Use person's name as companyName for compatibility
     resultCount: resultCount,
     insolvencies: insolvencies
   };
@@ -1767,8 +1770,11 @@ function extractDirectorRelatedEntitiesData(data) {
     // Document ID (using UUID or director name)
     document_id: rdata.uuid || directorName,
     
-    // Legacy/placeholder fields
-    company_type: 'director-related'
+    // Legacy/placeholder fields (required for replaceVariables function)
+    company_type: 'director-related',
+    acn: 'N/A', // Not applicable for director-related reports (individual search)
+    abn: 'N/A', // Not applicable for director-related reports (individual search)
+    companyName: directorName // Use director name as companyName for compatibility
   };
 }
 
@@ -2376,13 +2382,43 @@ function replaceVariables(htmlContent, data, reportype) {
     };
   }
 
-  // Format ACN and ABN with spaces if they are numbers
-  const formattedAcn = extractedData.acn.length === 9 && /^\d+$/.test(extractedData.acn.replace(/\s/g, '')) 
-    ? extractedData.acn.replace(/\D/g, '').replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3') 
-    : extractedData.acn;
-  const formattedAbn = extractedData.abn.length === 11 && /^\d+$/.test(extractedData.abn.replace(/\s/g, '')) 
-    ? extractedData.abn.replace(/\D/g, '').replace(/(\d{2})(\d{3})(\d{3})(\d{3})/, '$1 $2 $3 $4') 
-    : extractedData.abn;
+  // Ensure extractedData has required fields
+  if (!extractedData) {
+    throw new Error(`Failed to extract data for report type: ${reportype}`);
+  }
+  
+  // Ensure acn and abn fields ALWAYS exist - set defaults if missing
+  // Use hasOwnProperty to check if property exists, then check value
+  if (!extractedData.hasOwnProperty('acn') || extractedData.acn === undefined || extractedData.acn === null) {
+    extractedData.acn = 'N/A';
+  }
+  if (!extractedData.hasOwnProperty('abn') || extractedData.abn === undefined || extractedData.abn === null) {
+    extractedData.abn = 'N/A';
+  }
+  
+  // Now safely format ACN and ABN - they are guaranteed to be strings at this point
+  // For bankruptcy reports, they're 'N/A', so the formatting check will fail and return 'N/A'
+  let formattedAcn = 'N/A';
+  let formattedAbn = 'N/A';
+  
+  // Only format if they're valid numbers (not 'N/A')
+  if (extractedData.acn && typeof extractedData.acn === 'string' && extractedData.acn !== 'N/A') {
+    const cleanAcn = extractedData.acn.replace(/\s/g, '');
+    if (cleanAcn.length === 9 && /^\d+$/.test(cleanAcn)) {
+      formattedAcn = cleanAcn.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3');
+    } else {
+      formattedAcn = extractedData.acn;
+    }
+  }
+  
+  if (extractedData.abn && typeof extractedData.abn === 'string' && extractedData.abn !== 'N/A') {
+    const cleanAbn = extractedData.abn.replace(/\s/g, '');
+    if (cleanAbn.length === 11 && /^\d+$/.test(cleanAbn)) {
+      formattedAbn = cleanAbn.replace(/(\d{2})(\d{3})(\d{3})(\d{3})/, '$1 $2 $3 $4');
+    } else {
+      formattedAbn = extractedData.abn;
+    }
+  }
 
   // Current date for report
   const reportDate = new Date().toLocaleDateString('en-GB', {
@@ -2401,17 +2437,19 @@ function replaceVariables(htmlContent, data, reportype) {
 
   // Helper function to replace variables in both syntaxes
   const replaceVar = (pattern, value) => {
+    // Convert value to string, handle undefined/null safely
+    const safeValue = value != null ? String(value) : '';
     // Replace ${variable} syntax
-    updatedHtml = updatedHtml.replace(new RegExp(`\\$\\{${pattern}\\}`, 'g'), value);
+    updatedHtml = updatedHtml.replace(new RegExp(`\\$\\{${pattern}\\}`, 'g'), safeValue);
     // Replace {{variable}} syntax
-    updatedHtml = updatedHtml.replace(new RegExp(`\\{\\{${pattern}\\}\\}`, 'g'), value);
+    updatedHtml = updatedHtml.replace(new RegExp(`\\{\\{${pattern}\\}\\}`, 'g'), safeValue);
   };
 
   // Replace common variables
   replaceVar('acn', formattedAcn);
   replaceVar('abn', formattedAbn);
-  replaceVar('companyName', extractedData.companyName);
-  replaceVar('company_type', extractedData.company_type);
+  replaceVar('companyName', extractedData.companyName || 'N/A');
+  replaceVar('company_type', extractedData.company_type || 'N/A');
   replaceVar('reportDate', reportDate);
   replaceVar('current_date_and_time', current_date_and_time);
 

@@ -363,10 +363,12 @@ async function director_related_report( fname, lname, dob ) {
 
 // Function to create report via external API
 async function createReport({ business, type, userId, matterId, ispdfcreate }) {
-    console.log(ispdfcreate);
     try {
         let existingReport = null;
         let iresult = null;
+        let reportId = null;
+        let reportData = null;
+        let pdffilename = null;
         if(business?.isCompany == "ORGANISATION") {
             abn = business?.Abn;
             acn = abn.substring(2);
@@ -385,8 +387,16 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
         
         if (existingReport) {
             // Fetch the report data from Alares API for parsing and storing
-            reportId = existingReport?.id
-            reportData = existingReport.rdata;
+            reportId = existingReport.id;
+            // If rdata is already an object, wrap it in { data: ... } format
+            const rdataObj = typeof existingReport.rdata === 'string' 
+                ? JSON.parse(existingReport.rdata) 
+                : existingReport.rdata;
+            
+            reportData = {
+                data: rdataObj
+            };
+
 
         } else {
             if( type == "asic-current" || type == "court" || type == "ato" ) {
@@ -493,18 +503,23 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
             } else if ( type == "director-related" ){
                 reportData = await director_related_report(business.fname, business.lname, business.dob);
             }  
-
+            // Ensure reportData has the correct structure
+            const reportDataForDb = reportData.data || reportData;
+            const uuid = reportDataForDb.uuid || reportDataForDb.ppsrCloudId || reportDataForDb.insolvencySearchId || null;
+                
             if(business?.isCompany == "ORGANISATION") {
+              if (!existingReport && reportData) {
+                
                 [iresult] = await sequelize.query(`
                     INSERT INTO api_data ( rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW()) RETURNING id`, 
                     {
                         bind: [
                             type,
-                            reportData.data.uuid || null,
+                            uuid,
                             null,
-                            abn || null,
-                            acn || null,
-                            JSON.stringify(reportData.data) || null,
+                            abn,
+                            acn,
+                            JSON.stringify(reportDataForDb) || null,
                             false,
                         ]
                     }
@@ -515,11 +530,11 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
                     {
                         bind: [
                             type,
-                            reportData.data.uuid || null,
+                            uuid,
                             null,
                             null,
                             null,
-                            JSON.stringify(reportData.data) || null,
+                            JSON.stringify(reportDataForDb) || null,
                             false,
                         ]
                     }
@@ -527,6 +542,18 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
             }
             reportId = iresult[0].id;
         }
+        
+        // Validate reportData before proceeding
+        if (!reportData) {
+            throw new Error('Report data is missing. Failed to fetch or retrieve report data.');
+        }
+        
+        // Ensure reportData has the correct structure for addDownloadReportInDB
+        // It expects either { data: ... } or the data object directly
+        if (!reportData.data && typeof reportData === 'object') {
+            reportData = { data: reportData };
+        }
+        
         if(ispdfcreate) {
             pdffilename = await addDownloadReportInDB( reportData, userId , matterId, reportId, `${uuidv4()}`, type );
             return pdffilename;
