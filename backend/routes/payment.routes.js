@@ -506,39 +506,38 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
             // Ensure reportData has the correct structure
             const reportDataForDb = reportData.data || reportData;
             const uuid = reportDataForDb.uuid || reportDataForDb.ppsrCloudId || reportDataForDb.insolvencySearchId || null;
-                
-            if(business?.isCompany == "ORGANISATION") {
-              if (!existingReport && reportData) {
-                
-                [iresult] = await sequelize.query(`
-                    INSERT INTO api_data ( rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW()) RETURNING id`, 
-                    {
-                        bind: [
-                            type,
-                            uuid,
-                            null,
-                            abn,
-                            acn,
-                            JSON.stringify(reportDataForDb) || null,
-                            false,
-                        ]
-                    }
-                );
-            }else{
-                [iresult] = await sequelize.query(`
-                    INSERT INTO api_data ( rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW()) RETURNING id`, 
-                    {
-                        bind: [
-                            type,
-                            uuid,
-                            null,
-                            null,
-                            null,
-                            JSON.stringify(reportDataForDb) || null,
-                            false,
-                        ]
-                    }
-                );
+            if (!existingReport && reportData) {
+                if(business?.isCompany == "ORGANISATION") {
+                    [iresult] = await sequelize.query(`
+                        INSERT INTO api_data ( rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW()) RETURNING id`, 
+                        {
+                            bind: [
+                                type,
+                                uuid,
+                                null,
+                                abn,
+                                acn,
+                                JSON.stringify(reportDataForDb) || null,
+                                false,
+                            ]
+                        }
+                    );
+                }else{
+                    [iresult] = await sequelize.query(`
+                        INSERT INTO api_data ( rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW()) RETURNING id`, 
+                        {
+                            bind: [
+                                type,
+                                uuid,
+                                null,
+                                null,
+                                null,
+                                JSON.stringify(reportDataForDb) || null,
+                                false,
+                            ]
+                        }
+                    );
+                }
             }
             reportId = iresult[0].id;
         }
