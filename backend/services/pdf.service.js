@@ -2313,6 +2313,91 @@ function extractPpsrData(data) {
   };
 }
 
+// Extract data for Director Court Report
+function extractDirectorCourtData(data) {
+  // Handle the new API response structure with separate criminal_court and civil_court
+  const criminalCourtData = data.criminal_court?.data || {};
+  const civilCourtData = data.civil_court?.data || {};
+  
+  const criminalRecords = criminalCourtData.records || [];
+  const civilRecords = civilCourtData.records || [];
+  
+  const totalCriminalRecords = criminalCourtData.total || criminalRecords.length;
+  const totalCivilRecords = civilCourtData.total || civilRecords.length;
+  const totalRecords = totalCriminalRecords + totalCivilRecords;
+  
+  // Get first record for cover page details (try criminal first, then civil)
+  const firstRecord = criminalRecords[0] || civilRecords[0] || {};
+  
+  const directorName = firstRecord.fullname || (firstRecord.given_name + ' ' + firstRecord.surname) || 'N/A';
+  const reportDate = moment().format('DD MMMM YYYY');
+  
+  // Build criminal court rows
+  let criminalCourtRows = '';
+  if (criminalRecords.length > 0) {
+    criminalRecords.forEach((record, index) => {
+      const formattedDate = record.date ? moment(record.date).format('DD MMM YYYY') : 'N/A';
+      criminalCourtRows += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${record.state || 'N/A'}</td>
+                        <td>${formattedDate}</td>
+                        <td>${record.listing_type || 'N/A'}</td>
+                        <td>${record.court || 'N/A'}</td>
+                        <td>${record.court_room || record.location || 'N/A'}</td>
+                        <td>${record.case_no || 'N/A'}</td>
+                        <td>${record.case_title || 'N/A'}</td>
+                    </tr>`;
+    });
+  } else {
+    criminalCourtRows = `
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 20px; color: #94A3B8;">No criminal court records found</td>
+                    </tr>`;
+  }
+  
+  // Build civil court rows
+  let civilCourtRows = '';
+  if (civilRecords.length > 0) {
+    civilRecords.forEach((record, index) => {
+      const formattedDate = record.date ? moment(record.date).format('DD MMM YYYY') : 'N/A';
+      const additionalInfo = record.additional_info1 || record.additional_info || 'N/A';
+      civilCourtRows += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${record.state || 'N/A'}</td>
+                        <td>${formattedDate}</td>
+                        <td>${record.listing_type || 'N/A'}</td>
+                        <td>${record.court || 'N/A'}</td>
+                        <td>${record.case_title || 'N/A'}</td>
+                        <td>${record.case_no || 'N/A'}</td>
+                        <td>${additionalInfo}</td>
+                    </tr>`;
+    });
+  } else {
+    civilCourtRows = `
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 20px; color: #94A3B8;">No civil court records found</td>
+                    </tr>`;
+  }
+  
+  return {
+    director_name: directorName,
+    report_date: reportDate,
+    director_given_name: firstRecord.given_name || 'N/A',
+    director_surname: firstRecord.surname || 'N/A',
+    total_records: totalRecords,
+    total_criminal_records: totalCriminalRecords,
+    total_civil_records: totalCivilRecords,
+    criminal_court_rows: criminalCourtRows,
+    civil_court_rows: civilCourtRows,
+    companyName: directorName, // For compatibility with existing template system
+    acn: 'N/A',
+    abn: 'N/A',
+    company_type: 'director-court'
+  };
+}
+
 // Function to replace variables in HTML
 function replaceVariables(htmlContent, data, reportype) {
   // Extract report-specific data based on report type
@@ -2336,6 +2421,8 @@ function replaceVariables(htmlContent, data, reportype) {
     extractedData = extractBankruptcyData(data);
   } else if (reportype === 'director-related') {
     extractedData = extractDirectorRelatedEntitiesData(data);
+  } else if (reportype === 'director-court') {
+    extractedData = extractDirectorCourtData(data);
   } else {
     // Default fallback - try to extract common fields
     const entity = data.entity || {};
@@ -2622,6 +2709,16 @@ function replaceVariables(htmlContent, data, reportype) {
   replaceVar('hearings_rows', extractedData.hearings_rows || '');
   replaceVar('documents_rows', extractedData.documents_rows || '');
 
+  // Replace director-court specific variables
+  replaceVar('director_name', extractedData.director_name || '');
+  replaceVar('director_given_name', extractedData.director_given_name || '');
+  replaceVar('director_surname', extractedData.director_surname || '');
+  replaceVar('total_records', extractedData.total_records || '0');
+  replaceVar('total_criminal_records', extractedData.total_criminal_records || '0');
+  replaceVar('total_civil_records', extractedData.total_civil_records || '0');
+  replaceVar('criminal_court_rows', extractedData.criminal_court_rows || '');
+  replaceVar('civil_court_rows', extractedData.civil_court_rows || '');
+
   return updatedHtml;
 }
 
@@ -2843,6 +2940,8 @@ async function addDownloadReportInDB(rdata, userId, matterId, reportId, reportNa
     templateName = 'director-bankruptcy-report.html';
   } else if (reportype == "director-related") {
     templateName = 'director-related-entities-report.html';
+  } else if (reportype == "director-court") {
+    templateName = 'director-court-report.html';
   } else {
     throw new Error(`Unknown report type: ${reportype}`);
   }

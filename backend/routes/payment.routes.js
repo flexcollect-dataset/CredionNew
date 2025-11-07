@@ -361,6 +361,54 @@ async function director_related_report( fname, lname, dob ) {
     return reportData; 
 }
 
+async function director_court_report( fname, lname, dob ) {
+    const bearerToken = '3eiXhUHT9G25QO9';
+    const criminalApiUrl = 'https://corp-api.courtdata.com.au/api/search/criminal/record';
+    const criminalParams = {
+      state: 'NSW',
+      fullname: 'ADGEMIS, Jon',
+    };
+
+    const criminalResponse = await axios.get(criminalApiUrl, {
+      params: criminalParams,
+      headers: {
+        'Api-Key': bearerToken,
+        'accept': 'application/json',
+        'X-CSRF-TOKEN': ''
+      },
+      timeout: 30000
+    });
+
+    // Civil Court API (POST)
+    const civilApiUrl = 'https://corp-api.courtdata.com.au/api/search/civil/record';
+    const civilParams = {
+      state: 'NSW',
+      fullname: 'ADGEMIS, Jon',
+      //fullname: 'ADGEMIS, Jon Angelo George',
+    };
+
+    const civilResponse = await axios.get(civilApiUrl, {
+      params: civilParams,
+      headers: {
+        'Api-Key': bearerToken,
+        'accept': 'application/json',
+        'X-CSRF-TOKEN': ''
+      },
+      timeout: 30000
+    });
+
+    // Merge both responses into one structured JSON
+    const reportData = {
+      status: true,
+      data: {
+        criminal_court: criminalResponse.data,
+        civil_court: civilResponse.data
+      }
+    };
+    reportData.data.uuid = 'abcdef';
+    return reportData; 
+}
+
 // Function to create report via external API
 async function createReport({ business, type, userId, matterId, ispdfcreate }) {
     try {
@@ -502,10 +550,10 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
                 reportData = await director_bankrupcty_report(business.fname, business.lname, business.dob);
             } else if ( type == "director-related" ){
                 reportData = await director_related_report(business.fname, business.lname, business.dob);
-            }  
+            } else if ( type == "director-court" ){
+                reportData = await director_court_report(business.fname, business.lname, business.dob);
+            }
             // Ensure reportData has the correct structure
-            const reportDataForDb = reportData;
-            const uuid = reportDataForDb.uuid;
             if (!existingReport && reportData) {
                 if(business?.isCompany == "ORGANISATION") {
                     [iresult] = await sequelize.query(`
@@ -513,11 +561,11 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
                         {
                             bind: [
                                 type,
-                                uuid,
+                                reportData.data.uuid,
                                 null,
                                 abn,
                                 acn,
-                                JSON.stringify(reportDataForDb) || null,
+                                JSON.stringify(reportData.data) || null,
                                 false,
                             ]
                         }
@@ -528,18 +576,18 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
                         {
                             bind: [
                                 type,
-                                uuid,
+                                reportData.data.uuid,
                                 null,
                                 null,
                                 null,
-                                JSON.stringify(reportDataForDb) || null,
+                                JSON.stringify(reportData.data) || null,
                                 false,
                             ]
                         }
                     );
                 }
+                reportId = iresult[0].id;
             }
-            reportId = iresult[0].id;
         }
         
         // Validate reportData before proceeding
