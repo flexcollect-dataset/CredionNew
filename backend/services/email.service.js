@@ -54,10 +54,16 @@ async function downloadPDFFromS3(filename) {
 }
 
 // ---------- GRAPH AUTH ----------
-const credential = new ClientSecretCredential(TENANT_ID, CLIENT_ID, CLIENT_SECRET);
+const hasAzureCredentials = Boolean(TENANT_ID && CLIENT_ID && CLIENT_SECRET);
+const credential = hasAzureCredentials
+  ? new ClientSecretCredential(TENANT_ID, CLIENT_ID, CLIENT_SECRET)
+  : null;
 
 // Get a bearer token for Microsoft Graph
 async function getGraphToken() {
+  if (!credential) {
+    throw new Error("Email service is not configured – missing Azure credentials");
+  }
   // “.default” will use the app’s consented application permissions (Mail.Send)
   const scope = "https://graph.microsoft.com/.default";
   const token = await credential.getToken(scope);
