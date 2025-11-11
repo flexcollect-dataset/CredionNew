@@ -76,7 +76,7 @@ const MatterReports: React.FC = () => {
   const handleAddNewReport = () => {
     if (matterId) {
       // Store the matterId in localStorage so the search page can use it
-      localStorage.setItem('currentMatter', JSON.stringify({ matterId: Number(matterId) }));
+      localStorage.setItem('currentMatter', JSON.stringify({ matterId: Number(matterId), matterName: matter?.matterName, description: matter.description }));
       // Navigate to search page
       navigate('/search');
     }

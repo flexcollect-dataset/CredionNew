@@ -58,8 +58,55 @@ const SERVICES = {
       };
     },
   },
-  // add more services below 👇
-  // asic: { baseURL: "...", getToken: async () => { ... } }
+  corelogic: {
+    baseURL: "https://api-sbox.corelogic.asia/",
+    authURL: "https://api-sbox.corelogic.asia/access/as/token.oauth2",
+    getToken: async () => {
+      const clientId = process.env.CORELOGIC_CLIENT_ID || 'Lc5IATpomLaRconHlxNrRiY8BlM5Zv5n';
+      const clientSecret = process.env.CORELOGIC_CLIENT_SECRET || 'mDAvt7GvdmhSjUgL';
+      const scope = 'profile openid';
+
+      const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+      const params = { grant_type: 'client_credentials', scope: scope};
+
+      const { data } = await axios.post( 'https://api-sbox.corelogic.asia/access/as/token.oauth2', null, {
+          params,
+          headers: {
+            Authorization: `Basic ${basicAuth}`,
+            'Content-Length': '0',
+          },
+        }
+      );
+
+      return {
+        token: data.access_token,
+        expiresAt: Date.now() + (data.expires_in - 60) * 1000,
+      };
+    },
+  },
+  landtitle: {
+    baseURL: 'https://staging-online.globalx.com.au/api/national-property',
+    authURL: 'https://staging-auth.globalx.com.au/auth/realms/globalx/protocol/openid-connect/token',
+    getToken: async () => {
+      const clientId = process.env.GX_CLIENT_ID || 'ddcredint';
+      const clientSecret = process.env.GX_CLIENT_SECRET || 'wudgJFuEUERyt1NXzjyKhxKhA3Rg5Eiv';
+
+      const body = new URLSearchParams({
+        grant_type: 'client_credentials',
+        scope: 'digital-titles',
+      }).toString();
+
+      const { data } = await axios.post('https://staging-auth.globalx.com.au/auth/realms/GlobalX/protocol/openid-connect/token', body, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        auth: { username: clientId, password: clientSecret }, 
+      });
+
+      return {
+        token: data.access_token,
+        expiresAt: Date.now() + (data.expires_in - 60) * 1000,
+      };
+    },
+  },
 };
 
 /* -------------------------------

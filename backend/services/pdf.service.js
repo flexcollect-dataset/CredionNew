@@ -2315,12 +2315,18 @@ function extractPpsrData(data) {
 
 // Extract data for Director Court Report
 function extractDirectorCourtData(data) {
+  const criminalCourtSection = data.criminal_court;
+  const civilCourtSection = data.civil_court;
+
+  const isCriminalNotOrdered = criminalCourtSection == null;
+  const isCivilNotOrdered = civilCourtSection == null;
+
   // Handle the new API response structure with separate criminal_court and civil_court
-  const criminalCourtData = data.criminal_court?.data || {};
-  const civilCourtData = data.civil_court?.data || {};
+  const criminalCourtData = isCriminalNotOrdered ? {} : (criminalCourtSection?.data || {});
+  const civilCourtData = isCivilNotOrdered ? {} : (civilCourtSection?.data || {});
   
-  const criminalRecords = criminalCourtData.records || [];
-  const civilRecords = civilCourtData.records || [];
+  const criminalRecords = Array.isArray(criminalCourtData.records) ? criminalCourtData.records : [];
+  const civilRecords = Array.isArray(civilCourtData.records) ? civilCourtData.records : [];
   
   const totalCriminalRecords = criminalCourtData.total || criminalRecords.length;
   const totalCivilRecords = civilCourtData.total || civilRecords.length;
@@ -2334,7 +2340,12 @@ function extractDirectorCourtData(data) {
   
   // Build criminal court rows
   let criminalCourtRows = '';
-  if (criminalRecords.length > 0) {
+  if (isCriminalNotOrdered) {
+    criminalCourtRows = `
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 20px; color: #94A3B8;">Criminal court search not ordered</td>
+                    </tr>`;
+  } else if (criminalRecords.length > 0) {
     criminalRecords.forEach((record, index) => {
       const formattedDate = record.date ? moment(record.date).format('DD MMM YYYY') : 'N/A';
       criminalCourtRows += `
@@ -2358,7 +2369,12 @@ function extractDirectorCourtData(data) {
   
   // Build civil court rows
   let civilCourtRows = '';
-  if (civilRecords.length > 0) {
+  if (isCivilNotOrdered) {
+    civilCourtRows = `
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 20px; color: #94A3B8;">Civil court search not ordered</td>
+                    </tr>`;
+  } else if (civilRecords.length > 0) {
     civilRecords.forEach((record, index) => {
       const formattedDate = record.date ? moment(record.date).format('DD MMM YYYY') : 'N/A';
       const additionalInfo = record.additional_info1 || record.additional_info || 'N/A';
@@ -2387,8 +2403,8 @@ function extractDirectorCourtData(data) {
     director_given_name: firstRecord.given_name || 'N/A',
     director_surname: firstRecord.surname || 'N/A',
     total_records: totalRecords,
-    total_criminal_records: totalCriminalRecords,
-    total_civil_records: totalCivilRecords,
+    total_criminal_records: isCriminalNotOrdered ? 0 : totalCriminalRecords,
+    total_civil_records: isCivilNotOrdered ? 0 : totalCivilRecords,
     criminal_court_rows: criminalCourtRows,
     civil_court_rows: civilCourtRows,
     companyName: directorName, // For compatibility with existing template system
@@ -2421,7 +2437,7 @@ function replaceVariables(htmlContent, data, reportype) {
     extractedData = extractBankruptcyData(data);
   } else if (reportype === 'director-related') {
     extractedData = extractDirectorRelatedEntitiesData(data);
-  } else if (reportype === 'director-court') {
+  } else if (reportype === 'director-court' || reportype === 'director-court-civil' || reportype === 'director-court-criminal' ) {
     extractedData = extractDirectorCourtData(data);
   } else {
     // Default fallback - try to extract common fields
@@ -2940,7 +2956,7 @@ async function addDownloadReportInDB(rdata, userId, matterId, reportId, reportNa
     templateName = 'director-bankruptcy-report.html';
   } else if (reportype == "director-related") {
     templateName = 'director-related-entities-report.html';
-  } else if (reportype == "director-court") {
+  } else if (reportype == "director-court" || reportype == "director-court-civil" || reportype == "director-court-criminal" ) {
     templateName = 'director-court-report.html';
   } else {
     throw new Error(`Unknown report type: ${reportype}`);

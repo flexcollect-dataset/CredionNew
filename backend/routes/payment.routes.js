@@ -409,6 +409,206 @@ async function director_court_report( fname, lname, dob ) {
     return reportData; 
 }
 
+async function director_court_civil( fname, lname, dob ) {
+    const bearerToken = '3eiXhUHT9G25QO9';
+  
+    // Civil Court API (POST)
+    const civilApiUrl = 'https://corp-api.courtdata.com.au/api/search/civil/record';
+    const civilParams = {
+      state: 'NSW',
+      fullname: 'ADGEMIS, Jon',
+      //fullname: 'ADGEMIS, Jon Angelo George',
+    };
+
+    const civilResponse = await axios.get(civilApiUrl, {
+      params: civilParams,
+      headers: {
+        'Api-Key': bearerToken,
+        'accept': 'application/json',
+        'X-CSRF-TOKEN': ''
+      },
+      timeout: 30000
+    });
+
+    // Merge both responses into one structured JSON
+    const reportData = {
+      status: true,
+      data: {
+        criminal_court: null,
+        civil_court: civilResponse.data
+      }
+    };
+    reportData.data.uuid = 'abcdef';
+    return reportData; 
+}
+
+async function director_court_criminal( fname, lname, dob ) {
+    const bearerToken = '3eiXhUHT9G25QO9';
+    const criminalApiUrl = 'https://corp-api.courtdata.com.au/api/search/criminal/record';
+    const criminalParams = {
+      state: 'NSW',
+      fullname: 'ADGEMIS, Jon',
+    };
+
+    const criminalResponse = await axios.get(criminalApiUrl, {
+      params: criminalParams,
+      headers: {
+        'Api-Key': bearerToken,
+        'accept': 'application/json',
+        'X-CSRF-TOKEN': ''
+      },
+      timeout: 30000
+    });
+
+    // Merge both responses into one structured JSON
+    const reportData = {
+      status: true,
+      data: {
+        criminal_court: criminalResponse.data,
+        civil_court: null
+      }
+    };
+    reportData.data.uuid = 'abcdef';
+    return reportData; 
+}
+
+async function property( abn, cname, ldata ) {
+    console.log(abn);
+    console.log(cname);
+    console.log(ldata.addOn);
+
+    // if(ldata.addOn === true ) {
+    //     response = await get_cotality_pid("56 Kings Road Vaucluse NSW 2030");
+    // }
+    
+    titleref = await createTitleOrder('NSW','99/30539');
+    console.log(titleref);
+} 
+
+async function createTitleOrder(jurisdiction, titleReference) {
+  const bearerToken = await getToken('landtitle');
+
+  const url = 'https://staging-online.globalx.com.au/api/national-property/title-orders';
+
+  const payload = {
+    OrderRequestBlock: {
+      OrderReference: 'orderReference',
+    },
+    ServiceRequestBlock: {
+      Jurisdiction: jurisdiction,          // e.g. "NSW"
+      TitleReference: titleReference,      // e.g. "99/30539"
+      DontUseCachingProduct: true,
+    },
+  };
+
+    rdata = await axios.post(url, payload, {
+        headers: {
+            Authorization: `Bearer ${bearerToken}`,
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+        },
+    });
+
+  orderIdentifier = rdata.data?.OrderResultBlock?.OrderIdentifier; // expected 201 with OrderResultBlock + ResultURI
+  resposne = await getTitleOrderById(orderIdentifier);
+  console.log("========*******************======");
+   console.log(resposne);
+  return resposne;
+}
+
+async function getTitleOrderById(orderIdentifier) {
+  const token = await getToken('landtitle');
+  const url   = `https://staging-online.globalx.com.au/api/national-property/title-orders/${orderIdentifier}`;
+  tdata = await axios.get(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+  });
+  console.log("==============");
+  console.log(tdata);
+  return tdata.data;
+}
+
+async function get_cotality_pid(address) {
+    try {
+        if (!address || typeof address !== 'string') {
+            throw new Error('A valid address is required to lookup property information');
+        }
+
+        const bearerToken = await getToken('corelogic');
+        const matchResponse = await axios.get('https://api-sbox.corelogic.asia/search/au/matcher/address', {
+            params: {
+                q: address
+            },
+            headers: {
+                'Authorization': `Bearer ${bearerToken}`,
+                'accept': 'application/json',
+            }
+        });
+
+        const propertyId = matchResponse?.data?.matchDetails?.propertyId;
+        if (!propertyId) {
+            throw new Error('Unable to determine propertyId from CoreLogic matcher response');
+        }
+
+        const [salesHistory, propertyData] = await Promise.all([
+            get_cotality_saleshistory(propertyId, bearerToken),
+            get_cotality_propertydata(propertyId, bearerToken)
+        ]);
+
+        return {
+            propertyId,
+            matchDetails: matchResponse?.data?.matchDetails || null,
+            salesHistory,
+            propertyData
+        };
+    } catch (error) {
+        console.error('Error fetching CoreLogic property ID:', error?.response?.data || error.message);
+        throw error;
+    }
+}
+
+async function get_cotality_saleshistory(propertyId, bearerToken) {
+  const includeHistoric = false;
+
+  const url = `https://api-sbox.corelogic.asia/property-details/au/properties/${propertyId}/sales`;
+
+  try {
+    const response = await axios.get(url, {
+      params: { includeHistoric },
+      headers: {
+        'accept': 'application/json',
+        'Authorization': `Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6IkRlZmF1bHQiLCJwaS5hdG0iOiJvcGdpIn0.eyJzY29wZSI6W10sImNsaWVudF9pZCI6IkxjNUlBVHBvbUxhUmNvbkhseE5yUmlZOEJsTTVadjVuIiwiaXNzIjoiaHR0cHM6Ly9hdXRoLmNvcmVsb2dpYy5hc2lhIiwiZW52X2FjY2Vzc19yZXN0cmljdCI6InQiLCJnZW9fY29kZXMiOlsiQUNUIC0gRnVsbCBTdGF0ZSIsIk5TVyAtIE1ldHJvIiwiTlNXIC0gUmVnaW9uYWwiLCJOVCAtIEZ1bGwgU3RhdGUiLCJRTEQgLSBNZXRybyIsIlFMRCAtIFJlZ2lvbmFsIiwiU0EgLSBNZXRybyIsIlNBIC0gUmVnaW9uYWwiLCJUQVMgLSBGdWxsIFN0YXRlIiwiVklDIC0gKEFBKSBGdWxsIFN0YXRlIiwiVklDIC0gRnVsbCBTdGF0ZSIsIlZJQyAtIE1ldHJvIiwiVklDIC0gUmVnaW9uYWwiLCJXQSAtIE1ldHJvIiwiV0EgLSBSZWdpb25hbCIsIk5vcnRoIElzbGFuZCIsIlNvdXRoIElzbGFuZCJdLCJzb3VyY2VfZXhjbHVzaW9uIjpbXSwiZXhwIjoxNzYyODQwNTM3fQ.k-aqfp4uFIGzPV1UGES0axCnYoFmNUOK99TnsZrna0B69x8bUwzQ7IILJ8XP_S3_KEm2yUXZ4-1svUth0oTgTfH3MlBACj4GvdQuNgmpSi6MvWM3vYCADBKO6Bk9gHsPBWCphVnCdaUXyha8syClpIRdzwAcREL-UHZiFAoWBcGdUPDZ3MwBpH93ZJ8xNLx1a85ABVIhDOPGjEV4YXRwsd6XI1IeGB6Vn1qa3JLxw-jKI7GkrLf-N1qfqCI4Th5ftUZ_WKqLuMcbHCirByYOYQOBaoKjxInYGmpv2_Nu3fmXSvAXo3IRl40ZXdPJtxIB92rGh3AcdVbFFrV9YotB6A`,
+      },
+    });
+
+   return response.data;
+  } catch (error) {
+    console.error('❌ Error:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
+async function get_cotality_propertydata(propertyId, bearerToken) {
+  const includeHistoric = false;
+  const url = `https://api-sbox.corelogic.asia/property-details/au/properties/${propertyId}/attributes/core`;
+  
+  try {
+    const response = await axios.get(url, {
+      params: { includeHistoric },
+      headers: {
+        'accept': 'application/json',
+        'Authorization': `Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6IkRlZmF1bHQiLCJwaS5hdG0iOiJvcGdpIn0.eyJzY29wZSI6W10sImNsaWVudF9pZCI6IkxjNUlBVHBvbUxhUmNvbkhseE5yUmlZOEJsTTVadjVuIiwiaXNzIjoiaHR0cHM6Ly9hdXRoLmNvcmVsb2dpYy5hc2lhIiwiZW52X2FjY2Vzc19yZXN0cmljdCI6InQiLCJnZW9fY29kZXMiOlsiQUNUIC0gRnVsbCBTdGF0ZSIsIk5TVyAtIE1ldHJvIiwiTlNXIC0gUmVnaW9uYWwiLCJOVCAtIEZ1bGwgU3RhdGUiLCJRTEQgLSBNZXRybyIsIlFMRCAtIFJlZ2lvbmFsIiwiU0EgLSBNZXRybyIsIlNBIC0gUmVnaW9uYWwiLCJUQVMgLSBGdWxsIFN0YXRlIiwiVklDIC0gKEFBKSBGdWxsIFN0YXRlIiwiVklDIC0gRnVsbCBTdGF0ZSIsIlZJQyAtIE1ldHJvIiwiVklDIC0gUmVnaW9uYWwiLCJXQSAtIE1ldHJvIiwiV0EgLSBSZWdpb25hbCIsIk5vcnRoIElzbGFuZCIsIlNvdXRoIElzbGFuZCJdLCJzb3VyY2VfZXhjbHVzaW9uIjpbXSwiZXhwIjoxNzYyODQwNTM3fQ.k-aqfp4uFIGzPV1UGES0axCnYoFmNUOK99TnsZrna0B69x8bUwzQ7IILJ8XP_S3_KEm2yUXZ4-1svUth0oTgTfH3MlBACj4GvdQuNgmpSi6MvWM3vYCADBKO6Bk9gHsPBWCphVnCdaUXyha8syClpIRdzwAcREL-UHZiFAoWBcGdUPDZ3MwBpH93ZJ8xNLx1a85ABVIhDOPGjEV4YXRwsd6XI1IeGB6Vn1qa3JLxw-jKI7GkrLf-N1qfqCI4Th5ftUZ_WKqLuMcbHCirByYOYQOBaoKjxInYGmpv2_Nu3fmXSvAXo3IRl40ZXdPJtxIB92rGh3AcdVbFFrV9YotB6A`
+      },
+    });
+    return response.data;
+  } catch (error) {
+    console.error('❌ Error:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
 // Function to create report via external API
 async function createReport({ business, type, userId, matterId, ispdfcreate }) {
     try {
@@ -552,6 +752,12 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
                 reportData = await director_related_report(business.fname, business.lname, business.dob);
             } else if ( type == "director-court" ){
                 reportData = await director_court_report(business.fname, business.lname, business.dob);
+            } else if ( type == "director-court-civil" ) {
+                reportData = await director_court_civil(business.fname, business.lname, business.dob);
+            } else if ( type == "director-court-criminal" ) {
+                reportData = await director_court_criminal(business.fname, business.lname, business.dob);
+            } else if ( type == 'property') {
+                reportData = await property(business.Abn, business.Name, business.landTitleSelection);
             }
             // Ensure reportData has the correct structure
             if (!existingReport && reportData) {

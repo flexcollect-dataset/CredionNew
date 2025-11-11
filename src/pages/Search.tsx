@@ -1,10 +1,46 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { apiService } from '../services/api';
 
 type CategoryType = 'ORGANISATION' | 'INDIVIDUAL' | 'LAND TITLE';
-type SearchType = 'SELECT ALL' | 'ASIC' | 'COURT' | 'ATO' | 'ABN/ACN PPSR' | 'ADD DOCUMENT SEARCH' | 'BANKRUPTCY' | 'LAND TITLE';
+type SearchType =
+  | 'SELECT ALL'
+  | 'ASIC'
+  | 'COURT'
+  | 'ATO'
+  | 'ABN/ACN PPSR'
+  | 'ADD DOCUMENT SEARCH'
+  | 'BANKRUPTCY'
+  | 'LAND TITLE'
+  | 'PPSR'
+  | 'LAND_TITLE_TITLE_REFERENCE'
+  | 'LAND_TITLE_ORGANISATION'
+  | 'LAND_TITLE_INDIVIDUAL'
+  | 'LAND_TITLE_ADDRESS'
+  | 'LAND_TITLE_ADD_ON';
 type AsicType = 'SELECT ALL' | 'CURRENT' | 'CURRENT/HISTORICAL' | 'COMPANY';
-type AdditionalSearchType = 'SELECT ALL' | 'ABN/ACN PPSR' | 'ABN/ACN PROPERTY TITLE' | 'DIRECTOR RELATED ENTITIES' | 'DIRECTOR PROPERTY TITLE' | 'DIRECTOR PPSR' | 'DIRECTOR BANKRUPTCY' | 'ABN/ACN COURT FILES' | 'ASIC-CURRENT';
+type CourtTypeOption = 'ALL' | 'CIVIL COURT' | 'CRIMINAL COURT';
+type AdditionalSearchType =
+  | 'SELECT ALL'
+  | 'ABN/ACN PPSR'
+  | 'ASIC - CURRENT'
+  | 'ABN/ACN LAND TITLE'
+  | 'DIRECTOR RELATED ENTITIES'
+  | 'DIRECTOR LAND TITLE'
+  | 'DIRECTOR PPSR'
+  | 'DIRECTOR BANKRUPTCY'
+  | 'ABN/ACN COURT FILES'
+  | 'ATO';
+
+type LandTitleOption = 'ABN/ACN LAND TITLE' | 'DIRECTOR LAND TITLE';
+type LandTitleDetailSelection = 'SUMMARY' | 'CURRENT' | 'PAST' | 'ALL';
+
+interface LandTitleSelection {
+  summary: boolean;
+  detail: LandTitleDetailSelection;
+  addOn: boolean;
+}
+
+type LandTitleCategoryOption = 'TITLE_REFERENCE' | 'LAND_ORGANISATION' | 'LAND_INDIVIDUAL' | 'ADDRESS';
 
 interface SearchPrices {
   [key: string]: number;
@@ -34,12 +70,17 @@ const Search: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('ORGANISATION');
   const [selectedSearches, setSelectedSearches] = useState<Set<SearchType>>(new Set());
   const [selectedAsicTypes, setSelectedAsicTypes] = useState<Set<AsicType>>(new Set());
+  const [selectedCourtType, setSelectedCourtType] = useState<CourtTypeOption>('ALL');
+  const [isAsicModalOpen, setIsAsicModalOpen] = useState(false);
+  const [isCourtModalOpen, setIsCourtModalOpen] = useState(false);
+  const [isDocumentModalOpen, setIsDocumentModalOpen] = useState(false);
   const [organisationSearchTerm, setOrganisationSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState<ABNSuggestion[]>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchTimeoutRef = useRef<number | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const landTitleOrganisationDropdownRef = useRef<HTMLDivElement>(null);
   const hasSelectedRef = useRef(false); // Track if user selected from dropdown
   const [hasSelectedCompany, setHasSelectedCompany] = useState(false);
   const [selectedAdditionalSearches, setSelectedAdditionalSearches] = useState<Set<AdditionalSearchType>>(new Set());
@@ -57,8 +98,8 @@ const Search: React.FC = () => {
   const [individualDateOfBirth, setIndividualDateOfBirth] = useState('');
   
   // Data availability
-  const [dataAvailable, setDataAvailable] = useState<boolean | null>(null);
-  const [checkingData, setCheckingData] = useState(false);
+  const [, setDataAvailable] = useState<boolean | null>(null);
+  const [, setCheckingData] = useState(false);
   
   // Stepper state and refs
   const [activeStep, setActiveStep] = useState(0);
@@ -76,9 +117,50 @@ const Search: React.FC = () => {
   const [emailAddress, setEmailAddress] = useState('');
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const [documentIdInput, setDocumentIdInput] = useState('');
+  const [documentSearchId, setDocumentSearchId] = useState('');
+  const [selectedLandTitleOption, setSelectedLandTitleOption] = useState<LandTitleCategoryOption | null>(null);
+  const [isLandTitleAddOnSelected, setIsLandTitleAddOnSelected] = useState(false);
+  const [landTitleReferenceId, setLandTitleReferenceId] = useState('');
+  const [landTitleOrganisationStates, setLandTitleOrganisationStates] = useState<Set<string>>(new Set());
+  const [landTitleOrganisationSearchTerm, setLandTitleOrganisationSearchTerm] = useState('');
+  const [landTitleOrganisationSuggestions, setLandTitleOrganisationSuggestions] = useState<ABNSuggestion[]>([]);
+  const [landTitleOrganisationSelected, setLandTitleOrganisationSelected] = useState<ABNSuggestion | null>(null);
+  const [isLoadingLandTitleOrganisationSuggestions, setIsLoadingLandTitleOrganisationSuggestions] = useState(false);
+  const landTitleOrganisationSearchTimeoutRef = useRef<number | null>(null);
+  const [landTitleOrganisationShowSuggestions, setLandTitleOrganisationShowSuggestions] = useState(false);
+  const [isLandTitleOrganisationConfirmed, setIsLandTitleOrganisationConfirmed] = useState(false);
+  const [isConfirmingLandTitleOrganisation, setIsConfirmingLandTitleOrganisation] = useState(false);
+
+  const resetLandTitleOrganisationSearch = useCallback(() => {
+    setLandTitleOrganisationSearchTerm('');
+    setLandTitleOrganisationSuggestions([]);
+    setLandTitleOrganisationSelected(null);
+    setLandTitleOrganisationShowSuggestions(false);
+    setIsLandTitleOrganisationConfirmed(false);
+    setIsLoadingLandTitleOrganisationSuggestions(false);
+  }, []);
+
+  const clearLandTitleOrganisationSelection = useCallback(() => {
+    setLandTitleOrganisationSearchTerm('');
+    setLandTitleOrganisationSuggestions([]);
+    setLandTitleOrganisationSelected(null);
+    setLandTitleOrganisationShowSuggestions(false);
+    setIsLandTitleOrganisationConfirmed(false);
+    setIsLoadingLandTitleOrganisationSuggestions(false);
+  }, []);
+  const [landTitleIndividualFirstName, setLandTitleIndividualFirstName] = useState('');
+  const [landTitleIndividualLastName, setLandTitleIndividualLastName] = useState('');
+  const [landTitleIndividualDobMode, setLandTitleIndividualDobMode] = useState<'EXACT' | 'RANGE'>('EXACT');
+  const [landTitleIndividualDob, setLandTitleIndividualDob] = useState('');
+  const [landTitleIndividualStartYear, setLandTitleIndividualStartYear] = useState('');
+  const [landTitleIndividualEndYear, setLandTitleIndividualEndYear] = useState('');
+  const [landTitleIndividualStates, setLandTitleIndividualStates] = useState<Set<string>>(new Set());
+  const [landTitleAddress, setLandTitleAddress] = useState('');
 
   const categories: CategoryType[] = ['ORGANISATION', 'INDIVIDUAL', 'LAND TITLE'];
   const asicTypes: AsicType[] = ['SELECT ALL', 'CURRENT', 'CURRENT/HISTORICAL', 'COMPANY'];
+  const courtTypes: CourtTypeOption[] = ['ALL', 'CIVIL COURT', 'CRIMINAL COURT'];
   
   const asicTypePrices: Record<string, number> = {
     'CURRENT': 25.00,
@@ -89,37 +171,179 @@ const Search: React.FC = () => {
   // Base prices for additional searches (per director for director-related searches)
   const additionalSearchBasePrices: Record<string, number> = {
     'ABN/ACN PPSR': 50,
-    'ABN/ACN PROPERTY TITLE': 100,
+    'ASIC - CURRENT': 25,
+    'ABN/ACN LAND TITLE': 100,
     'DIRECTOR RELATED ENTITIES': 75,
-    'DIRECTOR PROPERTY TITLE': 80,
+    'DIRECTOR LAND TITLE': 80,
     'DIRECTOR PPSR': 50,
     'DIRECTOR BANKRUPTCY': 90,
     'ABN/ACN COURT FILES': 60,
-    'ASIC-CURRENT': 25
+    'ATO': 55
   };
+  
+  const landTitlePricingConfig = {
+    base: {
+      'ABN/ACN LAND TITLE': 100,
+      'DIRECTOR LAND TITLE': 80
+    } as Record<LandTitleOption, number>,
+    addOn: 40
+  } as const;
+  
+  const initialLandTitleSelection: LandTitleSelection = {
+    summary: true,
+    detail: 'SUMMARY',
+    addOn: false
+  };
+  
+  const isLandTitleOption = (option: string): option is LandTitleOption =>
+    option === 'ABN/ACN LAND TITLE' || option === 'DIRECTOR LAND TITLE';
+  
+  const landTitleModalCopy: Record<
+    LandTitleOption,
+    {
+      summaryTitle: string;
+      summaryDescription: string;
+      detailTitle: string;
+      detailDescription: string;
+      addOnTitle: string;
+      addOnDescription: string;
+    }
+  > = {
+    'ABN/ACN LAND TITLE': {
+      summaryTitle: 'Land Title Summary Report',
+      summaryDescription:
+        'A summary report will outline land title references located for the organisation search. Select continue to choose detailed options.',
+      detailTitle: 'Land Title Report Options',
+      detailDescription: 'Select the detailed land title reports you require before processing.',
+      addOnTitle: 'Additional Selections',
+      addOnDescription:
+        'Property Value + Sales History + More provides property value, sales history report, and extended property detail.'
+    },
+    'DIRECTOR LAND TITLE': {
+      summaryTitle: 'Director Property Title - Summary Report',
+      summaryDescription:
+        'A summary report will display any recorded title references from your search. For full details on current or past titles, select after processing or continue with the summary only.',
+      detailTitle: 'Director Property Title',
+      detailDescription: 'Select detailed property reports for the director search.',
+      addOnTitle: 'Additional Selections',
+      addOnDescription:
+        'Property Value + Sales History + More includes property value, sales history report, and property detail.'
+    }
+  };
+  
+const landTitleCategoryOptionConfig: Record<
+  LandTitleCategoryOption,
+  {
+    label: string;
+    description: string;
+    price: number;
+  }
+> = {
+  TITLE_REFERENCE: {
+    label: 'Title Reference',
+    description: 'Search by land title reference to retrieve detailed property information.',
+    price: 120
+  },
+  LAND_ORGANISATION: {
+    label: 'Organisation',
+    description: 'Search land title information associated with an organisation.',
+    price: 140
+  },
+  LAND_INDIVIDUAL: {
+    label: 'Individual',
+    description: 'Search land title information associated with an individual.',
+    price: 130
+  },
+  ADDRESS: {
+    label: 'Address',
+    description: 'Search land title information using a full property address.',
+    price: 125
+  }
+};
+
+const LAND_TITLE_ADD_ON_LABEL = 'Property Value + Sales History + More';
+const LAND_TITLE_ADD_ON_PRICE = 40;
+
+const landTitleCategoryOptions: LandTitleCategoryOption[] = [
+  'TITLE_REFERENCE',
+  'LAND_ORGANISATION',
+  'LAND_INDIVIDUAL',
+  'ADDRESS'
+];
+
+const landTitleSearchTypeMap: Record<LandTitleCategoryOption, SearchType> = {
+  TITLE_REFERENCE: 'LAND_TITLE_TITLE_REFERENCE',
+  LAND_ORGANISATION: 'LAND_TITLE_ORGANISATION',
+  LAND_INDIVIDUAL: 'LAND_TITLE_INDIVIDUAL',
+  ADDRESS: 'LAND_TITLE_ADDRESS'
+};
+
+const landTitleSearchTypeLabelMap: Partial<Record<SearchType, string>> = {
+  LAND_TITLE_TITLE_REFERENCE: landTitleCategoryOptionConfig.TITLE_REFERENCE.label,
+  LAND_TITLE_ORGANISATION: landTitleCategoryOptionConfig.LAND_ORGANISATION.label,
+  LAND_TITLE_INDIVIDUAL: landTitleCategoryOptionConfig.LAND_INDIVIDUAL.label,
+  LAND_TITLE_ADDRESS: landTitleCategoryOptionConfig.ADDRESS.label,
+  LAND_TITLE_ADD_ON: LAND_TITLE_ADD_ON_LABEL
+};
+
+const landTitleCategoryReportTypeMap: Record<LandTitleCategoryOption, string> = {
+  TITLE_REFERENCE: 'land-title-reference',
+  LAND_ORGANISATION: 'land-title-organisation',
+  LAND_INDIVIDUAL: 'land-title-individual',
+  ADDRESS: 'land-title-address'
+};
+
+const landTitleStateOptions = ['NSW', 'VIC', 'SA', 'WA', 'NT', 'QLD'] as const;
+
+const landTitleDetailHeadingMap: Record<LandTitleCategoryOption, string> = {
+  TITLE_REFERENCE: 'Title Reference',
+  LAND_ORGANISATION: 'Organisation Details',
+  LAND_INDIVIDUAL: 'Person Details',
+  ADDRESS: 'Address Details'
+};
+
+const formatOrganisationDisplay = (suggestion: ABNSuggestion) =>
+  suggestion.Name ? `${suggestion.Name} ABN: ${suggestion.Abn}` : `ABN: ${suggestion.Abn}`;
+
+  const [landTitleModalOpen, setLandTitleModalOpen] = useState<LandTitleOption | null>(null);
+  const [pendingLandTitleSelection, setPendingLandTitleSelection] = useState<LandTitleSelection>(initialLandTitleSelection);
+  const [landTitleSelections, setLandTitleSelections] = useState<Record<LandTitleOption, LandTitleSelection>>({
+    'ABN/ACN LAND TITLE': { ...initialLandTitleSelection },
+    'DIRECTOR LAND TITLE': { ...initialLandTitleSelection }
+  });
+  const [landTitlePrices, setLandTitlePrices] = useState<Record<LandTitleOption, number>>({
+    'ABN/ACN LAND TITLE': landTitlePricingConfig.base['ABN/ACN LAND TITLE'],
+    'DIRECTOR LAND TITLE': landTitlePricingConfig.base['DIRECTOR LAND TITLE']
+  });
+  const [landTitleModalStep, setLandTitleModalStep] = useState<'SUMMARY_PROMPT' | 'DETAIL' | 'ADD_ON'>('SUMMARY_PROMPT');
   
   // Dynamic additional search options based on number of directors and selected main searches
   const additionalSearchOptions: AdditionalSearchOption[] = useMemo(() => {
+    if (selectedSearches.has('ADD DOCUMENT SEARCH')) {
+      return [];
+    }
+
     const directorCount = companyDetails.directors || 0;
     
-    // Check if ABN/ACN PPSR, ASIC, or COURT is selected in main searches
     const isAbnPpsrSelected = selectedSearches.has('ABN/ACN PPSR');
     const isAsicSelected = selectedSearches.has('ASIC');
     const isCourtSelected = selectedSearches.has('COURT');
+    const isAtoSelected = selectedSearches.has('ATO');
     
     const allOptions: AdditionalSearchOption[] = [
       { name: 'SELECT ALL', price: 0 },
       { name: 'ABN/ACN PPSR', price: additionalSearchBasePrices['ABN/ACN PPSR'] },
-      { name: 'ABN/ACN PROPERTY TITLE', price: additionalSearchBasePrices['ABN/ACN PROPERTY TITLE'] },
+      { name: 'ASIC - CURRENT', price: additionalSearchBasePrices['ASIC - CURRENT'] },
+      { name: 'ABN/ACN LAND TITLE', price: landTitlePrices['ABN/ACN LAND TITLE'] },
       { 
         name: 'DIRECTOR RELATED ENTITIES', 
         available: directorCount, 
         price: additionalSearchBasePrices['DIRECTOR RELATED ENTITIES'] * directorCount
       },
       { 
-        name: 'DIRECTOR PROPERTY TITLE', 
-        available: directorCount,
-        price: additionalSearchBasePrices['DIRECTOR PROPERTY TITLE'] * directorCount
+        name: 'DIRECTOR LAND TITLE', 
+        available: directorCount + (companyDetails.pastDirectors || 0),
+        price: landTitlePrices['DIRECTOR LAND TITLE']
       },
       { 
         name: 'DIRECTOR PPSR', 
@@ -132,18 +356,18 @@ const Search: React.FC = () => {
         price: additionalSearchBasePrices['DIRECTOR BANKRUPTCY'] * directorCount
       },
       { name: 'ABN/ACN COURT FILES', available: 1, price: additionalSearchBasePrices['ABN/ACN COURT FILES'] },
-      { name: 'ASIC-CURRENT', price: additionalSearchBasePrices['ASIC-CURRENT'] }
+      { name: 'ATO', price: additionalSearchBasePrices['ATO'] }
     ];
     
-    // Filter out options based on selected main searches
     return allOptions.filter(option => {
-      if (option.name === 'SELECT ALL') return true; // Always keep SELECT ALL
+      if (option.name === 'SELECT ALL') return true;
       if (isAbnPpsrSelected && option.name === 'ABN/ACN PPSR') return false;
-      if (isAsicSelected && option.name === 'ASIC-CURRENT') return false;
+      if (isAsicSelected && option.name === 'ASIC - CURRENT') return false;
       if (isCourtSelected && option.name === 'ABN/ACN COURT FILES') return false;
+      if (isAtoSelected && option.name === 'ATO') return false;
       return true;
     });
-  }, [companyDetails.directors, selectedSearches]);
+  }, [companyDetails.directors, companyDetails.pastDirectors, landTitlePrices, selectedSearches]);
   
   // Dynamic searches based on category - CHANGES PER CATEGORY!
   const categorySearches: Record<CategoryType, SearchType[]> = {
@@ -154,24 +378,361 @@ const Search: React.FC = () => {
   
   // Display names for searches (with INDIVIDUAL prefix for individual tab)
   const getSearchDisplayName = (search: SearchType): string => {
-    if (selectedCategory === 'INDIVIDUAL' && search !== 'SELECT ALL') {
+   if (landTitleSearchTypeLabelMap[search]) {
+      return landTitleSearchTypeLabelMap[search] as string;
+    }
+     if (selectedCategory === 'INDIVIDUAL') {
+      if (search === 'SELECT ALL') {
+        return search;
+      }
+      if (search === 'COURT') {
+        if (selectedCourtType === 'CIVIL COURT') {
+          return 'INDIVIDUAL COURT (CIVIL)';
+        }
+        if (selectedCourtType === 'CRIMINAL COURT') {
+          return 'INDIVIDUAL COURT (CRIMINAL)';
+        }
+      }
       return `INDIVIDUAL ${search}`;
     }
     return search;
   };
   
   const searches = useMemo(() => categorySearches[selectedCategory], [selectedCategory]);
+
+  const selectedAsicTypeList = useMemo(
+    () => Array.from(selectedAsicTypes).filter(type => type !== 'SELECT ALL'),
+    [selectedAsicTypes]
+  );
+  const isOrganisationCategory = selectedCategory === 'ORGANISATION';
+  const selectedMainSearchCount = useMemo(
+    () => Array.from(selectedSearches).filter(s => s !== 'SELECT ALL').length,
+    [selectedSearches]
+  );
+  const isAdditionalSearchesDisabled = isOrganisationCategory && !isCompanyConfirmed;
+  const organisationSearchDisabled = isOrganisationCategory
+    ? selectedMainSearchCount === 0 || isCompanyConfirmed || selectedSearches.has('ADD DOCUMENT SEARCH')
+    : true;
+
+  const updateLandTitleSearchSelection = useCallback(
+    (option: LandTitleCategoryOption | null, addOn: boolean) => {
+      setSelectedSearches(prev => {
+        const next = new Set<SearchType>();
+        if (option) {
+          next.add(landTitleSearchTypeMap[option]);
+          if (addOn) {
+            next.add('LAND_TITLE_ADD_ON');
+          }
+        }
+
+        let changed = next.size !== prev.size;
+        if (!changed) {
+          for (const value of next) {
+            if (!prev.has(value)) {
+              changed = true;
+              break;
+            }
+          }
+        }
+        if (!changed) {
+          for (const value of prev) {
+            if (!next.has(value)) {
+              changed = true;
+              break;
+            }
+          }
+        }
+
+        return changed ? next : prev;
+      });
+    },
+    []
+  );
+
+  const resetLandTitleSelections = useCallback(() => {
+    setLandTitleSelections({
+      'ABN/ACN LAND TITLE': { ...initialLandTitleSelection },
+      'DIRECTOR LAND TITLE': { ...initialLandTitleSelection }
+    });
+    setLandTitlePrices({
+      'ABN/ACN LAND TITLE': landTitlePricingConfig.base['ABN/ACN LAND TITLE'],
+      'DIRECTOR LAND TITLE': landTitlePricingConfig.base['DIRECTOR LAND TITLE']
+    });
+    setSelectedLandTitleOption(null);
+    setIsLandTitleAddOnSelected(false);
+    updateLandTitleSearchSelection(null, false);
+    setLandTitleReferenceId('');
+    setLandTitleOrganisationStates(new Set());
+    setLandTitleIndividualFirstName('');
+    setLandTitleIndividualLastName('');
+    setLandTitleIndividualDobMode('EXACT');
+    setLandTitleIndividualDob('');
+    setLandTitleIndividualStartYear('');
+    setLandTitleIndividualEndYear('');
+    setLandTitleIndividualStates(new Set());
+    setLandTitleAddress('');
+    resetLandTitleOrganisationSearch();
+  }, [resetLandTitleOrganisationSearch, updateLandTitleSearchSelection]);
+
+  const handleLandTitleOptionSelect = useCallback(
+    (option: LandTitleCategoryOption) => {
+      if (selectedLandTitleOption === option) {
+        setSelectedLandTitleOption(null);
+        setIsLandTitleAddOnSelected(false);
+        updateLandTitleSearchSelection(null, false);
+        setLandTitleReferenceId('');
+        setLandTitleOrganisationStates(new Set());
+        setLandTitleIndividualFirstName('');
+        setLandTitleIndividualLastName('');
+        setLandTitleIndividualDobMode('EXACT');
+        setLandTitleIndividualDob('');
+        setLandTitleIndividualStartYear('');
+        setLandTitleIndividualEndYear('');
+        setLandTitleIndividualStates(new Set());
+        setLandTitleAddress('');
+        resetLandTitleOrganisationSearch();
+      } else {
+        setSelectedLandTitleOption(option);
+        updateLandTitleSearchSelection(option, isLandTitleAddOnSelected);
+        setLandTitleReferenceId('');
+        setLandTitleOrganisationStates(new Set());
+        setLandTitleIndividualFirstName('');
+        setLandTitleIndividualLastName('');
+        setLandTitleIndividualDobMode('EXACT');
+        setLandTitleIndividualDob('');
+        setLandTitleIndividualStartYear('');
+        setLandTitleIndividualEndYear('');
+        setLandTitleIndividualStates(new Set());
+        setLandTitleAddress('');
+        resetLandTitleOrganisationSearch();
+      }
+    },
+    [isLandTitleAddOnSelected, resetLandTitleOrganisationSearch, selectedLandTitleOption, updateLandTitleSearchSelection]
+  );
+
+  const handleLandTitleAddOnToggle = useCallback(() => {
+    if (!selectedLandTitleOption) {
+      return;
+    }
+    const next = !isLandTitleAddOnSelected;
+    setIsLandTitleAddOnSelected(next);
+    updateLandTitleSearchSelection(selectedLandTitleOption, next);
+  }, [isLandTitleAddOnSelected, selectedLandTitleOption, updateLandTitleSearchSelection]);
+
+  const handleLandTitleOrganisationStateToggle = useCallback((state: string) => {
+    setLandTitleOrganisationStates(prev => {
+      const next = new Set(prev);
+      if (next.has(state)) {
+        next.delete(state);
+      } else {
+        next.add(state);
+      }
+      return next;
+    });
+    setIsLandTitleOrganisationConfirmed(false);
+  }, []);
+
+  const handleLandTitleOrganisationStateSelectAll = useCallback(() => {
+    setLandTitleOrganisationStates(prev => {
+      if (prev.size === landTitleStateOptions.length) {
+        return new Set();
+      }
+      return new Set(landTitleStateOptions);
+    });
+    setIsLandTitleOrganisationConfirmed(false);
+  }, []);
+
+  const handleLandTitleIndividualStateToggle = useCallback((state: string) => {
+    setLandTitleIndividualStates(prev => {
+      const next = new Set(prev);
+      if (next.has(state)) {
+        next.delete(state);
+      } else {
+        next.add(state);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleLandTitleIndividualStateSelectAll = useCallback(() => {
+    setLandTitleIndividualStates(prev => {
+      if (prev.size === landTitleStateOptions.length) {
+        return new Set();
+      }
+      return new Set(landTitleStateOptions);
+    });
+  }, []);
+
+  const handleLandTitleOrganisationSuggestionSelect = useCallback((suggestion: ABNSuggestion) => {
+    setLandTitleOrganisationSearchTerm(formatOrganisationDisplay(suggestion));
+    setLandTitleOrganisationSelected(suggestion);
+    setLandTitleOrganisationSuggestions([]);
+    setLandTitleOrganisationShowSuggestions(false);
+    setIsLandTitleOrganisationConfirmed(false);
+  }, []);
+
+  const handleConfirmLandTitleOrganisation = useCallback(async () => {
+    if (!landTitleOrganisationSelected) {
+      alert('Please select a company');
+      return;
+    }
+    setIsConfirmingLandTitleOrganisation(true);
+    try {
+      setIsLandTitleOrganisationConfirmed(true);
+    } finally {
+      setIsConfirmingLandTitleOrganisation(false);
+    }
+  }, [landTitleOrganisationSelected]);
+
+
+  const calculateLandTitlePrice = useCallback((option: LandTitleOption, selection: LandTitleSelection) => {
+    let price = landTitlePricingConfig.base[option];
+    if (selection.addOn) {
+      price += landTitlePricingConfig.addOn;
+    }
+
+    if (option === 'DIRECTOR LAND TITLE') {
+      const directorCount = companyDetails.directors || 0;
+      const pastDirectorCount = companyDetails.pastDirectors || 0;
+      const totalCount =
+        selection.detail === 'CURRENT'
+          ? directorCount
+          : selection.detail === 'PAST'
+          ? pastDirectorCount
+          : selection.detail === 'ALL'
+          ? directorCount + pastDirectorCount
+          : directorCount;
+      if (totalCount > 0) {
+        const perUnit = landTitlePricingConfig.base[option] / Math.max(directorCount || 1, 1);
+        price = perUnit * totalCount;
+      } else {
+        price = landTitlePricingConfig.base[option];
+      }
+    }
+
+    return price;
+  }, [companyDetails.directors, companyDetails.pastDirectors]);
+
+  const ensureAdditionalSelectAllState = useCallback(
+    (setToNormalize: Set<AdditionalSearchType>) => {
+      const availableOptions = additionalSearchOptions
+        .filter(option => option.name !== 'SELECT ALL')
+        .map(option => option.name as AdditionalSearchType);
+      if (
+        availableOptions.length > 0 &&
+        availableOptions.every(name => setToNormalize.has(name))
+      ) {
+        setToNormalize.add('SELECT ALL');
+      } else {
+        setToNormalize.delete('SELECT ALL');
+      }
+    },
+    [additionalSearchOptions]
+  );
+
+  const openLandTitleModal = useCallback(
+    (option: LandTitleOption) => {
+      const existing = landTitleSelections[option] || { ...initialLandTitleSelection };
+      setPendingLandTitleSelection({ ...existing });
+      setLandTitleModalStep('SUMMARY_PROMPT');
+      setLandTitleModalOpen(option);
+    },
+    [landTitleSelections]
+  );
+
+  const closeLandTitleModal = useCallback(() => {
+    setLandTitleModalOpen(null);
+    setLandTitleModalStep('SUMMARY_PROMPT');
+  }, []);
+
+  const removeAsicSelection = useCallback(() => {
+    setSelectedAsicTypes(new Set());
+    setSelectedSearches(prev => {
+      const updated = new Set(prev);
+      const hadAsic = updated.delete('ASIC');
+      if (hadAsic) {
+        updated.delete('SELECT ALL');
+      }
+      return updated;
+    });
+  }, []);
+
+  const removeCourtSelection = useCallback(() => {
+    setSelectedCourtType('ALL');
+    setSelectedSearches(prev => {
+      const updated = new Set(prev);
+      const hadCourt = updated.delete('COURT');
+      if (hadCourt) {
+        updated.delete('SELECT ALL');
+      }
+      return updated;
+    });
+  }, []);
+
+  const closeAsicModal = useCallback(
+    (options?: { removeIfEmpty?: boolean }) => {
+      setIsAsicModalOpen(false);
+      const shouldRemove = options?.removeIfEmpty ?? true;
+      if (shouldRemove && selectedAsicTypeList.length === 0) {
+        removeAsicSelection();
+      }
+    },
+    [removeAsicSelection, selectedAsicTypeList]
+  );
+
+  const closeCourtModal = useCallback(
+    (options?: { removeSelection?: boolean }) => {
+      setIsCourtModalOpen(false);
+      if (options?.removeSelection) {
+        removeCourtSelection();
+      }
+    },
+    [removeCourtSelection]
+  );
+
+  const handleCourtSelectionConfirm = () => {
+    setIsCourtModalOpen(false);
+  };
+
+  const handleDocumentModalCancel = useCallback(() => {
+    setDocumentIdInput(documentSearchId);
+    setIsDocumentModalOpen(false);
+  }, [documentSearchId]);
+
+  const handleDocumentModalConfirm = useCallback(() => {
+    const trimmed = documentIdInput.trim();
+    if (!trimmed) {
+      alert('Please enter a document ID');
+      return;
+    }
+    setDocumentSearchId(trimmed);
+    setDocumentIdInput(trimmed);
+    setSelectedAdditionalSearches(new Set());
+    resetLandTitleSelections();
+
+    setSelectedSearches(prev => {
+      const updated = new Set(prev);
+      updated.add('ADD DOCUMENT SEARCH');
+      const allNonDocumentSelected = searches
+        .filter(s => s !== 'SELECT ALL' && s !== 'ADD DOCUMENT SEARCH')
+        .every(s => updated.has(s));
+      if (allNonDocumentSelected) {
+        updated.add('SELECT ALL');
+      }
+      return updated;
+    });
+    setIsDocumentModalOpen(false);
+  }, [documentIdInput, searches]);
   
   // Check if all searches are selected (excluding SELECT ALL)
   const allSearchesSelected = useMemo(() => {
-    const individualSearches = searches.filter(s => s !== 'SELECT ALL');
+    const individualSearches = searches.filter(s => s !== 'SELECT ALL' && s !== 'ADD DOCUMENT SEARCH');
     return individualSearches.length > 0 && individualSearches.every(s => selectedSearches.has(s));
   }, [searches, selectedSearches]);
 
   // Check if all ASIC types are selected (excluding SELECT ALL)
   const allAsicTypesSelected = useMemo(() => {
-    const individualTypes = asicTypes.filter(t => t !== 'SELECT ALL');
-    return individualTypes.length > 0 && individualTypes.every(t => selectedAsicTypes.has(t));
+    return selectedAsicTypes.has('CURRENT/HISTORICAL') && selectedAsicTypes.has('COMPANY');
   }, [selectedAsicTypes]);
 
   // Check if all additional searches are selected (excluding SELECT ALL)
@@ -182,8 +743,8 @@ const Search: React.FC = () => {
 
   // Show "Enter Search Details" when ORGANISATION is selected (show by default)
   const showEnterSearchDetails = useMemo(() => {
-    return selectedCategory === 'ORGANISATION';
-  }, [selectedCategory]);
+    return selectedCategory === 'ORGANISATION' && !selectedSearches.has('ADD DOCUMENT SEARCH');
+  }, [selectedCategory, selectedSearches]);
   
   const searchPrices: SearchPrices = {
     'ASIC': 50.00,
@@ -193,23 +754,66 @@ const Search: React.FC = () => {
     'PPSR': 50.00,
     'ADD DOCUMENT SEARCH': 35.00,
     'BANKRUPTCY': 90.00,
-    'LAND TITLE': 80.00
+    'LAND TITLE': 80.00,
+    'LAND_TITLE_TITLE_REFERENCE': landTitleCategoryOptionConfig.TITLE_REFERENCE.price,
+    'LAND_TITLE_ORGANISATION': landTitleCategoryOptionConfig.LAND_ORGANISATION.price,
+    'LAND_TITLE_INDIVIDUAL': landTitleCategoryOptionConfig.LAND_INDIVIDUAL.price,
+    'LAND_TITLE_ADDRESS': landTitleCategoryOptionConfig.ADDRESS.price,
+    'LAND_TITLE_ADD_ON': LAND_TITLE_ADD_ON_PRICE
   };
+
+  const formatCurrency = (value: number) => `$${value.toFixed(2)}`;
 
   const handleSearchToggle = (search: SearchType) => {
     const newSelected = new Set(selectedSearches);
     
     if (search === 'SELECT ALL') {
       if (selectedSearches.has('SELECT ALL')) {
+        const hadAsicSelected = newSelected.has('ASIC');
+        const hadCourtSelected = newSelected.has('COURT');
         newSelected.clear();
-        // If SELECT ALL is being deselected and ASIC was selected, clear ASIC types
-        if (selectedSearches.has('ASIC')) {
+        if (hadAsicSelected) {
           setSelectedAsicTypes(new Set());
+          setIsAsicModalOpen(false);
         }
+        if (hadCourtSelected) {
+          setSelectedCourtType('ALL');
+          setIsCourtModalOpen(false);
+        }
+        setDocumentSearchId('');
+        setDocumentIdInput('');
+        setSelectedAdditionalSearches(new Set());
+        resetLandTitleSelections();
           } else {
-        searches.forEach(s => newSelected.add(s));
+        searches.forEach(s => {
+          if (s !== 'ADD DOCUMENT SEARCH') {
+            newSelected.add(s);
+          }
+        });
+        if (selectedCategory === 'ORGANISATION' && searches.includes('ASIC')) {
+          setIsAsicModalOpen(true);
+        }
+        if (selectedCategory === 'INDIVIDUAL' && searches.includes('COURT')) {
+          setIsCourtModalOpen(true);
+        }
           }
         } else {
+      if (search === 'ADD DOCUMENT SEARCH') {
+        if (newSelected.has(search)) {
+          newSelected.delete(search);
+          newSelected.delete('SELECT ALL');
+          setDocumentSearchId('');
+          setDocumentIdInput('');
+          setSelectedAdditionalSearches(new Set());
+          resetLandTitleSelections();
+          setSelectedSearches(newSelected);
+        } else {
+          setDocumentIdInput(documentSearchId);
+          setIsDocumentModalOpen(true);
+        }
+        return;
+      }
+
       if (newSelected.has(search)) {
         newSelected.delete(search);
         newSelected.delete('SELECT ALL');
@@ -217,12 +821,25 @@ const Search: React.FC = () => {
         // If ASIC is being deselected, clear all ASIC types
         if (search === 'ASIC') {
           setSelectedAsicTypes(new Set());
+          setIsAsicModalOpen(false);
         }
-    } else {
+        if (search === 'COURT' && selectedCategory === 'INDIVIDUAL') {
+          setSelectedCourtType('ALL');
+          setIsCourtModalOpen(false);
+        }
+      } else {
         newSelected.add(search);
-        const allSelected = searches.filter(s => s !== 'SELECT ALL').every(s => newSelected.has(s) || s === search);
-    if (allSelected) {
+        const allSelected = searches
+          .filter(s => s !== 'SELECT ALL' && s !== 'ADD DOCUMENT SEARCH')
+          .every(s => newSelected.has(s));
+        if (allSelected) {
           newSelected.add('SELECT ALL');
+        }
+        if (search === 'ASIC' && selectedCategory === 'ORGANISATION') {
+          setIsAsicModalOpen(true);
+        }
+        if (search === 'COURT' && selectedCategory === 'INDIVIDUAL') {
+          setIsCourtModalOpen(true);
         }
       }
     }
@@ -369,21 +986,180 @@ const Search: React.FC = () => {
     };
   }, [hasSelectedCompany, selectedSearches, selectedCategory]);
 
+  useEffect(() => {
+    if (!isAsicModalOpen) {
+      return;
+    }
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeAsicModal();
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [closeAsicModal, isAsicModalOpen]);
+
+  useEffect(() => {
+    if (!isCourtModalOpen) {
+      return;
+    }
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeCourtModal();
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [closeCourtModal, isCourtModalOpen]);
+
+  useEffect(() => {
+    if (!isDocumentModalOpen) {
+      return;
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        handleDocumentModalCancel();
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [handleDocumentModalCancel, isDocumentModalOpen]);
+
+  useEffect(() => {
+    if (organisationSearchDisabled) {
+      setShowSuggestions(false);
+    }
+  }, [organisationSearchDisabled]);
+
+  useEffect(() => {
+    if (selectedLandTitleOption !== 'LAND_ORGANISATION') {
+      setLandTitleOrganisationSuggestions([]);
+      setLandTitleOrganisationShowSuggestions(false);
+      if (landTitleOrganisationSearchTimeoutRef.current) {
+        clearTimeout(landTitleOrganisationSearchTimeoutRef.current);
+      }
+      return;
+    }
+
+    if (landTitleOrganisationSearchTimeoutRef.current) {
+      clearTimeout(landTitleOrganisationSearchTimeoutRef.current);
+    }
+
+    const trimmed = landTitleOrganisationSearchTerm.trim();
+    if (
+      landTitleOrganisationSelected &&
+      trimmed &&
+      trimmed === formatOrganisationDisplay(landTitleOrganisationSelected)
+    ) {
+      setLandTitleOrganisationSuggestions([]);
+      setLandTitleOrganisationShowSuggestions(false);
+      setIsLoadingLandTitleOrganisationSuggestions(false);
+      return;
+    }
+    if (trimmed.length < 2) {
+      setLandTitleOrganisationSuggestions([]);
+      setLandTitleOrganisationShowSuggestions(false);
+      setIsLoadingLandTitleOrganisationSuggestions(false);
+      return;
+    }
+
+    setIsLoadingLandTitleOrganisationSuggestions(true);
+    landTitleOrganisationSearchTimeoutRef.current = window.setTimeout(async () => {
+      try {
+        const response = await apiService.searchABNByName(trimmed);
+        if (response.success && response.results) {
+          setLandTitleOrganisationSuggestions(response.results);
+          setLandTitleOrganisationShowSuggestions(true);
+        } else {
+          setLandTitleOrganisationSuggestions([]);
+          setLandTitleOrganisationShowSuggestions(false);
+        }
+      } catch (error) {
+        console.error('Error fetching land title organisation suggestions:', error);
+        setLandTitleOrganisationSuggestions([]);
+        setLandTitleOrganisationShowSuggestions(false);
+      } finally {
+        setIsLoadingLandTitleOrganisationSuggestions(false);
+      }
+    }, 500);
+
+    return () => {
+      if (landTitleOrganisationSearchTimeoutRef.current) {
+        clearTimeout(landTitleOrganisationSearchTimeoutRef.current);
+      }
+    };
+  }, [landTitleOrganisationSearchTerm, landTitleOrganisationSelected, selectedLandTitleOption]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        landTitleOrganisationDropdownRef.current &&
+        !landTitleOrganisationDropdownRef.current.contains(event.target as Node)
+      ) {
+        setLandTitleOrganisationShowSuggestions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (!landTitleModalOpen) {
+      return;
+    }
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeLandTitleModal();
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [closeLandTitleModal, landTitleModalOpen]);
+
+  useEffect(() => {
+    setLandTitlePrices(prev => {
+      let changed = false;
+      const updated: Record<LandTitleOption, number> = { ...prev };
+      (['ABN/ACN LAND TITLE', 'DIRECTOR LAND TITLE'] as LandTitleOption[]).forEach(option => {
+        const selection = landTitleSelections[option];
+        if (!selection) return;
+        const recalculated = calculateLandTitlePrice(option, selection);
+        if (prev[option] !== recalculated) {
+          updated[option] = recalculated;
+          changed = true;
+        }
+      });
+      return changed ? updated : prev;
+    });
+  }, [calculateLandTitlePrice, landTitleSelections]);
+
+
   // Clean up selectedAdditionalSearches when options are filtered out
   useEffect(() => {
     const isAbnPpsrSelected = selectedSearches.has('ABN/ACN PPSR');
     const isAsicSelected = selectedSearches.has('ASIC');
     const isCourtSelected = selectedSearches.has('COURT');
+    const isAtoSelected = selectedSearches.has('ATO');
     
     const filteredOptions = new Set(additionalSearchOptions.map(opt => opt.name));
     const newSelected = new Set(selectedAdditionalSearches);
     let hasChanges = false;
+    const landTitleOptionsToReset: LandTitleOption[] = [];
     
     // Remove selections that are no longer available
     selectedAdditionalSearches.forEach(selected => {
       if (!filteredOptions.has(selected)) {
         newSelected.delete(selected);
         hasChanges = true;
+        if (isLandTitleOption(selected)) {
+          landTitleOptionsToReset.push(selected as LandTitleOption);
+        }
       }
     });
     
@@ -395,8 +1171,8 @@ const Search: React.FC = () => {
     }
     
     // Also remove ASIC-CURRENT if ASIC is selected in main searches
-    if (isAsicSelected && newSelected.has('ASIC-CURRENT')) {
-      newSelected.delete('ASIC-CURRENT');
+    if (isAsicSelected && newSelected.has('ASIC - CURRENT')) {
+      newSelected.delete('ASIC - CURRENT');
       newSelected.delete('SELECT ALL'); // Remove SELECT ALL if any item is removed
       hasChanges = true;
     }
@@ -407,9 +1183,32 @@ const Search: React.FC = () => {
       newSelected.delete('SELECT ALL'); // Remove SELECT ALL if any item is removed
       hasChanges = true;
     }
+
+    if (isAtoSelected && newSelected.has('ATO')) {
+      newSelected.delete('ATO');
+      newSelected.delete('SELECT ALL');
+      hasChanges = true;
+    }
     
     if (hasChanges) {
       setSelectedAdditionalSearches(newSelected);
+    }
+
+    if (landTitleOptionsToReset.length > 0) {
+      setLandTitleSelections(prev => {
+        const updated = { ...prev };
+        landTitleOptionsToReset.forEach(option => {
+          updated[option] = { ...initialLandTitleSelection };
+        });
+        return updated;
+      });
+      setLandTitlePrices(prev => {
+        const updated = { ...prev };
+        landTitleOptionsToReset.forEach(option => {
+          updated[option] = landTitlePricingConfig.base[option];
+        });
+        return updated;
+      });
     }
   }, [selectedSearches, additionalSearchOptions]);
   
@@ -480,7 +1279,7 @@ const Search: React.FC = () => {
         ? JSON.parse(localStorage.getItem('currentMatter') || '{}') 
         : null;
 
-      const reportData = {
+      const reportData: any = {
         business: {
           Abn: pendingCompany.abn,
           Name: pendingCompany.name,
@@ -600,9 +1399,11 @@ const Search: React.FC = () => {
     setSuggestions([]);
     hasSelectedRef.current = false;
     setSelectedAdditionalSearches(new Set());
+    resetLandTitleSelections();
     setDataAvailable(null);
     setCheckingData(false);
     setCompanyDetails({ directors: 0, pastDirectors: 0, shareholders: 0 });
+    setIsAsicModalOpen(false);
   };
 
   // Clear selections when category changes
@@ -610,18 +1411,25 @@ const Search: React.FC = () => {
     setSelectedCategory(category);
     setSelectedSearches(new Set());
     setSelectedAsicTypes(new Set());
+    setIsAsicModalOpen(false);
+    setIsCourtModalOpen(false);
+    setSelectedCourtType('ALL');
+    setIsDocumentModalOpen(false);
     setOrganisationSearchTerm('');
     setSuggestions([]);
     setShowSuggestions(false);
     hasSelectedRef.current = false;
     setHasSelectedCompany(false);
     setSelectedAdditionalSearches(new Set());
+    resetLandTitleSelections();
     setDataAvailable(null);
     setCheckingData(false);
     setCompanyDetails({ directors: 0, pastDirectors: 0, shareholders: 0 });
     setDirectorsList([]);
     setPendingCompany(null);
     setIsCompanyConfirmed(false);
+    setDocumentSearchId('');
+    setDocumentIdInput('');
     
     // Clear individual details
     setIndividualFirstName('');
@@ -632,51 +1440,103 @@ const Search: React.FC = () => {
 
   const handleAsicTypeToggle = (asicType: AsicType) => {
     const newSelected = new Set(selectedAsicTypes);
+    const syncSelectAllState = () => {
+      if (newSelected.has('CURRENT/HISTORICAL') && newSelected.has('COMPANY')) {
+        newSelected.add('SELECT ALL');
+      } else {
+        newSelected.delete('SELECT ALL');
+      }
+    };
     
     if (asicType === 'SELECT ALL') {
       if (selectedAsicTypes.has('SELECT ALL')) {
         newSelected.clear();
-          } else {
-        asicTypes.forEach(t => newSelected.add(t));
-          }
-          } else {
+      } else {
+        newSelected.clear();
+        newSelected.add('CURRENT/HISTORICAL');
+        newSelected.add('COMPANY');
+        newSelected.add('SELECT ALL');
+      }
+    } else {
       if (newSelected.has(asicType)) {
         newSelected.delete(asicType);
-        newSelected.delete('SELECT ALL');
-        } else {
-        // If selecting "CURRENT/HISTORICAL", deselect "CURRENT" since it's already included
-        if (asicType === 'CURRENT/HISTORICAL' && newSelected.has('CURRENT')) {
+      } else {
+        if (asicType === 'CURRENT/HISTORICAL') {
           newSelected.delete('CURRENT');
         }
-        // If selecting "CURRENT" when "CURRENT/HISTORICAL" is already selected, deselect "CURRENT/HISTORICAL"
-        if (asicType === 'CURRENT' && newSelected.has('CURRENT/HISTORICAL')) {
+        if (asicType === 'CURRENT') {
           newSelected.delete('CURRENT/HISTORICAL');
         }
-        
         newSelected.add(asicType);
-        const allIndividualSelected = asicTypes.filter(t => t !== 'SELECT ALL').every(t => newSelected.has(t) || t === asicType);
-        if (allIndividualSelected) {
-          newSelected.add('SELECT ALL');
-        }
       }
     }
+
+    syncSelectAllState();
+
     setSelectedAsicTypes(newSelected);
   };
 
+  const handleAsicSelectionConfirm = () => {
+    if (selectedAsicTypeList.length === 0) {
+      alert('Please select at least one ASIC report type');
+      return;
+    }
+    closeAsicModal({ removeIfEmpty: false });
+  };
+
   const handleAdditionalSearchToggle = (searchName: AdditionalSearchType) => {
+    if (isAdditionalSearchesDisabled) {
+      return;
+    }
+
+    if (isLandTitleOption(searchName)) {
+      const landOption = searchName as LandTitleOption;
+      if (selectedAdditionalSearches.has(searchName)) {
+        const updated = new Set(selectedAdditionalSearches);
+        updated.delete(searchName);
+        updated.delete('SELECT ALL');
+        ensureAdditionalSelectAllState(updated);
+        setSelectedAdditionalSearches(updated);
+        setLandTitleSelections(prev => ({
+          ...prev,
+          [landOption]: { ...initialLandTitleSelection }
+        }));
+        setLandTitlePrices(prev => ({
+          ...prev,
+          [landOption]: landTitlePricingConfig.base[landOption]
+        }));
+        return;
+      }
+
+      openLandTitleModal(landOption);
+      return;
+    }
+
     const newSelected = new Set(selectedAdditionalSearches);
     
     if (searchName === 'SELECT ALL') {
       if (selectedAdditionalSearches.has('SELECT ALL')) {
         newSelected.clear();
+      } else {
+        additionalSearchOptions.forEach(option => {
+          const optionName = option.name as AdditionalSearchType;
+          if (isLandTitleOption(optionName)) {
+            const landOption = optionName as LandTitleOption;
+            const selection = landTitleSelections[landOption] || { ...initialLandTitleSelection };
+            const price = calculateLandTitlePrice(landOption, selection);
+            setLandTitlePrices(prev => ({ ...prev, [landOption]: price }));
+            newSelected.add(landOption);
           } else {
-        additionalSearchOptions.forEach(option => newSelected.add(option.name));
+            newSelected.add(optionName);
+          }
+        });
+        ensureAdditionalSelectAllState(newSelected);
       }
-          } else {
+    } else {
       if (newSelected.has(searchName)) {
         newSelected.delete(searchName);
         newSelected.delete('SELECT ALL');
-        } else {
+      } else {
         newSelected.add(searchName);
         const allIndividualSelected = additionalSearchOptions
           .filter(o => o.name !== 'SELECT ALL')
@@ -686,8 +1546,90 @@ const Search: React.FC = () => {
         }
       }
     }
+    ensureAdditionalSelectAllState(newSelected);
     setSelectedAdditionalSearches(newSelected);
   };
+
+  const handleLandTitleModalConfirm = () => {
+    if (!landTitleModalOpen) return;
+    const selection = { ...pendingLandTitleSelection };
+    const price = calculateLandTitlePrice(landTitleModalOpen, selection);
+    setLandTitleSelections(prev => ({ ...prev, [landTitleModalOpen]: selection }));
+    setLandTitlePrices(prev => ({ ...prev, [landTitleModalOpen]: price }));
+    setSelectedAdditionalSearches(prev => {
+      const updated = new Set(prev);
+      updated.add(landTitleModalOpen);
+      ensureAdditionalSelectAllState(updated);
+      return updated;
+    });
+    closeLandTitleModal();
+  };
+
+  const handleLandTitleSummaryContinue = () => {
+    setPendingLandTitleSelection(prev => ({ ...prev, summary: true }));
+    setLandTitleModalStep('DETAIL');
+  };
+
+  const handleLandTitleDetailSelect = (detail: LandTitleDetailSelection) => {
+    setPendingLandTitleSelection(prev => ({
+      ...prev,
+      detail,
+      summary: detail === 'SUMMARY'
+    }));
+  };
+
+  const handleLandTitleDetailContinue = () => {
+    setLandTitleModalStep('ADD_ON');
+  };
+
+  const handleLandTitleDetailBack = () => {
+    setLandTitleModalStep('SUMMARY_PROMPT');
+  };
+
+  const handleLandTitleAddOnSelect = (addOn: boolean) => {
+    setPendingLandTitleSelection(prev => ({ ...prev, addOn }));
+  };
+
+  const handleLandTitleAddOnBack = () => {
+    setLandTitleModalStep('DETAIL');
+  };
+
+  const getLandTitleLabel = useCallback(
+    (option: LandTitleOption) => {
+      const selection = landTitleSelections[option];
+      if (!selection) return option;
+      const parts: string[] = [];
+      if (selection.detail === 'CURRENT') {
+        const count = option === 'DIRECTOR LAND TITLE' ? companyDetails.directors || 0 : companyDetails.shareholders || 0;
+        parts.push(`Current${count ? ` (${count} available)` : ''}`);
+      } else if (selection.detail === 'PAST') {
+        const count = option === 'DIRECTOR LAND TITLE' ? companyDetails.pastDirectors || 0 : companyDetails.shareholders || 0;
+        parts.push(`Past${count ? ` (${count} available)` : ''}`);
+      } else if (selection.detail === 'ALL') {
+        const currentCount = option === 'DIRECTOR LAND TITLE' ? companyDetails.directors || 0 : companyDetails.shareholders || 0;
+        const pastCount = option === 'DIRECTOR LAND TITLE' ? companyDetails.pastDirectors || 0 : 0;
+        const total = currentCount + pastCount;
+        parts.push(`All${total ? ` (${total} available)` : ''}`);
+      } else {
+        parts.push('Summary');
+      }
+      if (selection.addOn) {
+        parts.push('Property Value + Sales History + More');
+      }
+      return `${option}${parts.length ? ` (${parts.join(', ')})` : ''}`;
+    },
+    [companyDetails.directors, companyDetails.pastDirectors, companyDetails.shareholders, landTitleSelections]
+  );
+
+  const getAdditionalSearchLabel = useCallback(
+    (search: AdditionalSearchType) => {
+      if (isLandTitleOption(search)) {
+        return getLandTitleLabel(search);
+      }
+      return search;
+    },
+    [getLandTitleLabel]
+  );
 
 const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
     const newSelected = new Set(selectedIndividualAdditionalSearches);
@@ -840,7 +1782,7 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
     const hasAdditionalSearches = selectedCategory === 'ORGANISATION' 
       ? Array.from(selectedAdditionalSearches).some(s => s !== 'SELECT ALL')
       : Array.from(selectedIndividualAdditionalSearches).some(s => s !== 'SELECT ALL');
-    const hasAsicTypes = Array.from(selectedAsicTypes).some(t => t !== 'SELECT ALL');
+    const hasAsicTypes = selectedAsicTypeList.length > 0;
     
     // Validation: If ASIC is selected, ASIC type must be selected
     if (selectedCategory === 'ORGANISATION' && selectedSearches.has('ASIC') && !hasAsicTypes) {
@@ -850,6 +1792,17 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
     
     if (!hasMainSearches && !hasAdditionalSearches && !hasAsicTypes) {
       alert('Please select at least one search option');
+      return;
+    }
+
+    if (selectedCategory === 'LAND TITLE' && !selectedLandTitleOption) {
+      alert('Please select a land title report option');
+      setIsProcessingReports(false);
+      return;
+    }
+
+    if (selectedSearches.has('ADD DOCUMENT SEARCH') && !documentSearchId) {
+      alert('Please enter a document ID for the Add Document Search option');
       return;
     }
 
@@ -882,9 +1835,10 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
       }
 
       // Collect all reports to create
-      const reportsToCreate: Array<{ type: string; name: string }> = [];
+      const reportsToCreate: Array<{ type: string; name: string; meta?: Record<string, unknown> }> = [];
 
-      // Add main searches
+      // Add main searches (handled separately for Land Title category)
+      if (selectedCategory !== 'LAND TITLE') {
       Array.from(selectedSearches)
         .filter(search => search !== 'SELECT ALL')
         .forEach(search => {
@@ -894,14 +1848,14 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
               return;
             }
           }
-          reportsToCreate.push({ type: search, name: search });
+            const meta = isLandTitleOption(search) ? { landTitleSelection: landTitleSelections[search as LandTitleOption] } : undefined;
+            reportsToCreate.push({ type: search, name: search, meta });
         });
+      }
 
       // Add ASIC types if selected
       if (selectedCategory === 'ORGANISATION' && selectedSearches.has('ASIC')) {
-        Array.from(selectedAsicTypes)
-          .filter(type => type !== 'SELECT ALL')
-          .forEach(type => {
+        selectedAsicTypeList.forEach(type => {
             reportsToCreate.push({ type: `ASIC: ${type}`, name: `ASIC ${type}` });
           });
       }
@@ -911,7 +1865,106 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
         Array.from(selectedAdditionalSearches)
           .filter(search => search !== 'SELECT ALL')
           .forEach(search => {
-            reportsToCreate.push({ type: search, name: search });
+            const additional = search as AdditionalSearchType;
+            const meta = isLandTitleOption(additional)
+              ? { landTitleSelection: landTitleSelections[additional as LandTitleOption] }
+              : undefined;
+            reportsToCreate.push({ type: search, name: search, meta });
+          });
+      }
+      
+      if (selectedCategory === 'LAND TITLE') {
+        if (!selectedLandTitleOption) {
+          alert('Please select a land title report option');
+          setIsProcessingReports(false);
+          return;
+        }
+        if (selectedLandTitleOption === 'LAND_ORGANISATION') {
+          if (landTitleOrganisationStates.size === 0) {
+            alert('Please select at least one state');
+            setIsProcessingReports(false);
+            return;
+          }
+          if (!landTitleOrganisationSelected || !isLandTitleOrganisationConfirmed) {
+            alert('Please search and confirm a company');
+            setIsProcessingReports(false);
+            return;
+          }
+        }
+        if (selectedLandTitleOption === 'TITLE_REFERENCE' && !landTitleReferenceId.trim()) {
+          alert('Please enter a reference ID');
+          setIsProcessingReports(false);
+          return;
+        }
+        if (selectedLandTitleOption === 'LAND_INDIVIDUAL') {
+          if (!landTitleIndividualFirstName.trim() || !landTitleIndividualLastName.trim()) {
+            alert('Please enter first name and last name');
+            setIsProcessingReports(false);
+            return;
+          }
+          if (landTitleIndividualDobMode === 'EXACT' && !landTitleIndividualDob) {
+            alert('Please enter a date of birth');
+            setIsProcessingReports(false);
+            return;
+          }
+          if (
+            landTitleIndividualDobMode === 'RANGE' &&
+            (!landTitleIndividualStartYear.trim() || !landTitleIndividualEndYear.trim())
+          ) {
+            alert('Please enter a start and end year');
+            setIsProcessingReports(false);
+            return;
+          }
+          if (landTitleIndividualStates.size === 0) {
+            alert('Please select at least one state');
+            setIsProcessingReports(false);
+            return;
+          }
+        }
+        if (selectedLandTitleOption === 'ADDRESS' && !landTitleAddress.trim()) {
+          alert('Please enter an address');
+          setIsProcessingReports(false);
+          return;
+        }
+
+        const landTitleMeta: Record<string, unknown> = {
+          option: selectedLandTitleOption,
+          addOn: isLandTitleAddOnSelected
+        };
+
+        switch (selectedLandTitleOption) {
+          case 'TITLE_REFERENCE':
+            landTitleMeta.referenceId = landTitleReferenceId.trim();
+            break;
+          case 'LAND_ORGANISATION':
+            landTitleMeta.states = Array.from(landTitleOrganisationStates);
+            landTitleMeta.organisation = {
+              name: landTitleOrganisationSelected?.Name,
+              abn: landTitleOrganisationSelected?.Abn,
+              confirmed: isLandTitleOrganisationConfirmed
+            };
+            landTitleMeta.searchTerm = landTitleOrganisationSearchTerm;
+            break;
+          case 'LAND_INDIVIDUAL':
+            landTitleMeta.person = {
+              firstName: landTitleIndividualFirstName.trim(),
+              lastName: landTitleIndividualLastName.trim(),
+              dobMode: landTitleIndividualDobMode,
+              dob: landTitleIndividualDob,
+              startYear: landTitleIndividualStartYear.trim(),
+              endYear: landTitleIndividualEndYear.trim(),
+              states: Array.from(landTitleIndividualStates)
+            };
+            break;
+          case 'ADDRESS':
+            landTitleMeta.address = landTitleAddress.trim();
+            break;
+        }
+
+        reportsToCreate.push({
+          type: landTitleCategoryReportTypeMap[selectedLandTitleOption],
+          name: landTitleCategoryOptionConfig[selectedLandTitleOption].label,
+          meta: landTitleMeta
           });
       }
       
@@ -947,8 +2000,17 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
             reportType = 'asic-current'; // Default fallback
           }
         } else if (reportItem.type === 'COURT') {
-          // For INDIVIDUAL category, use same type as directors (individual-court)
-          reportType = selectedCategory === 'INDIVIDUAL' ? 'director-court' : 'court';
+          if (selectedCategory === 'INDIVIDUAL') {
+            if (selectedCourtType === 'CIVIL COURT') {
+              reportType = 'director-court-civil';
+            } else if (selectedCourtType === 'CRIMINAL COURT') {
+              reportType = 'director-court-criminal';
+            } else {
+              reportType = 'director-court';
+            }
+          } else {
+            reportType = 'court';
+          }
         } else if (reportItem.type === 'ATO') {
           reportType = 'ato';
         } else if (reportItem.type === 'BANKRUPTCY') {
@@ -963,25 +2025,27 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
         } else if (reportItem.type === 'ASIC') {
           // For INDIVIDUAL category, use same type as directors (director-related)
           reportType = selectedCategory === 'INDIVIDUAL' ? 'director-related' : 'asic-current';
-        } else if (reportItem.type === 'ABN/ACN PROPERTY TITLE') {
+        } else if (reportItem.type === 'ABN/ACN LAND TITLE') {
           reportType = 'property';
         } else if (reportItem.type === 'ABN/ACN COURT FILES') {
           reportType = 'court';
-        } else if (reportItem.type === 'ASIC-CURRENT') {
+        } else if (reportItem.type === 'ASIC - CURRENT') {
           reportType = 'asic-current';
+        } else if (reportItem.type === 'ATO') {
+          reportType = 'ato';
         } else if (reportItem.type.includes('DIRECTOR')) {
           if (reportItem.type.includes('PPSR')) {
             reportType = 'director-ppsr';
           } else if (reportItem.type.includes('BANKRUPTCY')) {
             reportType = 'director-bankruptcy';
-          } else if (reportItem.type.includes('PROPERTY')) {
+          } else if (reportItem.type.includes('LAND TITLE')) {
             reportType = 'director-property';
           } else {
             reportType = 'director-related';
           }
         } else if (reportItem.type === 'ADD DOCUMENT SEARCH') {
           reportType = 'asic-document-search';
-        } else if ( reportItem.type === 'ASIC-CURRENT' ) {
+        } else if ( reportItem.type === 'ASIC - CURRENT' ) {
           reportType = 'asic-current';
         } else {
           // Default fallback
@@ -992,7 +2056,7 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
         const user = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user") || '{}') : null;
         const currentMatter = localStorage.getItem('currentMatter') ? JSON.parse(localStorage.getItem('currentMatter') || '{}') : null;
         
-        const reportData: any = {
+          const reportData: any = {
           type: reportType,
           userId: user?.userId || 0,
           matterId: currentMatter?.matterId,
@@ -1020,6 +2084,13 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
               }
             };
 
+            if (reportItem.meta?.landTitleSelection) {
+              reportData.business = {
+                ...reportData.business,
+                landTitleSelection: reportItem.meta.landTitleSelection
+              };
+            }
+
             console.log(`Creating report for director: ${director.fullName || `${director.firstName} ${director.lastName}`}`, reportData);
 
             // Call backend to create report
@@ -1040,20 +2111,44 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
             });
           }
         } else {
+          let businessData = reportData.business ? { ...reportData.business } : undefined;
+
           if (selectedCategory === 'ORGANISATION') {
-            reportData.business = {
+            businessData = {
+              ...(businessData || {}),
               Abn: abn,
               Name: companyName || 'Unknown',
               isCompany: 'ORGANISATION'
             };
           } else if (selectedCategory === 'INDIVIDUAL') {
-            reportData.business = {
+            businessData = {
+              ...(businessData || {}),
               fname: individualFirstName,
               lname: individualLastName,
               dob: individualDateOfBirth,
               isCompany: 'INDIVIDUAL'
             };
           }
+
+          if (reportItem.meta?.landTitleSelection) {
+            businessData = {
+              ...(businessData || {}),
+              landTitleSelection: reportItem.meta.landTitleSelection
+            };
+          }
+
+          if (businessData) {
+            reportData.business = businessData;
+          }
+
+        if (reportItem.type === 'ADD DOCUMENT SEARCH' && documentSearchId) {
+          reportData.business = {
+            ...(reportData.business || {}),
+            documentId: documentSearchId
+          };
+          reportData.documentId = documentSearchId;
+        }
+
            console.log('Creating report with data:', reportData);
 
           // Call backend to create report
@@ -1098,12 +2193,16 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
     }
   };
 
+  const directorCurrentCount = companyDetails.directors || 0;
+  const directorPastCount = companyDetails.pastDirectors || 0;
+  const shareholderCount = companyDetails.shareholders || 0;
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
-      <div className="max-w-[1350px] mx-auto py-16 px-8 pr-[370px]">
+      <div className="mx-auto py-16 px-8 pr-[370px]">
         <div className="flex gap-12">
           {/* Left Sidebar - Vertical Stepper */}
-          <div className="w-[200px] flex-shrink-0 sticky top-32 self-start">
+          <div className="w-[250px] flex-shrink-0 sticky top-32 self-start">
             <div className="relative flex flex-col gap-9 pl-8 pr-4 py-3">
               {/* Progress Line Background */}
               <div className="absolute left-[14px] top-3 bottom-3 w-1 bg-gray-200 rounded-full"></div>
@@ -1197,7 +2296,7 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
                     />
                     <div className={`
                       px-8 py-4 rounded-xl font-semibold text-sm uppercase tracking-wider
-                      transition-all duration-300 shadow-md
+                      transition-all duration-300
                       ${selectedCategory === category
                         ? 'bg-red-600 text-white border-2 border-red-600 shadow-lg shadow-red-600/30 -translate-y-0.5'
                         : 'bg-gray-50 text-gray-600 border-2 border-gray-200 hover:border-red-600 hover:-translate-y-0.5 hover:shadow-lg'
@@ -1210,12 +2309,59 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
                                   </div>
             </div>
 
-            {/* Select Searches Card - Always show */}
+            {/* Select Searches Card */}
             <div ref={searchesCardRef} className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
               <h2 className="text-[32px] font-bold text-center mb-10 text-gray-900 tracking-tight">
                 Select <span className="text-red-600 relative after:content-[''] after:absolute after:bottom-[-5px] after:left-0 after:right-0 after:h-[3px] after:bg-red-600 after:opacity-20">Searches</span>
               </h2>
 
+              {selectedCategory === 'LAND TITLE' ? (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    {landTitleCategoryOptions.map(option => {
+                      const config = landTitleCategoryOptionConfig[option];
+                      const isSelected = selectedLandTitleOption === option;
+                      return (
+                        <button
+                          key={option}
+                          onClick={() => handleLandTitleOptionSelect(option)}
+                          className={`
+                            px-6 py-5 rounded-xl font-semibold text-[13px] uppercase tracking-wide
+                            transition-all duration-300 shadow-md min-h-[70px] flex items-center justify-center
+                            ${isSelected
+                              ? 'bg-red-600 text-white border-2 border-red-600 shadow-lg shadow-red-600/30 -translate-y-0.5'
+                              : 'bg-gray-50 text-gray-600 border-2 border-gray-200 hover:border-red-600 hover:-translate-y-0.5 hover:shadow-lg'}
+                          `}
+                        >
+                          {config.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <p className="text-center text-s font-semibold uppercase tracking-wide text-gray-600">
+                    Available as a single search or add it to your current search for more insight
+                  </p>
+
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      onClick={handleLandTitleAddOnToggle}
+                      disabled={!selectedLandTitleOption}
+                      className={`
+                        w-full sm:w-auto px-6 py-4 rounded-xl font-semibold text-[13px] uppercase tracking-wide transition-all duration-300 shadow-md border-2
+                        ${!selectedLandTitleOption
+                          ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : isLandTitleAddOnSelected
+                            ? 'bg-red-600 text-white border-2 border-red-600 shadow-lg shadow-red-600/30'
+                            : 'bg-gray-50 text-gray-600 border-2 border-gray-200 hover:border-red-600 hover:-translate-y-0.5 hover:shadow-lg'}
+                      `}
+                    >
+                      {LAND_TITLE_ADD_ON_LABEL}
+                    </button>
+                  </div>
+                </div>
+              ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                 {searches.map((search) => {
                   const isSelected = selectedSearches.has(search);
@@ -1241,40 +2387,388 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
                   );
                 })}
                   </div>
+              )}
                   </div>
-              
-            {/* Select ASIC Type Card - Only show when ORGANISATION + ASIC selected */}
-            {selectedCategory === 'ORGANISATION' && selectedSearches.has('ASIC') && (
-            <div className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
+            {selectedCategory === 'LAND TITLE' && (
+            <div ref={detailsCardRef} className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
               <h2 className="text-[32px] font-bold text-center mb-10 text-gray-900 tracking-tight">
-                Select <span className="text-red-600 relative after:content-[''] after:absolute after:bottom-[-5px] after:left-0 after:right-0 after:h-[3px] after:bg-red-600 after:opacity-20">ASIC Type</span>
+                Enter <span className="text-red-600 relative after:content-[''] after:absolute after:bottom-[-5px] after:left-0 after:right-0 after:h-[3px] after:bg-red-600 after:opacity-20">{selectedLandTitleOption ? landTitleDetailHeadingMap[selectedLandTitleOption] : 'Details'}</span>
               </h2>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {asicTypes.map((asicType) => {
-                  const isSelected = selectedAsicTypes.has(asicType);
-                  const isSelectAll = asicType === 'SELECT ALL';
-                  
+              {!selectedLandTitleOption ? (
+                <p className="text-center text-sm text-gray-500">
+                  Select a search option above to continue.
+                </p>
+              ) : (
+                (() => {
+                  switch (selectedLandTitleOption) {
+                    case 'TITLE_REFERENCE':
+                      return (
+                        <div className="max-w-2xl mx-auto space-y-6">
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                              Reference ID<span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={landTitleReferenceId}
+                              onChange={(event) => setLandTitleReferenceId(event.target.value)}
+                              placeholder="Enter reference ID"
+                              className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            className="w-full rounded-xl bg-red-600 py-4 font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
+                          >
+                            Search
+                          </button>
+                        </div>
+                      );
+                    case 'LAND_ORGANISATION':
+                      return (
+                        <div className="max-w-3xl mx-auto space-y-6">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                            * required fields
+                          </div>
+
+                          <div>
+                            <span className="block text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
+                              Select States<span className="text-red-500">*</span>
+                            </span>
+                            <div className="flex flex-wrap gap-3">
+                              {landTitleStateOptions.map(state => {
+                                const isSelected = landTitleOrganisationStates.has(state);
                   return (
                   <button 
-                      key={asicType}
-                      onClick={() => handleAsicTypeToggle(asicType)}
+                                    key={state}
+                                    type="button"
+                                    onClick={() => handleLandTitleOrganisationStateToggle(state)}
                       className={`
-                        px-6 py-5 rounded-xl font-semibold text-[13px] uppercase tracking-wide
-                        transition-all duration-300 shadow-md min-h-[70px] flex items-center justify-center
+                                      px-5 py-3 rounded-xl border-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200
                         ${isSelected
-                          ? isSelectAll
-                            ? 'bg-white text-red-600 border-2 border-red-600 hover:bg-red-50 shadow-lg shadow-red-600/20'
-                            : 'bg-red-600 text-white border-2 border-red-600 shadow-lg shadow-red-600/30 -translate-y-0.5'
-                          : 'bg-gray-50 text-gray-600 border-2 border-gray-200 hover:border-red-600 hover:-translate-y-0.5 hover:shadow-lg'
-                        }
-                      `}
-                    >
-                      {isSelectAll && allAsicTypesSelected ? 'DESELECT ALL' : asicType}
+                                        ? 'border-red-600 bg-red-600 text-white shadow-red-600/30'
+                                        : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'}
+                                    `}
+                                  >
+                                    {state}
+                                  </button>
+                                );
+                              })}
+                              <button
+                                type="button"
+                                onClick={handleLandTitleOrganisationStateSelectAll}
+                                className={`
+                                  px-5 py-3 rounded-xl border-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200
+                                  ${landTitleOrganisationStates.size === landTitleStateOptions.length
+                                    ? 'border-red-600 bg-red-600 text-white shadow-red-600/30'
+                                    : 'border-gray-200 bg-white text-red-600 hover:border-red-600'}
+                                `}
+                              >
+                                Select All
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            <label className="block text-sm font-semibold text-gray-700">
+                              Search Organisation<span className="text-red-500">*</span>
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                value={landTitleOrganisationSearchTerm}
+                                onChange={(event) => {
+                                  setLandTitleOrganisationSearchTerm(event.target.value);
+                                  setIsLandTitleOrganisationConfirmed(false);
+                                }}
+                                onFocus={() => {
+                                  if (landTitleOrganisationSuggestions.length > 0) {
+                                    setLandTitleOrganisationShowSuggestions(true);
+                                  }
+                                }}
+                                placeholder="Type to search..."
+                                className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm text-base transition-all duration-200 focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100"
+                              />
+                              {landTitleOrganisationSearchTerm && (
+                                <button
+                                  type="button"
+                                  onClick={resetLandTitleOrganisationSearch}
+                                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-red-600 transition-colors duration-200"
+                                >
+                                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              )}
+
+                              {landTitleOrganisationShowSuggestions && (
+                                <div
+                                  ref={landTitleOrganisationDropdownRef}
+                                  className="absolute z-50 w-full mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-2xl max-h-72 overflow-y-auto"
+                                >
+                                  {isLoadingLandTitleOrganisationSuggestions ? (
+                                    <div className="px-4 py-3 text-center text-gray-500">
+                                      <svg className="animate-spin h-5 w-5 mx-auto text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                      </svg>
+                                    </div>
+                                  ) : landTitleOrganisationSuggestions.length === 0 ? (
+                                    <div className="px-4 py-3 text-center text-gray-500">
+                                      No results found
+                                    </div>
+                                  ) : (
+                                    landTitleOrganisationSuggestions.map((suggestion, index) => (
+                                      <button
+                                        key={`${suggestion.Abn}-${index}`}
+                                        type="button"
+                                        onClick={() => handleLandTitleOrganisationSuggestionSelect(suggestion)}
+                                        className="w-full px-4 py-3 text-left hover:bg-red-50 transition-colors duration-150 border-b border-gray-100 last:border-b-0"
+                                      >
+                                        <div className="font-semibold text-sm text-gray-900">
+                                          {suggestion.Name || 'Unknown'}
+                                        </div>
+                                        {suggestion.Abn && (
+                                          <div className="text-xs text-gray-500">
+                                            ABN: {suggestion.Abn}
+                                          </div>
+                                        )}
+                                      </button>
+                                    ))
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            {landTitleOrganisationSelected && !isLandTitleOrganisationConfirmed && (
+                              <div className="mt-6 bg-blue-50 border-2 border-blue-200 rounded-xl p-6 shadow-md">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex-1">
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Selected Company</h3>
+                                    <div className="space-y-1">
+                                      <p className="text-base font-medium text-gray-800">
+                                        <span className="font-bold">Company:</span> {landTitleOrganisationSelected.Name || 'Unknown'}
+                                      </p>
+                                      {landTitleOrganisationSelected.Abn && (
+                                        <p className="text-base font-medium text-gray-800">
+                                          <span className="font-bold">ABN:</span> {landTitleOrganisationSelected.Abn}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-3 ml-4">
+                                    <button
+                                      type="button"
+                                      onClick={clearLandTitleOrganisationSelection}
+                                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200"
+                                    >
+                                      Change
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={handleConfirmLandTitleOrganisation}
+                                      disabled={landTitleOrganisationStates.size === 0 || isConfirmingLandTitleOrganisation}
+                                      className="px-6 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                                    >
+                                      {isConfirmingLandTitleOrganisation ? (
+                                        <span className="flex items-center">
+                                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                          </svg>
+                                          Confirming...
+                                        </span>
+                                      ) : (
+                                        'Confirm'
+                                      )}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {isLandTitleOrganisationConfirmed && landTitleOrganisationSelected && (
+                              <div className="mt-6 bg-green-50 border-2 border-green-200 rounded-xl p-6 shadow-md">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <svg className="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <h3 className="text-lg font-semibold text-gray-900">Company Confirmed</h3>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={clearLandTitleOrganisationSelection}
+                                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200"
+                                  >
+                                    Change
+                                  </button>
+                                </div>
+                                <div className="mt-2 space-y-1">
+                                  <p className="text-base font-medium text-gray-800">
+                                    <span className="font-bold">Company:</span> {landTitleOrganisationSelected.Name || 'Unknown'}
+                                  </p>
+                                  {landTitleOrganisationSelected.Abn && (
+                                    <p className="text-base font-medium text-gray-800">
+                                      <span className="font-bold">ABN:</span> {landTitleOrganisationSelected.Abn}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    case 'LAND_INDIVIDUAL':
+                      return (
+                        <div className="max-w-3xl mx-auto space-y-6">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                            * required fields
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                First Name<span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={landTitleIndividualFirstName}
+                                onChange={(event) => setLandTitleIndividualFirstName(event.target.value)}
+                                placeholder="Enter first name"
+                                className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                Last Name<span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={landTitleIndividualLastName}
+                                onChange={(event) => setLandTitleIndividualLastName(event.target.value)}
+                                placeholder="Enter last name"
+                                className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-4">
+                            <span className="block text-sm font-semibold text-gray-700">
+                              Date of Birth Options<span className="text-red-500">*</span>
+                            </span>
+                            <div className="flex flex-wrap gap-3">
+                              {[
+                                { key: 'EXACT' as const, label: 'Exact Date of Birth' },
+                                { key: 'RANGE' as const, label: 'Birth Year Range' }
+                              ].map(option => {
+                                const isSelected = landTitleIndividualDobMode === option.key;
+                                return (
+                                  <button
+                                    key={option.key}
+                                    type="button"
+                                    onClick={() => setLandTitleIndividualDobMode(option.key)}
+                                    className={`
+                                      px-5 py-3 rounded-xl border-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200
+                                      ${isSelected
+                                        ? 'border-red-600 bg-red-600 text-white shadow-red-600/30'
+                                        : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'}
+                                    `}
+                                  >
+                                    {option.label}
                   </button>
                   );
                 })}
                 </div>
+
+                            {landTitleIndividualDobMode === 'EXACT' ? (
+                              <input
+                                type="date"
+                                value={landTitleIndividualDob}
+                                onChange={(event) => setLandTitleIndividualDob(event.target.value)}
+                                className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
+                              />
+                            ) : (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <input
+                                  type="number"
+                                  value={landTitleIndividualStartYear}
+                                  onChange={(event) => setLandTitleIndividualStartYear(event.target.value)}
+                                  placeholder="Start year"
+                                  className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
+                                />
+                                <input
+                                  type="number"
+                                  value={landTitleIndividualEndYear}
+                                  onChange={(event) => setLandTitleIndividualEndYear(event.target.value)}
+                                  placeholder="End year"
+                                  className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          <div>
+                            <span className="block text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
+                              Select States<span className="text-red-500">*</span>
+                            </span>
+                            <div className="flex flex-wrap gap-3">
+                              {landTitleStateOptions.map(state => {
+                                const isSelected = landTitleIndividualStates.has(state);
+                                return (
+                                  <button
+                                    key={state}
+                                    type="button"
+                                    onClick={() => handleLandTitleIndividualStateToggle(state)}
+                                    className={`
+                                      px-5 py-3 rounded-xl border-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200
+                                      ${isSelected
+                                        ? 'border-red-600 bg-red-600 text-white shadow-red-600/30'
+                                        : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'}
+                                    `}
+                                  >
+                                    {state}
+                                  </button>
+                                );
+                              })}
+                              <button
+                                type="button"
+                                onClick={handleLandTitleIndividualStateSelectAll}
+                                className={`
+                                  px-5 py-3 rounded-xl border-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200
+                                  ${landTitleIndividualStates.size === landTitleStateOptions.length
+                                    ? 'border-red-600 bg-red-600 text-white shadow-red-600/30'
+                                    : 'border-gray-200 bg-white text-red-600 hover:border-red-600'}
+                                `}
+                              >
+                                Select All
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    case 'ADDRESS':
+                      return (
+                        <div className="max-w-2xl mx-auto space-y-6">
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                              Address<span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={landTitleAddress}
+                              onChange={(event) => setLandTitleAddress(event.target.value)}
+                              placeholder="Enter address"
+                              className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
+                            />
+                          </div>
+                        </div>
+                      );
+                    default:
+                      return null;
+                  }
+                })()
+              )}
               </div>
             )}
 
@@ -1295,10 +2789,15 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
                     type="text"
                       id="organisation-search"
                       name="organisation-search"
-                      className="block w-full px-4 py-3 border-2 border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 text-base transition-all duration-200"
+                      className={`block w-full px-4 py-3 border-2 rounded-xl shadow-sm text-base transition-all duration-200 ${
+                        organisationSearchDisabled
+                          ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : 'border-gray-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500'
+                      }`}
                       placeholder="Type to search..."
                       value={organisationSearchTerm}
                       onChange={(e) => {
+                        if (organisationSearchDisabled) return;
                         setOrganisationSearchTerm(e.target.value);
                         // Clear pending company if user starts typing
                         if (pendingCompany && !isCompanyConfirmed) {
@@ -1306,11 +2805,13 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
                         }
                       }}
                     onFocus={() => {
+                        if (organisationSearchDisabled) return;
                         hasSelectedRef.current = false; // Reset flag when field is focused
                         if (organisationSearchTerm.trim().length >= 2 && suggestions.length > 0) {
                           setShowSuggestions(true);
                         }
-                      }}
+                    }}
+                    disabled={organisationSearchDisabled}
                     />
                     {organisationSearchTerm && (
                   <button
@@ -1549,11 +3050,21 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
             )}
             
             {/* Select Additional Searches - Show when ORGANISATION category is selected */}
-            {selectedCategory === 'ORGANISATION' && (
-            <div ref={additionalCardRef} className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
-              <h2 className="text-[32px] font-bold text-center mb-10 text-gray-900 tracking-tight">
-                Select <span className="text-red-600 relative after:content-[''] after:absolute after:bottom-[-5px] after:left-0 after:right-0 after:h-[3px] after:bg-red-600 after:opacity-20">Additional Searches</span>
+            {selectedCategory === 'ORGANISATION' && !selectedSearches.has('ADD DOCUMENT SEARCH') && (
+            <div
+              ref={additionalCardRef}
+              className={`bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 transition-all duration-300 ${
+                isAdditionalSearchesDisabled ? 'opacity-60' : 'hover:shadow-2xl hover:-translate-y-1'
+              }`}
+            >
+              <h2 className="text-[32px] font-bold text-center mb-4 text-gray-900 tracking-tight">
+                Report <span className="text-red-600 relative after:content-[''] after:absolute after:bottom-[-5px] after:left-0 after:right-0 after:h-[3px] after:bg-red-600 after:opacity-20">Enrichment Options</span>
               </h2>
+              {isAdditionalSearchesDisabled && (
+                <p className="text-center text-sm text-gray-500 mb-8">
+                  Additional searches unlock once an organisation is confirmed.
+                </p>
+              )}
 
               {/* Company Details Banner - Only show when company is selected */}
               {hasSelectedCompany && (
@@ -1573,11 +3084,18 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
                   return (
                       <button 
                       key={option.name}
-                      onClick={() => handleAdditionalSearchToggle(option.name)}
+                      onClick={() => {
+                        if (!isAdditionalSearchesDisabled) {
+                          handleAdditionalSearchToggle(option.name);
+                        }
+                      }}
+                      disabled={isAdditionalSearchesDisabled}
                       className={`
                         px-4 py-4 rounded-xl font-semibold text-xs uppercase tracking-wide
                         transition-all duration-300 shadow-md min-h-[90px] flex flex-col items-center justify-center
-                        ${isSelected
+                        ${isAdditionalSearchesDisabled
+                          ? 'bg-gray-100 text-gray-400 border-2 border-gray-200 cursor-not-allowed'
+                          : isSelected
                           ? isSelectAll
                             ? 'bg-white text-red-600 border-2 border-red-600 hover:bg-red-50 shadow-lg shadow-red-600/20'
                             : 'bg-red-600 text-white border-2 border-red-600 shadow-lg shadow-red-600/30'
@@ -1586,7 +3104,11 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
                       `}
                     >
                       <span className="text-center">
-                        {isSelectAll && allAdditionalSearchesSelected ? 'DESELECT ALL' : option.name}
+                        {isSelectAll && allAdditionalSearchesSelected
+                          ? 'DESELECT ALL'
+                          : isLandTitleOption(option.name as AdditionalSearchType)
+                          ? getAdditionalSearchLabel(option.name as AdditionalSearchType)
+                          : option.name}
                       </span>
                       {option.available && (
                         <span className="text-xs mt-2 opacity-75">
@@ -1623,9 +3145,7 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
                 
                 {/* ASIC types - Show as separate pills if selected */}
                 {selectedCategory === 'ORGANISATION' && selectedSearches.has('ASIC') && 
-                  Array.from(selectedAsicTypes)
-                    .filter(type => type !== 'SELECT ALL')
-                    .map((type) => (
+                  selectedAsicTypeList.map((type) => (
                       <div
                         key={`asic-${type}`}
                         className="px-6 py-3 rounded-xl font-semibold text-sm uppercase tracking-wide bg-blue-600 text-white shadow-md border-2 border-blue-700"
@@ -1645,7 +3165,7 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
                         key={search}
                         className="px-6 py-3 rounded-xl font-semibold text-sm uppercase tracking-wide bg-red-600 text-white shadow-md"
                       >
-                        {search}
+                        {getAdditionalSearchLabel(search)}
                         {option?.available && ` (${option.available} available)`}
                   </div>
                     );
@@ -1733,6 +3253,395 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
                 </div>
                 </div>
 
+      {selectedCategory === 'ORGANISATION' && selectedSearches.has('ASIC') && isAsicModalOpen && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-gray-900/60 px-4"
+          onClick={() => closeAsicModal()}
+        >
+          <div
+            className="relative w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => closeAsicModal()}
+              className="absolute top-4 right-4 text-gray-400 transition-colors duration-200 hover:text-red-600"
+              aria-label="Close modal"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div className="text-center">
+              <h3 className="text-2xl font-bold text-gray-900">Select ASIC Report Type</h3>
+              <p className="mt-2 text-sm text-gray-500">
+                Pick one or more ASIC report types to include in your search.
+              </p>
+            </div>
+
+            <div className="mt-8 space-y-3">
+              {asicTypes.map((asicType) => {
+                const isSelected = selectedAsicTypes.has(asicType);
+                const isSelectAll = asicType === 'SELECT ALL';
+
+                return (
+                  <button
+                    type="button"
+                    key={asicType}
+                    onClick={() => handleAsicTypeToggle(asicType)}
+                    className={`w-full rounded-xl border-2 px-6 py-4 text-sm font-semibold uppercase tracking-wide transition-all duration-200 ${
+                      isSelected
+                        ? isSelectAll
+                          ? 'border-red-600 bg-white text-red-600 shadow-lg shadow-red-600/15'
+                          : 'border-red-600 bg-red-600 text-white shadow-lg shadow-red-600/25'
+                        : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'
+                    }`}
+                  >
+                    {isSelectAll && allAsicTypesSelected ? 'DESELECT ALL' : asicType}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-8 grid grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => {
+                  removeAsicSelection();
+                  closeAsicModal({ removeIfEmpty: false });
+                }}
+                className="rounded-xl border-2 border-gray-200 bg-white py-3 text-sm font-semibold uppercase tracking-wide text-gray-600 transition-all duration-200 hover:border-gray-300 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleAsicSelectionConfirm}
+                className="rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedCategory === 'INDIVIDUAL' && selectedSearches.has('COURT') && isCourtModalOpen && (
+        <div
+          className="fixed inset-0 z-[119] flex items-center justify-center bg-gray-900/60 px-4"
+          onClick={() => closeCourtModal()}
+        >
+          <div
+            className="relative w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => closeCourtModal()}
+              className="absolute top-4 right-4 text-gray-400 transition-colors duration-200 hover:text-red-600"
+              aria-label="Close modal"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div className="text-center">
+              <h3 className="text-2xl font-bold text-gray-900">Select Court Report Type</h3>
+              <p className="mt-2 text-sm text-gray-500">
+                Choose the type of court search you need for this individual.
+              </p>
+            </div>
+
+            <div className="mt-8 space-y-3">
+              {courtTypes.map((courtType) => {
+                const isSelected = selectedCourtType === courtType;
+                return (
+                  <button
+                    type="button"
+                    key={courtType}
+                    onClick={() => setSelectedCourtType(courtType)}
+                    className={`w-full rounded-xl border-2 px-6 py-4 text-sm font-semibold uppercase tracking-wide transition-all duration-200 ${
+                      isSelected
+                        ? 'border-red-600 bg-red-600 text-white shadow-lg shadow-red-600/25'
+                        : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'
+                    }`}
+                  >
+                    {courtType === 'ALL' ? 'ALL COURT SEARCHES' : courtType}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-8 grid grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => closeCourtModal({ removeSelection: true })}
+                className="rounded-xl border-2 border-gray-200 bg-white py-3 text-sm font-semibold uppercase tracking-wide text-gray-600 transition-all duration-200 hover:border-gray-300 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCourtSelectionConfirm}
+                className="rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {landTitleModalOpen && (
+        <div
+          className="fixed inset-0 z-[118] flex items-center justify-center bg-gray-900/60 px-4"
+          onClick={closeLandTitleModal}
+        >
+          <div
+            className="relative w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={closeLandTitleModal}
+              className="absolute top-4 right-4 text-gray-400 transition-colors duration-200 hover:text-red-600"
+              aria-label="Close modal"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {landTitleModalStep === 'SUMMARY_PROMPT' && (
+              <div>
+                <h3 className="text-2xl font-bold text-gray-900 mb-4">
+                  {landTitleModalCopy[landTitleModalOpen].summaryTitle}
+                </h3>
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  {landTitleModalCopy[landTitleModalOpen].summaryDescription}
+                </p>
+                <div className="mt-8 space-y-3">
+                  <button
+                    type="button"
+                    onClick={handleLandTitleSummaryContinue}
+                    className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
+                  >
+                    Process – {formatCurrency(landTitlePricingConfig.base[landTitleModalOpen])}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeLandTitleModal}
+                    className="w-full rounded-xl border-2 border-gray-200 bg-white py-3 text-sm font-semibold uppercase tracking-wide text-gray-600 transition-all duration-200 hover:border-gray-300 hover:text-gray-800"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {landTitleModalStep === 'DETAIL' && (
+              <div>
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                  {landTitleModalCopy[landTitleModalOpen].detailTitle}
+                </h3>
+                <p className="text-sm text-gray-600 leading-relaxed mb-6">
+                  {landTitleModalCopy[landTitleModalOpen].detailDescription}
+                </p>
+                <div className="space-y-3">
+                  {(() => {
+                    const options =
+                      landTitleModalOpen === 'DIRECTOR LAND TITLE'
+                        ? [
+                            {
+                              key: 'CURRENT',
+                              label: `Current${directorCurrentCount ? ` (${directorCurrentCount} available)` : ''}`
+                            },
+                            {
+                              key: 'PAST',
+                              label: `Past${directorPastCount ? ` (${directorPastCount} available)` : ''}`
+                            },
+                            {
+                              key: 'ALL',
+                              label: `All${directorCurrentCount + directorPastCount ? ` (${directorCurrentCount + directorPastCount} available)` : ''}`
+                            },
+                            {
+                              key: 'SUMMARY',
+                              label: 'Summary Report Only'
+                            }
+                          ]
+                        : [
+                            {
+                              key: 'CURRENT',
+                              label: `Current${shareholderCount ? ` (${shareholderCount} available)` : ''}`
+                            },
+                            { key: 'PAST', label: 'Past Records' },
+                            { key: 'ALL', label: 'All Available' },
+                            { key: 'SUMMARY', label: 'Summary Report Only' }
+                          ];
+                    return options.map(option => {
+                      const detail = option.key as LandTitleDetailSelection;
+                      const selectionForPrice = { ...pendingLandTitleSelection, detail, addOn: false };
+                      const pricePreview = calculateLandTitlePrice(landTitleModalOpen, selectionForPrice);
+                      return (
+                        <button
+                          key={option.key}
+                          type="button"
+                          onClick={() => handleLandTitleDetailSelect(detail)}
+                          className={`w-full rounded-xl border-2 px-4 py-3 text-left text-sm font-semibold uppercase tracking-wide transition-all duration-200 ${
+                            pendingLandTitleSelection.detail === detail
+                              ? 'border-red-600 bg-red-50 text-red-600'
+                              : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span>{option.label}</span>
+                            <span className="text-xs font-bold">{formatCurrency(pricePreview)}</span>
+                          </div>
+                        </button>
+                      );
+                    });
+                  })()}
+                </div>
+                <div className="mt-6 flex justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={handleLandTitleDetailBack}
+                    className="flex-1 rounded-xl border-2 border-gray-200 bg-white py-3 text-sm font-semibold uppercase tracking-wide text-gray-600 transition-all duration-200 hover:border-gray-300 hover:text-gray-800"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleLandTitleDetailContinue}
+                    className="flex-1 rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
+                  >
+                    Continue
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {landTitleModalStep === 'ADD_ON' && (
+              <div>
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                  {landTitleModalCopy[landTitleModalOpen].addOnTitle}
+                </h3>
+                <p className="text-sm text-gray-600 leading-relaxed mb-6">
+                  {landTitleModalCopy[landTitleModalOpen].addOnDescription}
+                </p>
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => handleLandTitleAddOnSelect(true)}
+                    className={`w-full rounded-xl border-2 px-4 py-3 text-left text-sm font-semibold uppercase tracking-wide transition-all duration-200 ${
+                      pendingLandTitleSelection.addOn
+                        ? 'border-red-600 bg-red-50 text-red-600'
+                        : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span>Property Value + Sales History + More</span>
+                      <span className="text-xs font-bold">{formatCurrency(landTitlePricingConfig.addOn)}</span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleLandTitleAddOnSelect(false)}
+                    className={`w-full rounded-xl border-2 px-4 py-3 text-left text-sm font-semibold uppercase tracking-wide transition-all duration-200 ${
+                      !pendingLandTitleSelection.addOn
+                        ? 'border-red-600 bg-red-50 text-red-600'
+                        : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'
+                    }`}
+                  >
+                    No, continue with selected options
+                  </button>
+                </div>
+                <div className="mt-6 flex justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={handleLandTitleAddOnBack}
+                    className="flex-1 rounded-xl border-2 border-gray-200 bg-white py-3 text-sm font-semibold uppercase tracking-wide text-gray-600 transition-all duration-200 hover:border-gray-300 hover:text-gray-800"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleLandTitleModalConfirm}
+                    className="flex-1 rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
+                  >
+                    Continue
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {isDocumentModalOpen && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-gray-900/60 px-4"
+          onClick={handleDocumentModalCancel}
+        >
+          <div
+            className="relative w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={handleDocumentModalCancel}
+              className="absolute top-4 right-4 text-gray-400 transition-colors duration-200 hover:text-red-600"
+              aria-label="Close modal"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div className="text-center">
+              <h3 className="text-2xl font-bold text-gray-900">Add Document ID</h3>
+              <p className="mt-2 text-sm text-gray-500">
+                Enter the ASIC document number to continue with the search.
+              </p>
+            </div>
+
+            <div className="mt-8">
+              <label htmlFor="document-id-input" className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                Document ID
+              </label>
+              <input
+                id="document-id-input"
+                type="text"
+                value={documentIdInput}
+                onChange={(event) => setDocumentIdInput(event.target.value)}
+                className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 text-base shadow-sm focus:border-red-600 focus:outline-none focus:ring-2 focus:ring-red-100 transition-all duration-200"
+                placeholder="Enter document ID"
+                autoFocus
+              />
+            </div>
+
+            <div className="mt-8 grid grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={handleDocumentModalCancel}
+                className="rounded-xl border-2 border-gray-200 bg-white py-3 text-sm font-semibold uppercase tracking-wide text-gray-600 transition-all duration-200 hover:border-gray-300 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDocumentModalConfirm}
+                className="rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Right Sidebar - Receipt */}
       <div className="fixed right-8 top-32 w-80 max-h-[calc(100vh-160px)] bg-white rounded-[20px] shadow-xl overflow-hidden flex flex-col z-50 hidden lg:flex">
         {/* Header */}
@@ -1771,11 +3680,9 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
                 ))}
               
               {/* Show selected ASIC types if any */}
-              {selectedCategory === 'ORGANISATION' && Array.from(selectedAsicTypes).filter(t => t !== 'SELECT ALL').length > 0 && (
+              {selectedCategory === 'ORGANISATION' && selectedAsicTypeList.length > 0 && (
                 <div className="mt-2">
-                  {Array.from(selectedAsicTypes)
-                    .filter(type => type !== 'SELECT ALL')
-                    .map((type, index) => (
+                  {selectedAsicTypeList.map((type, index) => (
                       <div 
                         key={type}
                         className="flex justify-between items-start py-3 border-b border-gray-100 last:border-b-0 animate-fadeIn"
@@ -1806,7 +3713,7 @@ const handleIndividualAdditionalSearchToggle = (searchName: SearchType) => {
                           style={{ animationDelay: `${(selectedSearches.size + selectedAsicTypes.size + index) * 50}ms` }}
                         >
                           <div className="flex-1 text-[13px] font-medium text-gray-600 pr-4 leading-relaxed">
-                            {search}
+                            {getAdditionalSearchLabel(search)}
                             {option?.available && ` (${option.available})`}
                   </div>
                           <div className="text-sm font-semibold text-gray-800 whitespace-nowrap">
