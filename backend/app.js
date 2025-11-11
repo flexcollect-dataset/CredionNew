@@ -11,6 +11,32 @@ const { testConnection } = require('./config/db');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+const allowedOrigins = (process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || 'http://localhost:5173')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  exposedHeaders: ['Content-Disposition']
+}));
+
+app.options('*', cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true
+}));
+
 // Middleware
 app.use(helmet({
   contentSecurityPolicy: {
@@ -23,12 +49,6 @@ app.use(helmet({
       imgSrc: ["'self'", "data:", "https:"],
     },
   },
-}));
-
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
-  credentials: true,
-  exposedHeaders: ['Content-Disposition']
 }));
 
 app.use(morgan('dev'));
