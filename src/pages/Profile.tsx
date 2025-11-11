@@ -50,14 +50,11 @@ const Profile = () => {
 
   const handleSetDefault = async (paymentMethodId: string) => {
     try {
-      const response = await apiService.setDefaultPaymentMethod(paymentMethodId, user.userId);
-      if (response.success) {
-        // Reload payment methods to reflect changes
-        if (user) {
-          loadPaymentMethods(user.userId);
-        }
+      const response = await apiService.setDefaultPaymentMethod(paymentMethodId);
+      if (response.success && user) {
+        loadPaymentMethods(user.userId);
       } else {
-        setError('Failed to set default payment method');
+        setError(response?.message || 'Failed to set default payment method');
       }
     } catch (error) {
       console.error('Set default payment method error:', error);
@@ -71,14 +68,11 @@ const Profile = () => {
     }
 
     try {
-      const response = await apiService.deletePaymentMethod(paymentMethodId, user.userId);
-      if (response.success) {
-        // Reload payment methods to reflect changes
-        if (user) {
-          loadPaymentMethods(user.userId);
-        }
+      const response = await apiService.deletePaymentMethod(paymentMethodId);
+      if (response.success && user) {
+        loadPaymentMethods(user.userId);
       } else {
-        setError('Failed to delete payment method');
+        setError(response?.message || 'Failed to delete payment method');
       }
     } catch (error) {
       console.error('Delete payment method error:', error);

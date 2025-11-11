@@ -15,7 +15,6 @@ interface Matter {
 
 const ExistingMatter: React.FC = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [matters, setMatters] = useState<Matter[]>([]);
@@ -25,10 +24,9 @@ const ExistingMatter: React.FC = () => {
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
-    if (userData) {
-      setUser(JSON.parse(userData));
-    } else {
+    if (!userData) {
       navigate('/login');
+      return;
     }
     setIsLoading(false);
   }, [navigate]);

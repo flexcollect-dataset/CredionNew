@@ -76,8 +76,10 @@ const UserProfile = () => {
     if (window.confirm('Are you sure you want to delete this payment method?')) {
       setLoading(true);
       try {
-        await apiService.deletePaymentMethod(parseInt(id));
-        fetchPaymentMethods();
+        const response = await apiService.deletePaymentMethod(id);
+        if (response.success) {
+          fetchPaymentMethods();
+        }
       } catch (error) {
         console.error('Error deleting payment method:', error);
         // Update local state when API fails
@@ -91,8 +93,10 @@ const UserProfile = () => {
   const handleSetDefault = async (id: string) => {
     setLoading(true);
     try {
-      await apiService.setDefaultPaymentMethod(parseInt(id));
-      fetchPaymentMethods();
+      const response = await apiService.setDefaultPaymentMethod(id);
+      if (response.success) {
+        fetchPaymentMethods();
+      }
     } catch (error) {
       console.error('Error setting default payment method:', error);
       // Update local state when API fails

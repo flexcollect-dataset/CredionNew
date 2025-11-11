@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, FileText } from 'lucide-react';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { apiService } from '../services/api';
 
 const NewMatter: React.FC = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [matterName, setMatterName] = useState('');
   const [description, setDescription] = useState('');
@@ -14,10 +13,9 @@ const NewMatter: React.FC = () => {
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
-    if (userData) {
-      setUser(JSON.parse(userData));
-    } else {
+    if (!userData) {
       navigate('/login');
+      return;
     }
     setIsLoading(false);
   }, [navigate]);

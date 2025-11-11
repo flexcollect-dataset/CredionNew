@@ -56,14 +56,16 @@ const PaymentMethods = () => {
     if (!user?.userId) return;
     
     try {
-      await apiService.setDefaultPaymentMethod(methodId, user.userId);
-      
-      setPaymentMethods(prev => 
-        prev.map(method => ({
-          ...method,
-          isDefault: method.id === methodId
-        }))
-      );
+      const response = await apiService.setDefaultPaymentMethod(methodId);
+
+      if (response.success) {
+        setPaymentMethods(prev => 
+          prev.map(method => ({
+            ...method,
+            isDefault: method.id === methodId
+          }))
+        );
+      }
     } catch (error) {
       console.error('Error setting default payment method:', error);
     }
@@ -77,9 +79,11 @@ const PaymentMethods = () => {
     }
 
     try {
-      await apiService.deletePaymentMethod(methodId, user.userId);
-      
-      setPaymentMethods(prev => prev.filter(method => method.id !== methodId));
+      const response = await apiService.deletePaymentMethod(methodId);
+
+      if (response.success) {
+        setPaymentMethods(prev => prev.filter(method => method.id !== methodId));
+      }
     } catch (error) {
       console.error('Error deleting payment method:', error);
     }

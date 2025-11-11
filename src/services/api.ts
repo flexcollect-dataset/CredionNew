@@ -146,7 +146,7 @@ class ApiService {
   async getMatters() {
     // Add timestamp to prevent caching
     const timestamp = new Date().getTime();
-    return this.request<{ success: boolean; matters: any[] }>(`/api/matters/list?t=${timestamp}`);
+    return this.request<{ success: boolean; matters: any[]; message?: string }>(`/api/matters/list?t=${timestamp}`);
   }
 
   async searchMatters(query: string) {
@@ -279,7 +279,7 @@ class ApiService {
   async getPaymentMethods(userId?: number) {
     try {
       const user = userId ? { userId } : JSON.parse(localStorage.getItem('user') || '{}');
-      const response = await this.request<{ success: boolean; paymentMethods: any[] }>(`/payment-methods?userId=${user.userId}`, {
+      const response = await this.request<{ success: boolean; paymentMethods: any[]; message?: string }>(`/payment-methods?userId=${user.userId}`, {
         method: 'GET'
       });
       return response;
@@ -307,10 +307,10 @@ class ApiService {
     }
   }
 
-  async deletePaymentMethod(id: number) {
+  async deletePaymentMethod(id: string) {
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const response = await this.request(`/payment-methods/${id}`, {
+      const response = await this.request<{ success: boolean; message?: string }>(`/payment-methods/${id}`, {
         method: 'DELETE',
         body: JSON.stringify({ userId: user.userId })
       });
@@ -321,10 +321,10 @@ class ApiService {
     }
   }
 
-  async setDefaultPaymentMethod(id: number) {
+  async setDefaultPaymentMethod(id: string) {
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const response = await this.request(`/payment-methods/${id}/set-default`, {
+      const response = await this.request<{ success: boolean; message?: string }>(`/payment-methods/${id}/set-default`, {
         method: 'PUT',
         body: JSON.stringify({ userId: user.userId })
       });
