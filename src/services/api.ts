@@ -1,4 +1,18 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const envBaseUrls = [
+  import.meta.env.VITE_API_URL,
+  import.meta.env.VITE_API_BASE_URL,
+  import.meta.env.VITE_BACKEND_URL,
+];
+
+const DEFAULT_API_BASE_URL = 'http://3.24.11.111:3001';
+
+const API_BASE_URL =
+  envBaseUrls.find(
+    (value) =>
+      typeof value === 'string' &&
+      value.length > 0 &&
+      !value.includes('credion-backend.onrender.com')
+  ) || DEFAULT_API_BASE_URL;
 
 export interface LoginRequest {
   email: string;
