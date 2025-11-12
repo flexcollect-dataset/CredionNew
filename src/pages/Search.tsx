@@ -155,10 +155,8 @@ const Search: React.FC = () => {
   const [landTitleOrganisationSuggestions, setLandTitleOrganisationSuggestions] = useState<ABNSuggestion[]>([]);
   const [landTitleOrganisationSelected, setLandTitleOrganisationSelected] = useState<ABNSuggestion | null>(null);
   const [isLoadingLandTitleOrganisationSuggestions, setIsLoadingLandTitleOrganisationSuggestions] = useState(false);
-  const landTitleOrganisationSearchTimeoutRef = useRef<number | null>(null);
   const [landTitleOrganisationShowSuggestions, setLandTitleOrganisationShowSuggestions] = useState(false);
   const [isLandTitleOrganisationConfirmed, setIsLandTitleOrganisationConfirmed] = useState(false);
-  const [isConfirmingLandTitleOrganisation, setIsConfirmingLandTitleOrganisation] = useState(false);
 
   const resetLandTitleOrganisationSearch = useCallback(() => {
     setLandTitleOrganisationSearchTerm('');
@@ -367,9 +365,6 @@ const Search: React.FC = () => {
     LAND_INDIVIDUAL: 'Person Details',
     ADDRESS: 'Address Details'
   };
-
-  const formatOrganisationDisplay = (suggestion: ABNSuggestion) =>
-    suggestion.Name ? `${suggestion.Name} ABN: ${suggestion.Abn}` : `ABN: ${suggestion.Abn}`;
 
   const [landTitleModalOpen, setLandTitleModalOpen] = useState<LandTitleOption | null>(null);
   const [pendingLandTitleSelection, setPendingLandTitleSelection] = useState<LandTitleSelection>(initialLandTitleSelection);
