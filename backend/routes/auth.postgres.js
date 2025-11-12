@@ -9,6 +9,15 @@ const { Op } = require('sequelize');
 // JWT Secret (should be in environment variables)
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
+// Frontend URLs
+const FRONTEND_BASE_URL = (process.env.FRONTEND_APP_URL || process.env.FRONTEND_URL || '').replace(/\/$/, '');
+const LOGIN_REDIRECT_URL =
+    process.env.FRONTEND_LOGIN_URL ||
+    (FRONTEND_BASE_URL ? `${FRONTEND_BASE_URL}/login` : '/');
+const SIGNUP_REDIRECT_URL =
+    process.env.FRONTEND_SIGNUP_URL ||
+    (FRONTEND_BASE_URL ? `${FRONTEND_BASE_URL}/signup` : '/');
+
 // Middleware for JWT verification (API routes)
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
@@ -464,22 +473,14 @@ router.get('/users', async (req, res) => {
 // PAGE ROUTES
 // ============================================
 
-// GET /auth/login - Render login page
+// GET /auth/login - Redirect to frontend login
 router.get('/login', (req, res) => {
-    res.render('login', { 
-        title: 'Login - Credion',
-        appName: 'Credion',
-        error: null 
-    });
+    res.redirect(LOGIN_REDIRECT_URL);
 });
 
-// GET /auth/signup - Render signup page
+// GET /auth/signup - Redirect to frontend signup
 router.get('/signup', (req, res) => {
-    res.render('signup', { 
-        title: 'Sign Up - Credion',
-        appName: 'Credion',
-        error: null 
-    });
+    res.redirect(SIGNUP_REDIRECT_URL);
 });
 
 

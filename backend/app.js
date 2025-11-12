@@ -10,6 +10,8 @@ const { testConnection } = require('./config/db');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const sanitizeBaseUrl = (url) => (url ? url.replace(/\/$/, '') : '');
+const FRONTEND_BASE_URL = sanitizeBaseUrl(process.env.FRONTEND_APP_URL || process.env.FRONTEND_URL || '');
 
 const allowedOrigins = (process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || 'http://localhost:5173')
   .split(',')
@@ -69,10 +71,6 @@ app.use(session({
 
 // Static files
 app.use(express.static(path.join(__dirname, '../public')));
-
-// View engine setup
-app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, '../views'));
 
 // Routes
 app.get('/', (req, res) => {
@@ -335,101 +333,32 @@ app.delete('/payment-methods/:id', async (req, res) => {
 const authRoutes = require('./routes/auth.postgres');
 app.use('/auth', authRoutes);
 
-// Card Details route (requires authentication)
-app.get('/card-details', async (req, res) => {
-  try {
-    if (!req.session || !req.session.userId) {
-      return res.redirect('/auth/login');
-    }
-    
-    // Get user details
-    const user = await User.findByPk(req.session.userId, {
-      attributes: ['userId', 'firstName', 'lastName', 'email', 'isActive', 'currentPlan']
-    });
-    
-    if (!user || !user.isActive) {
-      req.session.destroy();
-      return res.redirect('/auth/login');
-    }
-    
-    res.render('card-details', { 
-      title: 'Add Payment Method - Credion',
-      userId: user.userId,
-      userEmail: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
-      appName: process.env.APP_NAME || 'Credion'
-    });
-  } catch (error) {
-    console.error('Error rendering card details page:', error);
-    res.redirect('/auth/login');
+const buildFrontendUrl = (explicitUrl, pathSuffix) => {
+  if (explicitUrl) {
+    return explicitUrl;
   }
+  if (FRONTEND_BASE_URL) {
+    return `${FRONTEND_BASE_URL}${pathSuffix}`;
+  }
+  return '/';
+};
+
+// Card Details route - redirect to frontend
+app.get('/card-details', (req, res) => {
+  const target = buildFrontendUrl(process.env.FRONTEND_CARD_DETAILS_URL, '/card-details');
+  res.redirect(target);
 });
 
-// Payment Methods Management route (requires authentication)
-app.get('/payment-methods-page', async (req, res) => {
-  try {
-    if (!req.session || !req.session.userId) {
-      return res.redirect('/auth/login');
-    }
-    
-    // Get user details
-    const user = await User.findByPk(req.session.userId, {
-      attributes: ['userId', 'firstName', 'lastName', 'email', 'isActive']
-    });
-    
-    if (!user || !user.isActive) {
-      req.session.destroy();
-      return res.redirect('/auth/login');
-    }
-    
-    res.render('payment-methods', { 
-      title: 'Payment Methods - Credion',
-      userId: user.userId,
-      userEmail: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
-      appName: process.env.APP_NAME || 'Credion'
-    });
-  } catch (error) {
-    console.error('Error rendering payment methods page:', error);
-    res.redirect('/auth/login');
-  }
+// Payment Methods Management route - redirect to frontend
+app.get('/payment-methods-page', (req, res) => {
+  const target = buildFrontendUrl(process.env.FRONTEND_PAYMENT_METHODS_URL, '/payment-methods');
+  res.redirect(target);
 });
 
-// Search route (requires authentication)
-app.get('/search', async (req, res) => {
-  try {
-    if (!req.session || !req.session.userId) {
-      return res.redirect('/auth/login');
-    }
-    
-    // Get user details
-    const user = await User.findByPk(req.session.userId, {
-      attributes: ['userId', 'firstName', 'lastName', 'email', 'isActive']
-    });
-    
-    if (!user || !user.isActive) {
-      req.session.destroy();
-      return res.redirect('/auth/login');
-    }
-    
-    res.render('search', { 
-      title: 'Search - Credion',
-      user: {
-        userId: user.userId,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email
-      },
-      appName: process.env.APP_NAME || 'Credion'
-    });
-  } catch (error) {
-    console.error('Error rendering search page:', error);
-    res.redirect('/auth/login');
-  }
+// Search route - redirect to frontend
+app.get('/search', (req, res) => {
+  const target = buildFrontendUrl(process.env.FRONTEND_SEARCH_URL, '/search');
+  res.redirect(target);
 });
 
 // Payment Routes

@@ -7,6 +7,13 @@ const { body, validationResult } = require('express-validator');
 // Local development configuration
 const JWT_SECRET = 'credion-local-dev-secret-key';
 const LOCAL_USERS = new Map(); // In-memory storage for local development
+const FRONTEND_BASE_URL = (process.env.FRONTEND_APP_URL || process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+const LOGIN_REDIRECT_URL =
+    process.env.FRONTEND_LOGIN_URL ||
+    `${FRONTEND_BASE_URL}/login`;
+const SIGNUP_REDIRECT_URL =
+    process.env.FRONTEND_SIGNUP_URL ||
+    `${FRONTEND_BASE_URL}/signup`;
 
 // Middleware for JWT verification
 const authenticateToken = (req, res, next) => {
@@ -78,17 +85,13 @@ const verifyPassword = async (password, hashedPassword) => {
     return await bcrypt.compare(password, hashedPassword);
 };
 
-// GET /auth/login - Render login page
+// GET /auth/login - Redirect to frontend login
 router.get('/login', (req, res) => {
-    // Check if user is already logged in
     if (req.session && req.session.userId) {
-        return res.redirect('/dashboard');
+        return res.redirect(`${FRONTEND_BASE_URL}/dashboard`);
     }
-    
-    res.render('login', {
-        title: 'Login',
-        appName: 'Credion'
-    });
+
+    res.redirect(LOGIN_REDIRECT_URL);
 });
 
 // POST /auth/login - Handle login
@@ -183,12 +186,9 @@ router.post('/login', loginValidation, async (req, res) => {
     }
 });
 
-// GET /auth/signup - Render signup page
+// GET /auth/signup - Redirect to frontend signup
 router.get('/signup', (req, res) => {
-    res.render('signup', {
-        title: 'Sign Up',
-        appName: 'Credion'
-    });
+    res.redirect(SIGNUP_REDIRECT_URL);
 });
 
 // POST /auth/signup - Handle signup
