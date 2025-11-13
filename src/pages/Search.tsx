@@ -345,13 +345,13 @@ const Search: React.FC = () => {
     ALL: landTitleCategoryOptionConfig.TITLE_REFERENCE.price
   };
 
-  const titleReferenceDetailOptions: Array<{
-    key: Exclude<LandTitleDetailSelection, 'SUMMARY'>;
-  }> = [
-      { key: 'CURRENT' },
-      { key: 'PAST' },
-      { key: 'ALL' }
-    ];
+  // const titleReferenceDetailOptions: Array<{
+  //   key: Exclude<LandTitleDetailSelection, 'SUMMARY'>;
+  // }> = [
+  //     { key: 'CURRENT' },
+  //     { key: 'PAST' },
+  //     { key: 'ALL' }
+  //   ];
 
   const LAND_TITLE_ADD_ON_LABEL = 'Property Value + Sales History + More';
   const LAND_TITLE_ADD_ON_PRICE = 40;
