@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { apiService } from '../services/api';
+import { apiService, BankruptcyMatch, DirectorRelatedMatch } from '../services/api';
 
 type CategoryType = 'ORGANISATION' | 'INDIVIDUAL' | 'LAND TITLE';
 type SearchType =
@@ -217,6 +217,64 @@ const Search: React.FC = () => {
   const [isTitleReferenceSelectionConfirmed, setIsTitleReferenceSelectionConfirmed] = useState(false);
   const [isLandTitleIndividualSearchPerformed, setIsLandTitleIndividualSearchPerformed] = useState(false);
   const [selectedLandTitleIndividualMatch, setSelectedLandTitleIndividualMatch] = useState<string | null>(null);
+  const [bankruptcyMatchOptions, setBankruptcyMatchOptions] = useState<
+    Array<{ label: string; match: BankruptcyMatch | null }>
+  >([]);
+  const [isLoadingBankruptcyMatches, setIsLoadingBankruptcyMatches] = useState(false);
+  const [bankruptcyMatchesError, setBankruptcyMatchesError] = useState<string | null>(null);
+  const [selectedBankruptcyMatch, setSelectedBankruptcyMatch] = useState<BankruptcyMatch | null>(null);
+  const isIndividualBankruptcySelected =
+    selectedCategory === 'INDIVIDUAL' && selectedSearches.has('INDIVIDUAL BANKRUPTCY');
+  const [relatedEntityMatchOptions, setRelatedEntityMatchOptions] = useState<
+    Array<{ label: string; match: DirectorRelatedMatch | null }>
+  >([]);
+  const [isLoadingRelatedMatches, setIsLoadingRelatedMatches] = useState(false);
+  const [relatedMatchesError, setRelatedMatchesError] = useState<string | null>(null);
+  const [selectedRelatedMatch, setSelectedRelatedMatch] = useState<DirectorRelatedMatch | null>(null);
+  const isIndividualRelatedEntitiesSelected =
+    selectedCategory === 'INDIVIDUAL' && selectedSearches.has('INDIVIDUAL RELATED ENTITIES');
+
+  const formatDisplayDate = useCallback((value?: string | null) => {
+    if (!value) {
+      return '';
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const year = date.getUTCFullYear();
+    return `${day}/${month}/${year}`;
+  }, []);
+
+  const formatDobForAlares = useCallback((value?: string | null) => {
+    if (!value) {
+      return undefined;
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return undefined;
+    }
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const year = date.getUTCFullYear();
+    return `${day}-${month}-${year}`;
+  }, []);
+
+  const resetIndividualSearchState = useCallback(() => {
+    setIsIndividualNameConfirmed(false);
+    setIsLandTitleIndividualSearchPerformed(false);
+    setSelectedLandTitleIndividualMatch(null);
+    setSelectedBankruptcyMatch(null);
+    setBankruptcyMatchOptions([]);
+    setBankruptcyMatchesError(null);
+    setIsLoadingBankruptcyMatches(false);
+    setSelectedRelatedMatch(null);
+    setRelatedEntityMatchOptions([]);
+    setRelatedMatchesError(null);
+    setIsLoadingRelatedMatches(false);
+  }, []);
   const [isLandTitleIndividualSummaryModalOpen, setIsLandTitleIndividualSummaryModalOpen] = useState(false);
   const [isLandTitleIndividualDetailModalOpen, setIsLandTitleIndividualDetailModalOpen] = useState(false);
   const [isLandTitleIndividualAddOnModalOpen, setIsLandTitleIndividualAddOnModalOpen] = useState(false);
@@ -871,11 +929,200 @@ const Search: React.FC = () => {
     setTitleReferenceModalStep('SUMMARY_PROMPT');
   }, []);
 
-  const handleLandTitleIndividualSearchClick = useCallback(() => {
+  const handleLandTitleIndividualSearchClick = useCallback(async () => {
+    const isBankruptcySearch = isIndividualBankruptcySelected;
+    const isRelatedEntitiesSearch = isIndividualRelatedEntitiesSelected;
+
+    if ((isBankruptcySearch || isRelatedEntitiesSearch) && !landTitleIndividualLastName.trim()) {
+      alert('Please enter a last name to search records');
+      return;
+    }
+
     setIsLandTitleIndividualSearchPerformed(true);
-    setSelectedLandTitleIndividualMatch(null);
     setIsIndividualNameConfirmed(false);
-  }, []);
+    setSelectedLandTitleIndividualMatch(null);
+
+    const fetchTasks: Promise<void>[] = [];
+
+    if (isBankruptcySearch) {
+      setSelectedBankruptcyMatch(null);
+      setBankruptcyMatchOptions([]);
+      setBankruptcyMatchesError(null);
+      setIsLoadingBankruptcyMatches(true);
+
+      fetchTasks.push(
+        (async () => {
+          try {
+            const response = await apiService.searchIndividualBankruptcyMatches({
+              firstName: landTitleIndividualFirstName.trim() || undefined,
+              lastName: landTitleIndividualLastName.trim(),
+              dateOfBirth:
+                landTitleIndividualDobMode === 'EXACT' && landTitleIndividualDob
+                  ? landTitleIndividualDob
+                  : undefined
+            });
+
+            const matches = response?.matches || [];
+            const labelCounts = new Map<string, number>();
+            const formattedOptions = matches.map((match) => {
+              const name = [match.debtor?.givenNames, match.debtor?.surname].filter(Boolean).join(' ').trim();
+              const dob = formatDisplayDate(match.debtor?.dateOfBirth);
+              const startDate = formatDisplayDate(match.startDate);
+
+              const parts: string[] = [];
+              parts.push(name || 'Unknown');
+              if (dob) {
+                parts.push(`DOB: ${dob}`);
+              }
+              if (startDate) {
+                parts.push(`Start: ${startDate}`);
+              }
+
+              const baseLabel = parts.join(' • ');
+              const currentCount = labelCounts.get(baseLabel) ?? 0;
+              labelCounts.set(baseLabel, currentCount + 1);
+
+              const label = currentCount > 0 ? `${baseLabel} (${currentCount + 1})` : baseLabel;
+
+              return { label, match };
+            });
+
+            if (formattedOptions.length === 0) {
+              setBankruptcyMatchesError('No bankruptcy records found for the provided details.');
+            }
+
+            setBankruptcyMatchOptions(formattedOptions);
+          } catch (error: any) {
+            console.error('Error fetching bankruptcy matches:', error);
+            setBankruptcyMatchesError(
+              error?.message || 'Failed to fetch bankruptcy records. Please try again.'
+            );
+          } finally {
+            setIsLoadingBankruptcyMatches(false);
+          }
+        })()
+      );
+    } else {
+      setSelectedBankruptcyMatch(null);
+      setBankruptcyMatchOptions([]);
+      setBankruptcyMatchesError(null);
+      setIsLoadingBankruptcyMatches(false);
+    }
+
+    if (isRelatedEntitiesSearch) {
+      setSelectedRelatedMatch(null);
+      setRelatedEntityMatchOptions([]);
+      setRelatedMatchesError(null);
+      setIsLoadingRelatedMatches(true);
+
+      const dobFromParam =
+        landTitleIndividualDobMode === 'EXACT'
+          ? formatDobForAlares(landTitleIndividualDob)
+          : landTitleIndividualDobMode === 'RANGE' && landTitleIndividualStartYear.trim()
+            ? `01-01-${landTitleIndividualStartYear.trim()}`
+            : undefined;
+      const dobToParam =
+        landTitleIndividualDobMode === 'EXACT'
+          ? formatDobForAlares(landTitleIndividualDob)
+          : landTitleIndividualDobMode === 'RANGE' && landTitleIndividualEndYear.trim()
+            ? `31-12-${landTitleIndividualEndYear.trim()}`
+            : undefined;
+
+      fetchTasks.push(
+        (async () => {
+          try {
+            const response = await apiService.searchIndividualRelatedEntityMatches({
+              firstName: landTitleIndividualFirstName.trim() || undefined,
+              lastName: landTitleIndividualLastName.trim(),
+              dobFrom: dobFromParam,
+              dobTo: dobToParam
+            });
+
+            const matches = response?.matches || [];
+            const labelCounts = new Map<string, number>();
+            const formattedOptions = matches.map((match) => {
+              const parts: string[] = [];
+              parts.push(match.name || 'Unknown');
+              if (match.dob) {
+                parts.push(`DOB: ${match.dob}`);
+              }
+              if (match.state) {
+                parts.push(match.state);
+              }
+              if (match.suburb) {
+                parts.push(match.suburb);
+              }
+
+              const baseLabel = parts.join(' • ');
+              const currentCount = labelCounts.get(baseLabel) ?? 0;
+              labelCounts.set(baseLabel, currentCount + 1);
+
+              const label = currentCount > 0 ? `${baseLabel} (${currentCount + 1})` : baseLabel;
+
+              return { label, match };
+            });
+
+            if (formattedOptions.length === 0) {
+              setRelatedMatchesError('No related entities found for the provided details.');
+            }
+
+            setRelatedEntityMatchOptions(formattedOptions);
+          } catch (error: any) {
+            console.error('Error fetching related entity matches:', error);
+            setRelatedMatchesError(
+              error?.message || 'Failed to fetch related entity records. Please try again.'
+            );
+          } finally {
+            setIsLoadingRelatedMatches(false);
+          }
+        })()
+      );
+    } else {
+      setSelectedRelatedMatch(null);
+      setRelatedEntityMatchOptions([]);
+      setRelatedMatchesError(null);
+      setIsLoadingRelatedMatches(false);
+    }
+
+    if (fetchTasks.length > 0) {
+      await Promise.all(fetchTasks);
+    }
+  }, [
+    formatDisplayDate,
+    formatDobForAlares,
+    isIndividualBankruptcySelected,
+    isIndividualRelatedEntitiesSelected,
+    landTitleIndividualDob,
+    landTitleIndividualDobMode,
+    landTitleIndividualEndYear,
+    landTitleIndividualFirstName,
+    landTitleIndividualLastName,
+    landTitleIndividualStartYear
+  ]);
+
+  const handleConfirmIndividualName = useCallback(() => {
+    if (!selectedLandTitleIndividualMatch) {
+      alert('Please select a name to confirm');
+      return;
+    }
+
+    if (isIndividualBankruptcySelected && !selectedBankruptcyMatch) {
+      alert('Please select a bankruptcy record to confirm');
+      return;
+    }
+
+    if (isIndividualRelatedEntitiesSelected && !selectedRelatedMatch) {
+      alert('Please select a related entity record to confirm');
+      return;
+    }
+    setIsIndividualNameConfirmed(true);
+  }, [
+    isIndividualBankruptcySelected,
+    isIndividualRelatedEntitiesSelected,
+    selectedBankruptcyMatch,
+    selectedRelatedMatch,
+    selectedLandTitleIndividualMatch
+  ]);
 
   const closeLandTitleIndividualModals = useCallback(() => {
     setIsLandTitleIndividualSummaryModalOpen(false);
@@ -960,8 +1207,8 @@ const Search: React.FC = () => {
       }
       return next;
     });
-    setIsIndividualNameConfirmed(false);
-  }, []);
+    resetIndividualSearchState();
+  }, [resetIndividualSearchState]);
 
   const handleLandTitleIndividualStateSelectAll = useCallback(() => {
     setLandTitleIndividualStates(prev => {
@@ -970,8 +1217,8 @@ const Search: React.FC = () => {
       }
       return new Set(landTitleStateOptions);
     });
-    setIsIndividualNameConfirmed(false);
-  }, []);
+    resetIndividualSearchState();
+  }, [resetIndividualSearchState]);
 
 
 
@@ -1633,6 +1880,12 @@ setLandTitleOrganisationSearchTerm(displayText);
       });
       setIsCompanyConfirmed(false);
     }
+  setLandTitleOrganisationSelected({
+    Abn: suggestion.Abn,
+    Name: suggestion.Name,
+    AbnStatus: suggestion.AbnStatus,
+    Score: suggestion.Score
+  });
   };
 
   // Handle company confirmation - call createReport with type "asic-current"
@@ -1644,7 +1897,10 @@ setLandTitleOrganisationSearchTerm(displayText);
 
     setIsConfirmingCompany(true);
     setIsLandTitleOrganisationConfirmed(true);
-    setLandTitleOrganisationSelected(true);
+  setLandTitleOrganisationSelected({
+    Abn: pendingCompany.abn,
+    Name: pendingCompany.name
+  });
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       if (!user.userId) {
@@ -1779,7 +2035,6 @@ setLandTitleOrganisationSearchTerm(displayText);
   const handleChangeCompany = () => {
     setPendingCompany(null);
     setIsCompanyConfirmed(false);
-    setIsIndividualNameConfirmed(false);
     setHasSelectedCompany(false);
     setOrganisationSearchTerm('');
   setLandTitleOrganisationSearchTerm('');
@@ -1794,6 +2049,7 @@ setLandTitleOrganisationSearchTerm(displayText);
     setCheckingData(false);
     setCompanyDetails({ directors: 0, pastDirectors: 0, shareholders: 0 });
     setIsAsicModalOpen(false);
+    resetIndividualSearchState();
   };
 
   // Clear selections when category changes
@@ -1821,7 +2077,6 @@ setLandTitleOrganisationSearchTerm(displayText);
     setDirectorsList([]);
     setPendingCompany(null);
     setIsCompanyConfirmed(false);
-    setIsIndividualNameConfirmed(false);
     setDocumentSearchId('');
     setDocumentIdInput('');
 
@@ -1830,6 +2085,7 @@ setLandTitleOrganisationSearchTerm(displayText);
     setIndividualLastName('');
     setIndividualDateOfBirth('');
     setSelectedIndividualAdditionalSearches(new Set());
+    resetIndividualSearchState();
   };
 
   const handleAsicTypeToggle = (asicType: AsicType) => {
@@ -2536,13 +2792,29 @@ setLandTitleOrganisationSearchTerm(displayText);
               isCompany: 'ORGANISATION'
             };
           } else if (selectedCategory === 'INDIVIDUAL') {
+            const effectiveFirstName =
+              landTitleIndividualFirstName.trim() || individualFirstName;
+            const effectiveLastName =
+              landTitleIndividualLastName.trim() || individualLastName;
+            const effectiveDob =
+              landTitleIndividualDobMode === 'EXACT' && landTitleIndividualDob
+                ? landTitleIndividualDob
+                : individualDateOfBirth;
+
             businessData = {
               ...(businessData || {}),
-              fname: individualFirstName,
-              lname: individualLastName,
-              dob: individualDateOfBirth,
+              fname: effectiveFirstName,
+              lname: effectiveLastName,
+              dob: effectiveDob,
               isCompany: 'INDIVIDUAL'
             };
+
+            if (reportType === 'director-bankruptcy' && selectedBankruptcyMatch) {
+              (businessData as any).bankruptcySelection = selectedBankruptcyMatch;
+            }
+            if (reportType === 'director-related' && selectedRelatedMatch) {
+              (businessData as any).directorRelatedSelection = selectedRelatedMatch;
+            }
           }
 
           if (reportItem.meta) {
@@ -3098,7 +3370,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                                   value={landTitleIndividualFirstName}
                                   onChange={(event) => {
                                     setLandTitleIndividualFirstName(event.target.value);
-                                    setIsIndividualNameConfirmed(false);
+                                    resetIndividualSearchState();
                                   }}
                                   placeholder="Enter first name"
                                   className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
@@ -3113,7 +3385,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                                   value={landTitleIndividualLastName}
                                   onChange={(event) => {
                                     setLandTitleIndividualLastName(event.target.value);
-                                    setIsIndividualNameConfirmed(false);
+                                    resetIndividualSearchState();
                                   }}
                                   placeholder="Enter last name"
                                   className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
@@ -3137,7 +3409,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                                       type="button"
                                       onClick={() => {
                                         setLandTitleIndividualDobMode(option.key);
-                                        setIsIndividualNameConfirmed(false);
+                                      resetIndividualSearchState();
                                       }}
                                       className={`
                                       px-5 py-3 rounded-xl border-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200
@@ -3158,7 +3430,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                                   value={landTitleIndividualDob}
                                   onChange={(event) => {
                                     setLandTitleIndividualDob(event.target.value);
-                                    setIsIndividualNameConfirmed(false);
+                                    resetIndividualSearchState();
                                   }}
                                   className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
                                 />
@@ -3169,7 +3441,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                                     value={landTitleIndividualStartYear}
                                     onChange={(event) => {
                                       setLandTitleIndividualStartYear(event.target.value);
-                                      setIsIndividualNameConfirmed(false);
+                                      resetIndividualSearchState();
                                     }}
                                     placeholder="Start year"
                                     className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
@@ -3179,7 +3451,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                                     value={landTitleIndividualEndYear}
                                     onChange={(event) => {
                                       setLandTitleIndividualEndYear(event.target.value);
-                                      setIsIndividualNameConfirmed(false);
+                                      resetIndividualSearchState();
                                     }}
                                     placeholder="End year"
                                     className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
@@ -3525,6 +3797,8 @@ setLandTitleOrganisationSearchTerm(displayText);
                         onChange={(event) => {
                           setLandTitleIndividualFirstName(event.target.value);
                           setIsIndividualNameConfirmed(false);
+                          setIsLandTitleIndividualSearchPerformed(false);
+                          setSelectedLandTitleIndividualMatch(null);
                         }}
                         placeholder="Enter first name"
                         className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
@@ -3540,6 +3814,8 @@ setLandTitleOrganisationSearchTerm(displayText);
                         onChange={(event) => {
                           setLandTitleIndividualLastName(event.target.value);
                           setIsIndividualNameConfirmed(false);
+                          setIsLandTitleIndividualSearchPerformed(false);
+                          setSelectedLandTitleIndividualMatch(null);
                         }}
                         placeholder="Enter last name"
                         className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
@@ -3564,6 +3840,8 @@ setLandTitleOrganisationSearchTerm(displayText);
                         onClick={() => {
                           setLandTitleIndividualDobMode(option.key);
                           setIsIndividualNameConfirmed(false);
+                          setIsLandTitleIndividualSearchPerformed(false);
+                          setSelectedLandTitleIndividualMatch(null);
                         }}
                             className={`
                       px-5 py-3 rounded-xl border-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200
@@ -3572,7 +3850,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                                 : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'}
                     `}
                           >
-                            {option.label}
+                            "{option.label}"
                           </button>
                         );
                       })}
@@ -3585,6 +3863,8 @@ setLandTitleOrganisationSearchTerm(displayText);
                         onChange={(event) => {
                           setLandTitleIndividualDob(event.target.value);
                           setIsIndividualNameConfirmed(false);
+                          setIsLandTitleIndividualSearchPerformed(false);
+                          setSelectedLandTitleIndividualMatch(null);
                         }}
                         className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
                       />
@@ -3596,6 +3876,8 @@ setLandTitleOrganisationSearchTerm(displayText);
                           onChange={(event) => {
                             setLandTitleIndividualStartYear(event.target.value);
                             setIsIndividualNameConfirmed(false);
+                            setIsLandTitleIndividualSearchPerformed(false);
+                            setSelectedLandTitleIndividualMatch(null);
                           }}
                           placeholder="Start year"
                           className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
@@ -3606,6 +3888,8 @@ setLandTitleOrganisationSearchTerm(displayText);
                           onChange={(event) => {
                             setLandTitleIndividualEndYear(event.target.value);
                             setIsIndividualNameConfirmed(false);
+                            setIsLandTitleIndividualSearchPerformed(false);
+                            setSelectedLandTitleIndividualMatch(null);
                           }}
                           placeholder="End year"
                           className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
@@ -3622,59 +3906,162 @@ setLandTitleOrganisationSearchTerm(displayText);
                     Search
                   </button>
 
-
+                  {isIndividualNameConfirmed && selectedLandTitleIndividualMatch && (
+                    <div className="mt-4 rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
+                      Confirmed Name: {selectedLandTitleIndividualMatch}
+                    </div>
+                  )}
+                  {isLandTitleIndividualSearchPerformed && (
                   <div className="space-y-4">
-                    <div>
+                      {isIndividualBankruptcySelected && isLoadingBankruptcyMatches && (
+                        <div className="rounded-xl border-2 border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">
+                          Searching bankruptcy records...
+                        </div>
+                      )}
+
+                      {isIndividualBankruptcySelected &&
+                        !isLoadingBankruptcyMatches &&
+                        bankruptcyMatchesError && (
+                          <div className="rounded-xl border-2 border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                            {bankruptcyMatchesError}
+                          </div>
+                        )}
+
+                      {isIndividualRelatedEntitiesSelected && isLoadingRelatedMatches && (
+                        <div className="rounded-xl border-2 border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">
+                          Searching related entity records...
+                        </div>
+                      )}
+
+                      {isIndividualRelatedEntitiesSelected &&
+                        !isLoadingRelatedMatches &&
+                        relatedMatchesError && (
+                          <div className="rounded-xl border-2 border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                            {relatedMatchesError}
+                          </div>
+                        )}
+
+                      {(() => {
+                        const combinedOptions: Array<{
+                          key: string;
+                          displayLabel: string;
+                          source: 'bankruptcy' | 'related' | 'mock';
+                          bankruptcyMatch?: BankruptcyMatch | null;
+                          relatedMatch?: DirectorRelatedMatch | null;
+                        }> = [];
+
+                        if (
+                          isIndividualBankruptcySelected &&
+                          !isLoadingBankruptcyMatches &&
+                          bankruptcyMatchOptions.length > 0
+                        ) {
+                          const prefix = isIndividualRelatedEntitiesSelected ? '[Bankruptcy] ' : '';
+                          combinedOptions.push(
+                            ...bankruptcyMatchOptions.map(option => ({
+                              key: `bankruptcy-${option.label}`,
+                              displayLabel: `${prefix}${option.label}`,
+                              source: 'bankruptcy' as const,
+                              bankruptcyMatch: option.match
+                            }))
+                          );
+                        }
+
+                        if (
+                          isIndividualRelatedEntitiesSelected &&
+                          !isLoadingRelatedMatches &&
+                          relatedEntityMatchOptions.length > 0
+                        ) {
+                          const prefix = isIndividualBankruptcySelected ? '[Related] ' : '';
+                          combinedOptions.push(
+                            ...relatedEntityMatchOptions.map(option => ({
+                              key: `related-${option.label}`,
+                              displayLabel: `${prefix}${option.label}`,
+                              source: 'related' as const,
+                              relatedMatch: option.match
+                            }))
+                          );
+                        }
+
+                        if (combinedOptions.length === 0 && !isIndividualBankruptcySelected && !isIndividualRelatedEntitiesSelected) {
+                          combinedOptions.push(
+                            ...mockLandTitleIndividualMatches.map(label => ({
+                              key: `mock-${label}`,
+                              displayLabel: label,
+                              source: 'mock' as const
+                            }))
+                          );
+                        }
+
+                        return combinedOptions.length > 0 ? (
                       <div className="grid grid-cols-1 gap-3">
-                                    {mockLandTitleIndividualMatches.map(match => {
-                                      const isSelected = selectedLandTitleIndividualMatch === match;
+                            {combinedOptions.map(option => {
+                              const isSelected = selectedLandTitleIndividualMatch === option.displayLabel;
                                       return (
                                         <button
-                                          key={match}
+                                  key={option.key}
                                           type="button"
                                           onClick={() => {
-                                            setSelectedLandTitleIndividualMatch(match);
+                                    setSelectedLandTitleIndividualMatch(option.displayLabel);
                                             setIsIndividualNameConfirmed(false);
-                                          }}
-                              className={`w-full rounded-xl border-2 px-4 py-3 text-left text-sm font-semibold uppercase tracking-wide transition-all duration-200 ${isSelected
+                                    if (option.source === 'bankruptcy') {
+                                      setSelectedBankruptcyMatch(option.bankruptcyMatch || null);
+                                      setSelectedRelatedMatch(null);
+                                    } else if (option.source === 'related') {
+                                      setSelectedRelatedMatch(option.relatedMatch || null);
+                                      setSelectedBankruptcyMatch(null);
+                                    } else {
+                                      setSelectedBankruptcyMatch(null);
+                                      setSelectedRelatedMatch(null);
+                                    }
+                                  }}
+                                  className={`w-full rounded-xl border-2 px-4 py-3 text-left text-sm font-semibold uppercase tracking-wide transition-all duration-200 ${
+                                    isSelected
                                   ? 'border-green-500 bg-green-50 text-green-700'
                                   : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'
                                 }`}
                             >
-                              {match}
+                                  {option.displayLabel}
                             </button>
                           );
                         })}
                       </div>
+                        ) : null;
+                      })()}
+
+                      {isIndividualBankruptcySelected &&
+                        !isLoadingBankruptcyMatches &&
+                        bankruptcyMatchOptions.length === 0 &&
+                        !bankruptcyMatchesError && (
+                          <div className="rounded-xl border-2 border-yellow-200 bg-yellow-50 px-4 py-3 text-sm font-semibold text-yellow-700">
+                            No bankruptcy records found for the provided details. Try adjusting the search.
                     </div>
+                        )}
+
+                      {isIndividualRelatedEntitiesSelected &&
+                        !isLoadingRelatedMatches &&
+                        relatedEntityMatchOptions.length === 0 &&
+                        !relatedMatchesError && (
+                          <div className="rounded-xl border-2 border-yellow-200 bg-yellow-50 px-4 py-3 text-sm font-semibold text-yellow-700">
+                            No related entity records found for the provided details. Try adjusting the search.
+                          </div>
+                        )}
+
                     {selectedLandTitleIndividualMatch && (
                       <div className="rounded-xl border-2 border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
                         Selected Name: {selectedLandTitleIndividualMatch}
                       </div>
                     )}
+                      {selectedLandTitleIndividualMatch && (
                     <button
                       type="button"
-                      onClick={() => {
-                        if (!selectedLandTitleIndividualMatch) {
-                          alert('Please select a name to confirm');
-                          return;
-                        }
-                        setPendingLandTitleSelection({
-                          summary: true,
-                          detail: 'SUMMARY',
-                          addOn: isLandTitleAddOnSelected
-                        });
-                        setIsLandTitleIndividualDetailModalOpen(false);
-                        setIsLandTitleIndividualAddOnModalOpen(false);
-                        setIsLandTitleIndividualSummaryModalOpen(true);
-                        setIsIndividualNameConfirmed(true);
-                      }}
-                      disabled={!selectedLandTitleIndividualMatch}
-                      className="w-full rounded-xl bg-red-600 py-4 font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                          onClick={handleConfirmIndividualName}
+                          className="w-full rounded-xl bg-red-600 py-4 font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
                     >
                       Confirm Name Search
                     </button>
+                      )}
                   </div>
+                  )}
 
                 </div>
               </div>

@@ -2,17 +2,11 @@ const envBaseUrls = [
   import.meta.env.VITE_API_URL,
   import.meta.env.VITE_API_BASE_URL,
   import.meta.env.VITE_BACKEND_URL,
-];
+].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
 
-const DEFAULT_API_BASE_URL = 'http://3.24.11.111:3001';
+const DEFAULT_API_BASE_URL = 'http://localhost:3001';
 
-const API_BASE_URL =
-  envBaseUrls.find(
-    (value) =>
-      typeof value === 'string' &&
-      value.length > 0 &&
-      !value.includes('credion-backend.onrender.com')
-  ) || DEFAULT_API_BASE_URL;
+const API_BASE_URL = envBaseUrls.find((value) => /^https?:\/\//.test(value)) || DEFAULT_API_BASE_URL;
 
 export interface LoginRequest {
   email: string;
@@ -49,6 +43,51 @@ export interface ApiError {
   error: string;
   message: string;
   fieldErrors?: Record<string, { msg: string }>;
+}
+
+export interface BankruptcyDebtor {
+  surname?: string;
+  givenNames?: string;
+  dateOfBirth?: string;
+  aliasIndicator?: boolean;
+  addressSuburb?: string | null;
+  occupation?: string | null;
+}
+
+export interface BankruptcyMatch {
+  extractId?: string;
+  debtor: BankruptcyDebtor;
+  startDate?: string;
+  endDate?: string;
+  [key: string]: any;
+}
+
+export interface BankruptcySearchResponse {
+  success: boolean;
+  matches: BankruptcyMatch[];
+  resultCount?: number;
+  resultLimitExceeded?: boolean;
+  operationFeeAmount?: number | null;
+  error?: string;
+  message?: string;
+}
+
+export interface DirectorRelatedMatch {
+  person_id: string;
+  search_id: string;
+  name: string;
+  dob?: string;
+  state?: string;
+  suburb?: string | null;
+  additional?: any[];
+  [key: string]: any;
+}
+
+export interface DirectorRelatedSearchResponse {
+  success: boolean;
+  matches: DirectorRelatedMatch[];
+  error?: string;
+  message?: string;
 }
 
 class ApiService {
@@ -383,6 +422,56 @@ class ApiService {
         matterName
       })
     });
+  }
+
+  async searchIndividualBankruptcyMatches(params: {
+    firstName?: string;
+    lastName: string;
+    dateOfBirth?: string;
+  }): Promise<BankruptcySearchResponse> {
+    const searchParams = new URLSearchParams();
+    if (params.firstName) {
+      searchParams.append('firstName', params.firstName);
+    }
+    if (params.lastName) {
+      searchParams.append('lastName', params.lastName);
+    }
+    if (params.dateOfBirth) {
+      searchParams.append('dateOfBirth', params.dateOfBirth);
+    }
+
+    const query = searchParams.toString();
+    const basePath = '/api/payment/bankruptcy/matches';
+    const endpoint = query.length > 0 ? `${basePath}?${query}` : basePath;
+
+    return this.request<BankruptcySearchResponse>(endpoint);
+  }
+
+  async searchIndividualRelatedEntityMatches(params: {
+    firstName?: string;
+    lastName: string;
+    dobFrom?: string;
+    dobTo?: string;
+  }): Promise<DirectorRelatedSearchResponse> {
+    const searchParams = new URLSearchParams();
+    if (params.firstName) {
+      searchParams.append('firstName', params.firstName);
+    }
+    if (params.lastName) {
+      searchParams.append('lastName', params.lastName);
+    }
+    if (params.dobFrom) {
+      searchParams.append('dobFrom', params.dobFrom);
+    }
+    if (params.dobTo) {
+      searchParams.append('dobTo', params.dobTo);
+    }
+
+    const query = searchParams.toString();
+    const basePath = '/api/payment/director-related/matches';
+    const endpoint = query.length > 0 ? `${basePath}?${query}` : basePath;
+
+    return this.request<DirectorRelatedSearchResponse>(endpoint);
   }
 
 }

@@ -172,6 +172,92 @@ router.post('/get-report-data', async (req, res) => {
 	}
 });
 
+router.get('/bankruptcy/matches', async (req, res) => {
+	try {
+		const { firstName, lastName, dateOfBirth } = req.query;
+
+		if (!lastName || typeof lastName !== 'string' || lastName.trim().length === 0) {
+			return res.status(400).json({
+				success: false,
+				error: 'MISSING_SURNAME',
+				message: 'Last name is required to search bankruptcy records'
+			});
+		}
+
+		const rawData = await searchBankruptcyMatches({
+			debtorSurname: lastName.trim(),
+			debtorGivenName: firstName && typeof firstName === 'string' ? firstName.trim() : undefined,
+			debtorDateOfBirth: dateOfBirth && typeof dateOfBirth === 'string' ? dateOfBirth.trim() : undefined
+		});
+
+		const matches = Array.isArray(rawData?.insolvencies) ? rawData.insolvencies : [];
+
+		return res.json({
+			success: true,
+			resultCount: rawData?.resultCount ?? matches.length,
+			resultLimitExceeded: rawData?.resultLimitExceeded ?? false,
+			operationFeeAmount: rawData?.operationFeeAmount ?? null,
+			matches
+		});
+	} catch (error) {
+		console.error('Error searching bankruptcy matches:', error?.response?.data || error.message);
+
+		const status = error?.response?.status || 500;
+		const message =
+			error?.response?.data?.message ||
+			error?.message ||
+			'Failed to retrieve bankruptcy records';
+
+		return res.status(status).json({
+			success: false,
+			error: 'BANKRUPTCY_SEARCH_FAILED',
+			message
+		});
+	}
+});
+
+router.get('/director-related/matches', async (req, res) => {
+	try {
+		const { firstName, lastName, dobFrom, dobTo } = req.query;
+
+		if (!lastName || typeof lastName !== 'string' || lastName.trim().length === 0) {
+			return res.status(400).json({
+				success: false,
+				error: 'MISSING_SURNAME',
+				message: 'Last name is required to search director related entities'
+			});
+		}
+
+		const rawData = await searchDirectorRelatedMatches({
+			firstName: firstName && typeof firstName === 'string' ? firstName.trim() : undefined,
+			lastName: lastName.trim(),
+			dobFrom: dobFrom && typeof dobFrom === 'string' ? dobFrom.trim() : undefined,
+			dobTo: dobTo && typeof dobTo === 'string' ? dobTo.trim() : undefined
+		});
+
+		const matches = Array.isArray(rawData) ? rawData : Array.isArray(rawData?.results) ? rawData.results : [];
+
+		return res.json({
+			success: true,
+			matches
+		});
+	} catch (error) {
+		console.error('Error searching director related matches:', error?.response?.data || error.message);
+
+		const status = error?.response?.status || 500;
+		const message =
+			error?.response?.data?.message ||
+			error?.message ||
+			'Failed to retrieve director related entities';
+
+		return res.status(status).json({
+			success: false,
+			error: 'DIRECTOR_RELATED_SEARCH_FAILED',
+			message
+		});
+	}
+});
+
 async function asic_report_data(uuid) {
 	//Now call GET API to fetch the report data
 	const getApiUrl = `https://alares.com.au/api/reports/${uuid}/json`;
@@ -318,6 +404,41 @@ async function director_bankrupcty_report(fname, lname, dob) {
 	return response;
 }
 
+async function searchBankruptcyMatches(params = {}) {
+	const { debtorSurname, debtorGivenName, debtorDateOfBirth } = params;
+
+	if (!debtorSurname) {
+		throw new Error('debtorSurname is required');
+	}
+
+	const bearerToken = await getToken('bankruptcy');
+	const apiUrl = 'https://services.afsa.gov.au/brs/api/v2/search-by-name';
+
+	const requestParams = {
+		debtorSurname,
+	};
+
+	if (debtorGivenName) {
+		requestParams.debtorGivenName = debtorGivenName;
+	}
+
+	if (debtorDateOfBirth) {
+		requestParams.debtorDateOfBirth = debtorDateOfBirth;
+	}
+
+	const response = await axios.get(apiUrl, {
+		params: requestParams,
+		headers: {
+			Authorization: `Bearer ${bearerToken}`,
+			Accept: 'application/json'
+		},
+		responseType: 'json',
+		timeout: 30000
+	});
+
+	return response.data;
+}
+
 async function director_related_report(fname, lname, dob) {
 	const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
 	// const bapiURL = 'https://alares.com.au/api/asic/search'
@@ -354,6 +475,45 @@ async function director_related_report(fname, lname, dob) {
 	//reportData = await asic_report_data(createResponse.data.uuid);
 	reportData = await asic_report_data('019a53e1-b608-723a-9398-6562a6c50303');
 	return reportData;
+}
+
+async function searchDirectorRelatedMatches(params = {}) {
+	const { firstName, lastName, dobFrom, dobTo } = params;
+
+	if (!lastName) {
+		throw new Error('lastName is required');
+	}
+
+	const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
+	const apiUrl = 'https://alares.com.au/api/asic/search';
+
+	const requestParams = {
+		last_name: lastName,
+	};
+
+	if (firstName) {
+		requestParams.first_name = firstName;
+	}
+
+	if (dobFrom) {
+		requestParams.dob_from = dobFrom;
+	}
+
+	if (dobTo) {
+		requestParams.dob_to = dobTo;
+	}
+
+	const response = await axios.get(apiUrl, {
+		params: requestParams,
+		headers: {
+			Authorization: `Bearer ${bearerToken}`,
+			Accept: 'application/json'
+		},
+		responseType: 'json',
+		timeout: 30000
+	});
+
+	return response.data;
 }
 
 async function director_court_report(fname, lname, dob) {
