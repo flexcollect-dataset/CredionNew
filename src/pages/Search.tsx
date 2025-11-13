@@ -4120,7 +4120,7 @@ setLandTitleOrganisationSearchTerm(displayText);
               </div>
             )}
 
-            {titleReferenceModalStep === 'DETAIL' && (
+            {/* {titleReferenceModalStep === 'DETAIL' && (
               <div>
                 <h3 className="text-2xl font-bold text-gray-900 mb-2">Land Title Search</h3>
                 <p className="text-sm text-gray-600 leading-relaxed mb-4">
@@ -4187,7 +4187,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                   </button>
                 </div>
               </div>
-            )}
+            )} */}
 
             {titleReferenceModalStep === 'ADD_ON' && (
               <div>
