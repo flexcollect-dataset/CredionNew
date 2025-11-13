@@ -1639,7 +1639,12 @@ setLandTitleOrganisationSearchTerm(displayText);
   const handleConfirmCompany = async () => {
     if (!pendingCompany) return;
 
+    const shouldOpenLandTitleModal =
+      selectedCategory === 'LAND TITLE' && selectedLandTitleOption === 'LAND_ORGANISATION';
+
     setIsConfirmingCompany(true);
+    setIsLandTitleOrganisationConfirmed(true);
+    setLandTitleOrganisationSelected(true);
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       if (!user.userId) {
@@ -1670,6 +1675,15 @@ setLandTitleOrganisationSearchTerm(displayText);
       // Mark as confirmed and show additional searches section
       setIsCompanyConfirmed(true);
       setHasSelectedCompany(true);
+      
+
+      if (shouldOpenLandTitleModal) {
+        openLandTitleModal('ABN/ACN LAND TITLE');
+        setPendingLandTitleSelection(prev => ({
+          ...prev,
+          addOn: isLandTitleAddOnSelected
+        }));
+      }
 
       // Check data availability and extract company details
       setCheckingData(true);
@@ -2278,7 +2292,7 @@ setLandTitleOrganisationSearchTerm(displayText);
             setIsProcessingReports(false);
             return;
           }
-          if (!landTitleOrganisationSelected || !isLandTitleOrganisationConfirmed) {
+          if (!landTitleOrganisationSearchTerm || !isLandTitleOrganisationConfirmed) {
             alert('Please search and confirm a company');
             setIsProcessingReports(false);
             return;
