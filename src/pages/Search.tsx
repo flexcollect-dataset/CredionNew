@@ -94,6 +94,31 @@ interface DirectorInfo {
   fullName?: string;
 }
 
+interface LandTitleAddressDetails {
+  formattedAddress: string;
+  streetNumber?: string;
+  route?: string;
+  locality?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+  latitude?: number;
+  longitude?: number;
+  placeId?: string;
+  components?: Record<string, string>;
+}
+
+const GOOGLE_MAPS_API_KEY = 'AIzaSyCHqaxmQSIkMUVLJrV26iMzG_gUPupm3NE';
+const GOOGLE_MAPS_SCRIPT_ID = 'google-maps-places-api';
+const GOOGLE_MAPS_CALLBACK_NAME = 'credionInitLandTitleAutocomplete';
+
+declare global {
+  interface Window {
+    google?: any;
+    credionInitLandTitleAutocomplete?: () => void;
+  }
+}
+
 const Search: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('ORGANISATION');
   const [selectedSearches, setSelectedSearches] = useState<Set<SearchType>>(new Set());
@@ -109,6 +134,8 @@ const Search: React.FC = () => {
   const searchTimeoutRef = useRef<number | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const landTitleOrganisationDropdownRef = useRef<HTMLDivElement>(null);
+  const landTitleAddressInputRef = useRef<HTMLInputElement | null>(null);
+  const landTitleAddressAutocompleteRef = useRef<any>(null);
   const hasSelectedRef = useRef(false); // Track if user selected from dropdown
   const [hasSelectedCompany, setHasSelectedCompany] = useState(false);
   const [selectedAdditionalSearches, setSelectedAdditionalSearches] = useState<Set<AdditionalSearchType>>(new Set());
@@ -176,10 +203,11 @@ const Search: React.FC = () => {
   const [landTitleIndividualStates, setLandTitleIndividualStates] = useState<Set<string>>(new Set());
   const [isIndividualNameConfirmed, setIsIndividualNameConfirmed] = useState(false);
   const [landTitleAddress, setLandTitleAddress] = useState('');
+  const [landTitleAddressDetails, setLandTitleAddressDetails] = useState<LandTitleAddressDetails | null>(null);
   const [titleReferenceSelection, setTitleReferenceSelection] = useState<LandTitleSelection>({ ...initialLandTitleSelection });
   const [pendingTitleReferenceSelection, setPendingTitleReferenceSelection] = useState<LandTitleSelection>({ ...initialLandTitleSelection });
   const [isTitleReferenceModalOpen, setIsTitleReferenceModalOpen] = useState(false);
-  const [titleReferenceModalStep, setTitleReferenceModalStep] = useState<'SUMMARY_PROMPT' | 'DETAIL' | 'ADD_ON'>('SUMMARY_PROMPT');
+  const [titleReferenceModalStep, setTitleReferenceModalStep] = useState<'SUMMARY_PROMPT' | 'ADD_ON'>('SUMMARY_PROMPT');
   const [titleReferenceAvailability, setTitleReferenceAvailability] = useState<TitleReferenceAvailability>({
     ...INITIAL_TITLE_REFERENCE_AVAILABILITY
   });
@@ -561,6 +589,7 @@ const Search: React.FC = () => {
     setLandTitleIndividualEndYear('');
     setLandTitleIndividualStates(new Set());
     setLandTitleAddress('');
+    setLandTitleAddressDetails(null);
     resetLandTitleOrganisationSearch();
     setTitleReferenceSelection({ ...initialLandTitleSelection });
     setPendingTitleReferenceSelection({ ...initialLandTitleSelection });
@@ -589,6 +618,7 @@ const Search: React.FC = () => {
         setLandTitleIndividualEndYear('');
         setLandTitleIndividualStates(new Set());
         setLandTitleAddress('');
+        setLandTitleAddressDetails(null);
         resetLandTitleOrganisationSearch();
         setTitleReferenceSelection({ ...initialLandTitleSelection });
         setPendingTitleReferenceSelection({ ...initialLandTitleSelection });
@@ -608,6 +638,7 @@ const Search: React.FC = () => {
         setLandTitleIndividualEndYear('');
         setLandTitleIndividualStates(new Set());
         setLandTitleAddress('');
+        setLandTitleAddressDetails(null);
         resetLandTitleOrganisationSearch();
         setTitleReferenceSelection({ ...initialLandTitleSelection });
         setPendingTitleReferenceSelection({ ...initialLandTitleSelection });
@@ -645,7 +676,8 @@ const Search: React.FC = () => {
     }
 
     setPendingTitleReferenceSelection({
-      ...titleReferenceSelection,
+      summary: true,
+      detail: 'SUMMARY',
       addOn: isLandTitleAddOnSelected
     });
     setTitleReferenceAvailability({ ...DEMO_TITLE_REFERENCE_AVAILABILITY });
@@ -660,32 +692,155 @@ const Search: React.FC = () => {
     }
 
     if (!landTitleAddress.trim()) {
-      alert('Please enter a address');
+      alert('Please enter an address');
+      return;
+    }
+
+    if (!landTitleAddressDetails) {
+      alert('Please select an address from the suggestions');
       return;
     }
 
     setPendingTitleReferenceSelection({
-      ...titleReferenceSelection,
+      summary: true,
+      detail: 'SUMMARY',
       addOn: isLandTitleAddOnSelected
     });
     setTitleReferenceAvailability({ ...DEMO_TITLE_REFERENCE_AVAILABILITY });
     setTitleReferenceModalStep('SUMMARY_PROMPT');
     setIsTitleReferenceModalOpen(true);
-  }, [isLandTitleAddOnSelected, landTitleReferenceId, selectedLandTitleOption, titleReferenceSelection]);
+  }, [isLandTitleAddOnSelected, landTitleAddress, landTitleAddressDetails, selectedLandTitleOption, titleReferenceSelection]);
+
+  const initializeLandTitleAddressAutocomplete = useCallback(() => {
+    if (typeof window === 'undefined' || !landTitleAddressInputRef.current) {
+      return;
+    }
+
+    const googleMaps = window.google;
+    if (!googleMaps?.maps?.places) {
+      return;
+    }
+
+    if (landTitleAddressAutocompleteRef.current && googleMaps?.maps?.event?.clearInstanceListeners) {
+      googleMaps.maps.event.clearInstanceListeners(landTitleAddressAutocompleteRef.current);
+    }
+
+    const autocomplete = new googleMaps.maps.places.Autocomplete(landTitleAddressInputRef.current, {
+      componentRestrictions: { country: 'au' },
+      fields: ['address_components', 'formatted_address', 'geometry', 'place_id']
+    });
+
+    landTitleAddressAutocompleteRef.current = autocomplete;
+
+    autocomplete.addListener('place_changed', () => {
+      const place = autocomplete.getPlace();
+      if (!place) {
+        return;
+      }
+
+      const formattedAddress =
+        place.formatted_address || landTitleAddressInputRef.current?.value || '';
+
+      const componentsMap: Record<string, string> = {};
+      const details: LandTitleAddressDetails = {
+        formattedAddress,
+        placeId: place.place_id || undefined,
+        latitude: place.geometry?.location?.lat ? place.geometry.location.lat() : undefined,
+        longitude: place.geometry?.location?.lng ? place.geometry.location.lng() : undefined,
+        components: componentsMap
+      };
+
+      (place.address_components || []).forEach((component: any) => {
+        const componentType = component.types?.[0];
+        if (!componentType) {
+          return;
+        }
+
+        componentsMap[componentType] = component.long_name;
+
+        switch (componentType) {
+          case 'street_number':
+            details.streetNumber = component.long_name;
+            break;
+          case 'route':
+            details.route = component.long_name;
+            break;
+          case 'locality':
+          case 'sublocality_level_1':
+            details.locality = component.long_name;
+            break;
+          case 'administrative_area_level_1':
+            details.state = component.short_name || component.long_name;
+            break;
+          case 'postal_code':
+            details.postalCode = component.long_name;
+            break;
+          case 'country':
+            details.country = component.short_name || component.long_name;
+            break;
+          default:
+            break;
+        }
+      });
+
+      setLandTitleAddress(formattedAddress);
+      setLandTitleAddressDetails(details);
+    });
+  }, [setLandTitleAddress, setLandTitleAddressDetails]);
+
+  useEffect(() => {
+    if (selectedCategory !== 'LAND TITLE' || selectedLandTitleOption !== 'ADDRESS') {
+      return;
+    }
+
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const googleMaps = window.google;
+
+    if (googleMaps?.maps?.places) {
+      initializeLandTitleAddressAutocomplete();
+      return;
+    }
+
+    const callbackName = GOOGLE_MAPS_CALLBACK_NAME;
+
+    (window as any)[callbackName] = () => {
+      initializeLandTitleAddressAutocomplete();
+    };
+
+    if (!document.getElementById(GOOGLE_MAPS_SCRIPT_ID)) {
+      const script = document.createElement('script');
+      script.id = GOOGLE_MAPS_SCRIPT_ID;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places&callback=${callbackName}`;
+      script.async = true;
+      script.defer = true;
+      script.onerror = () => {
+        console.error('Failed to load Google Maps Places API script');
+      };
+      document.head.appendChild(script);
+    }
+
+    return () => {
+      const googleMapsInstance = window.google;
+      if (landTitleAddressAutocompleteRef.current && googleMapsInstance?.maps?.event?.clearInstanceListeners) {
+        googleMapsInstance.maps.event.clearInstanceListeners(landTitleAddressAutocompleteRef.current);
+      }
+      landTitleAddressAutocompleteRef.current = null;
+    };
+  }, [initializeLandTitleAddressAutocomplete, selectedCategory, selectedLandTitleOption]);
 
 
 
 
   const handleTitleReferenceSummaryContinue = useCallback(() => {
-    setTitleReferenceModalStep('DETAIL');
-  }, []);
-
-  const handleTitleReferenceDetailSelect = useCallback((detail: LandTitleDetailSelection) => {
     setPendingTitleReferenceSelection(prev => ({
       ...prev,
-      detail,
-      summary: detail === 'SUMMARY'
+      summary: true,
+      detail: 'SUMMARY'
     }));
+    setTitleReferenceModalStep('ADD_ON');
   }, []);
 
   const handleTitleReferenceModalConfirm = useCallback(() => {
@@ -708,24 +863,12 @@ const Search: React.FC = () => {
     updateLandTitleSearchSelection
   ]);
 
-  const handleTitleReferenceDetailBack = useCallback(() => {
-    setTitleReferenceModalStep('SUMMARY_PROMPT');
-  }, []);
-
-  const handleTitleReferenceDetailContinue = useCallback(() => {
-    if (isLandTitleAddOnSelected) {
-      handleTitleReferenceModalConfirm();
-      return;
-    }
-    setTitleReferenceModalStep('ADD_ON');
-  }, [handleTitleReferenceModalConfirm, isLandTitleAddOnSelected]);
-
   const handleTitleReferenceAddOnSelect = useCallback((addOn: boolean) => {
     setPendingTitleReferenceSelection(prev => ({ ...prev, addOn }));
   }, []);
 
   const handleTitleReferenceAddOnBack = useCallback(() => {
-    setTitleReferenceModalStep('DETAIL');
+    setTitleReferenceModalStep('SUMMARY_PROMPT');
   }, []);
 
   const handleLandTitleIndividualSearchClick = useCallback(() => {
@@ -2213,6 +2356,9 @@ setLandTitleOrganisationSearchTerm(displayText);
             break;
           case 'ADDRESS':
             landTitleMeta.address = landTitleAddress.trim();
+            if (landTitleAddressDetails) {
+              landTitleMeta.addressDetails = landTitleAddressDetails;
+            }
             break;
         }
 
@@ -2385,11 +2531,23 @@ setLandTitleOrganisationSearchTerm(displayText);
             };
           }
 
-          if (reportItem.meta?.landTitleSelection) {
+          if (reportItem.meta) {
+            const meta = reportItem.meta as Record<string, unknown> & {
+              address?: string;
+              addressDetails?: LandTitleAddressDetails;
+            };
             businessData = {
               ...(businessData || {}),
-              landTitleSelection: reportItem.meta.landTitleSelection
+              landTitleSelection: meta
             };
+
+            if (meta.address) {
+              (businessData as any).address = meta.address;
+            }
+
+            if (meta.addressDetails) {
+              (businessData as any).addressDetails = meta.addressDetails;
+            }
           }
 
           if (businessData) {
@@ -3126,8 +3284,12 @@ setLandTitleOrganisationSearchTerm(displayText);
                               </label>
                               <input
                                 type="text"
+                                ref={landTitleAddressInputRef}
                                 value={landTitleAddress}
-                                onChange={(event) => setLandTitleAddress(event.target.value)}
+                                onChange={(event) => {
+                                  setLandTitleAddress(event.target.value);
+                                  setLandTitleAddressDetails(null);
+                                }}
                                 placeholder="Enter address"
                                 className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
                               />
