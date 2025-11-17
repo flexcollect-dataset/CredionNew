@@ -3449,12 +3449,10 @@ function replaceVariables(htmlContent, data, reportype) {
     updatedHtml = updatedHtml.replace(pastCountRegex, extractedData.past_properties_count || '0 properties previously owned');
     
     // Replace the static Title Search Information section with dynamic sections
-    // Match from PAGE 3+ comment to PAGE 4 comment (including any comment text in between)
-    const titleSearchRegex = /<!-- PAGE 3\+: TITLE SEARCH INFORMATION -->[\s\S]*?<!-- PAGE 4: COMPLETE PROPERTY PORTFOLIO -->/;
+    // Match from PAGE 3 comment to PAGE 4 comment (including any comment text in between)
+    const titleSearchRegex = /<!-- PAGE 3: TITLE SEARCH INFORMATION -->[\s\S]*?<!-- PAGE 4: COMPLETE PROPERTY PORTFOLIO -->/;
     if (extractedData.title_search_information_sections && extractedData.title_search_information_sections.length > 0) {
-      // Replace {{total_pages}} in the generated sections with actual total pages
-      let sectionsHtml = extractedData.title_search_information_sections.replace(/\{\{total_pages\}\}/g, String(extractedData.total_pages || 6));
-      const replacement = sectionsHtml + '\n\n  <!-- PAGE 4: COMPLETE PROPERTY PORTFOLIO -->';
+      const replacement = extractedData.title_search_information_sections + '\n\n  <!-- PAGE 4: COMPLETE PROPERTY PORTFOLIO -->';
       const beforeLength = updatedHtml.length;
       updatedHtml = updatedHtml.replace(titleSearchRegex, replacement);
       const afterLength = updatedHtml.length;
@@ -3470,7 +3468,7 @@ function replaceVariables(htmlContent, data, reportype) {
     }
     
     // Replace the static Complete Property Portfolio section with dynamic content
-    // Match from PAGE 4 comment (including placeholder comment) to PAGE 5 comment or PAGE 6 comment
+    // Match from PAGE 4 comment to PAGE 5 comment or PAGE 6 comment
     const portfolioRegex = /<!-- PAGE 4: COMPLETE PROPERTY PORTFOLIO -->[\s\S]*?(<!-- PAGE 5: PROPERTY VALUATION|<!-- PAGE 6: DOCUMENT INFORMATION)/;
     if (extractedData.complete_property_portfolio_page && extractedData.complete_property_portfolio_page.length > 0) {
       // Replace {{total_pages}} and {{portfolio_page_number}} in portfolio page
