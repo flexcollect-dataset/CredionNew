@@ -441,7 +441,7 @@ class ApiService {
     }
 
     const query = searchParams.toString();
-    const basePath = '/api/payment/bankruptcy/matches';
+    const basePath = '/api/bankruptcy/matches';
     const endpoint = query.length > 0 ? `${basePath}?${query}` : basePath;
 
     return this.request<BankruptcySearchResponse>(endpoint);
@@ -468,7 +468,7 @@ class ApiService {
     }
 
     const query = searchParams.toString();
-    const basePath = '/api/payment/director-related/matches';
+    const basePath = '/api/director-related/matches';
     const endpoint = query.length > 0 ? `${basePath}?${query}` : basePath;
 
     return this.request<DirectorRelatedSearchResponse>(endpoint);
