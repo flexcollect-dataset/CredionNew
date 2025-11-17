@@ -71,8 +71,8 @@ const SERVICES = {
 
       const { data } = await axios.post( 'https://api-sbox.corelogic.asia/access/as/token.oauth2', null, {
           params,
+          auth: {username: clientId, password:clientSecret},
           headers: {
-            Authorization: `Basic ${basicAuth}`,
             'Content-Length': '0',
           },
         }
@@ -85,21 +85,29 @@ const SERVICES = {
     },
   },
   landtitle: {
-    baseURL: 'https://staging-online.globalx.com.au/api/national-property',
-    authURL: 'https://staging-auth.globalx.com.au/auth/realms/globalx/protocol/openid-connect/token',
+    baseURL: 'https://online.globalx.com.au/api/national-property',
+    authURL: 'https://auth.globalx.com.au/auth/realms/globalx/protocol/openid-connect/token',
     getToken: async () => {
-      const clientId = process.env.GX_CLIENT_ID || 'ddcredint';
-      const clientSecret = process.env.GX_CLIENT_SECRET || 'wudgJFuEUERyt1NXzjyKhxKhA3Rg5Eiv';
+      // const clientId = process.env.GX_CLIENT_ID || 'ddcredion';
+      // const clientSecret = process.env.GX_CLIENT_SECRET || 'AWN3TbstqqVfpLK8mlmlAFOfGuDNY2F5';
 
-      const body = new URLSearchParams({
-        grant_type: 'client_credentials',
-        scope: 'digital-titles',
-      }).toString();
+      // const body = new URLSearchParams({
+      //   grant_type: 'client_credentials',
+      //   scope: 'digital-titles',
+      //   clientId: process.env.GX_CLIENT_ID || 'ddcredion',
+      //   clientSecret: process.env.GX_CLIENT_SECRET || 'AWN3TbstqqVfpLK8mlmlAFOfGuDNY2F5'
+      // }).toString();
 
-      const { data } = await axios.post('https://staging-auth.globalx.com.au/auth/realms/GlobalX/protocol/openid-connect/token', body, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        auth: { username: clientId, password: clientSecret }, 
-      });
+      const { data } = await axios.post('https://auth.globalx.com.au/auth/realms/GlobalX/protocol/openid-connect/token', 
+        new URLSearchParams({
+          grant_type: 'client_credentials',
+          scope: 'digital-titles',
+          client_id: process.env.GX_CLIENT_ID || 'ddcredion',
+          client_secret: process.env.GX_CLIENT_SECRET || 'AWN3TbstqqVfpLK8mlmlAFOfGuDNY2F5'
+        }).toString(), 
+        {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        });
 
       return {
         token: data.access_token,

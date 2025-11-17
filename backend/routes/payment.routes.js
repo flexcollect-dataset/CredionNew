@@ -678,30 +678,27 @@ async function land_title_address(ldata) {
 	let cotalityData = null;
 	let titleRefData = null;
 
-
-	console.log(ldata);
 	const bearerToken = await getToken('landtitle');
-	const url = 'https://staging-online.globalx.com.au/api/national-property/locator-orders';
+	const url = 'https://online.globalx.com.au/api/national-property/locator-orders';
 	const details = ldata.addressDetails;
 
 	const body = {
-	OrderRequestBlock: {
-		OrderReference: 'SQA12222', // you can make this dynamic too
-	},
-	ServiceRequestBlock: {
-		Jurisdiction: details.state,   // fallback to NSW if missing
-
-		Location: {
-		StructuredAddress: {
-			Unit: details.components.subpremise || '',           // if you have no unit, send empty string
-			StreetNumber: details.streetNumber, // 56
-			StreetName: details.route,          // Pitt Street
-			City: details.locality,             // Sydney
-			State: details.state,               // NSW
-			PostCode: details.postalCode        // 2000
+		OrderRequestBlock: {
+			OrderReference: 'Credion',
+		},
+		ServiceRequestBlock: {
+			Jurisdiction: details.state,
+			Location: {
+			StructuredAddress: {
+				Unit: details.components.subpremise || '',
+				StreetNumber: details.streetNumber,
+				StreetName: details.route,
+				City: details.locality,
+				State: details.state,
+				PostCode: details.postalCode
+			}
+			}
 		}
-		}
-	}
 	};
 	try {
 		const response = await axios.post(url, body, {
@@ -714,16 +711,30 @@ async function land_title_address(ldata) {
 		});
 
 		orderIdentifier = response.data?.OrderResultBlock?.OrderIdentifier; // expected 201 with OrderResultBlock + ResultURI
-		console.log(orderIdentifier);
 		await delay(50000);
-		durl = `https://staging-online.globalx.com.au/api/national-property/locator-orders/${orderIdentifier}`;
+		durl = `https://online.globalx.com.au/api/national-property/locator-orders/${orderIdentifier}`;
 		tdata = await axios.get(durl, {
 			headers: {
 				Authorization: `Bearer ${bearerToken}`,
 				Accept: 'application/json',
 			},
 		});
-		console.log(tdata.data);
+		
+		titleRefData = await createTitleOrder(details.state, tdata.data.RealPropertySegment?.[0].IdentityBlock.TitleReference);
+		if (ldata.landTitleSelection.addOn === true) {
+			cotalityData = await get_cotality_pid(ldata.address);
+		}
+
+		const reportData = {
+			status: true,
+			data: {
+				cotality: cotalityData,
+				titleOrder: titleRefData,
+			}
+		};
+		reportData.data.uuid = "12345678";
+		return reportData;
+
 	} catch (err) {
 		if (err.response) {
 			console.error('❌ API Error:', err.response.status, err.response.data);
@@ -731,34 +742,18 @@ async function land_title_address(ldata) {
 			console.error('❌ Request Error:', err.message);
 		}
 	}
-
-	
-
-	// titleRefData = await createTitleOrder('NSW', ldata.referenceId);
-	// if(ldata.addOn === true ) {
-	//     cotalityData = await get_cotality_pid("56 Kings Road Vaucluse NSW 2030");
-	// }
-
-	// const reportData = {
-	// 	status: true,
-	// 	data: {
-	// 		cotality: cotalityData,
-	// 		titleOrder: titleRefData,
-	// 	}
-	// };
-	// reportData.data.uuid = "12345678";
-	// return reportData;
 }
 
 async function land_title_reference(ldata) {
 	let cotalityData = null;
 	let titleRefData = null;
 
-	titleRefData = await createTitleOrder('NSW', ldata.referenceId);
-
+	titleRefData = await createTitleOrder('NSW', ldata.landTitleSelection.referenceId);
+	const loc = titleRefData?.LocationSegment?.[0]?.Address;
+	const formattedAddress = loc ? `${loc.StreetNumber} ${loc.StreetName} ${loc.StreetType} ${loc.City} ${loc.State} ${loc.PostCode}` : null;
 	console.log(titleRefData);
-	if (ldata.addOn === true) {
-		cotalityData = await get_cotality_pid("56 Kings Road Vaucluse NSW 2030");
+	if (ldata.landTitleSelection.addOn === true) {
+		cotalityData = await get_cotality_pid(formattedAddress);
 	}
 
 	const reportData = {
@@ -772,10 +767,261 @@ async function land_title_reference(ldata) {
 	return reportData;
 }
 
-async function createTitleOrder(jurisdiction, titleReference) {
+async function land_title_organisation(ldata) {
+	const titleOrders = [];
+	const cotalityDataArray = [];
+	const locatorDataArray = [];
+	
+	// Extract ABN and company name from business data
+	let abn = ldata?.Abn || ldata?.abn || null;
+	let companyName = ldata?.Name || ldata?.name || null;
+	
+	// If ABN or company name is missing, try to get from summary record
+	if (abn && (!companyName || companyName === 'Unknown')) {
+		try {
+			const [summaryRecord] = await sequelize.query(`
+				SELECT rdata, search_word, abn
+				FROM api_data
+				WHERE rtype = 'land-title-organisation' AND abn = $1
+				ORDER BY created_at DESC
+				LIMIT 1
+			`, {
+				bind: [abn]
+			});
+			
+			if (summaryRecord && summaryRecord.length > 0) {
+				const record = summaryRecord[0];
+				// Get company name from search_word or rdata
+				if (!companyName || companyName === 'Unknown') {
+					companyName = record.search_word || companyName;
+				}
+				
+				// Also try to get from rdata if available
+				if ((!companyName || companyName === 'Unknown') && record.rdata) {
+					try {
+						const rdata = typeof record.rdata === 'string' ? JSON.parse(record.rdata) : record.rdata;
+						companyName = rdata?.companyName || companyName;
+					} catch (parseError) {
+						console.error('Error parsing rdata for company name:', parseError);
+					}
+				}
+				
+				// Ensure ABN is set from record if not already set
+				if (!abn && record.abn) {
+					abn = record.abn;
+				}
+			}
+		} catch (error) {
+			console.error('Error fetching ABN/company name from summary record:', error);
+			// Continue with existing values
+		}
+	}
+	
+	console.log('==========================');
+	console.log('land_title_organisation - ldata:', ldata);
+	console.log('Extracted ABN:', abn);
+	console.log('Extracted Company Name:', companyName);
+	console.log('==========================');
+	
+	// Get titleReferences from landTitleSelection
+	const titleReferences = ldata.landTitleSelection?.titleReferences || [];
+	const detail = ldata.landTitleSelection?.detail || 'ALL';
+	
+	if (titleReferences.length === 0) {
+		throw new Error('No title references found in land title selection');
+	}
+
+	// Filter titleReferences based on detail selection
+	let filteredTitleReferences = titleReferences;
+	if (detail === 'CURRENT') {
+		// For CURRENT, we need to determine which are current - this will be handled by the stored data
+		filteredTitleReferences = titleReferences;
+	} else if (detail === 'PAST') {
+		// For PAST, historical count is always 0, so this would be empty
+		filteredTitleReferences = [];
+	}
+
+	// Process each titleReference
+	for (const titleRefItem of filteredTitleReferences) {
+		try {
+			// Fetch stored data from api_data table
+			const [storedData] = await sequelize.query(`
+				SELECT rdata FROM api_data
+				WHERE rtype = 'land-title-reference' AND uuid = $1
+				ORDER BY created_at DESC
+				LIMIT 1
+			`, {
+				bind: [titleRefItem.titleReference]
+			});
+
+			// Call createTitleOrder for each titleReference
+			// Pass ABN and company name if available from business data
+			const titleOrderData = await createTitleOrder(titleRefItem.jurisdiction, titleRefItem.titleReference, abn, companyName);
+			titleOrders.push(titleOrderData);
+
+			// If addOn is enabled, get cotality data for each titleReference
+			if (ldata.landTitleSelection.addOn === true && titleOrderData) {
+				const loc = titleOrderData?.LocationSegment?.[0]?.Address;
+				const formattedAddress = loc ? `${loc.StreetNumber} ${loc.StreetName} ${loc.StreetType} ${loc.City} ${loc.State} ${loc.PostCode}` : null;
+				if (formattedAddress) {
+					try {
+						const cotalityData = await get_cotality_pid(formattedAddress);
+						cotalityDataArray.push(cotalityData);
+					} catch (error) {
+						console.error(`Error fetching cotality data for ${titleRefItem.titleReference}:`, error);
+					}
+				}
+			}
+		} catch (error) {
+			console.error(`Error processing titleReference ${titleRefItem.titleReference}:`, error);
+			// Continue with other titleReferences even if one fails
+		}
+	}
+
+	// Merge all results
+	const reportData = {
+		status: true,
+		data: {
+			currentCount: ldata.landTitleSelection?.currentCount || 0,
+			historicalCount: ldata.landTitleSelection?.historicalCount || 0,
+			allCount: (ldata.landTitleSelection?.currentCount || 0) + (ldata.landTitleSelection?.historicalCount || 0),
+			titleOrders: titleOrders, // Array of all title orders
+			cotality: cotalityDataArray.length > 0 ? cotalityDataArray : null, // Array of cotality data
+			locatorData: locatorDataArray.length > 0 ? locatorDataArray : null, // Array of locator data
+			storedLocatorData: titleReferences.map(tr => {
+				// Return stored locator data structure
+				return {
+					titleReference: tr.titleReference,
+					jurisdiction: tr.jurisdiction
+				};
+			})
+		}
+	};
+	reportData.data.uuid = "12345678";
+	return reportData;
+}
+
+async function land_title_individual(ldata) {
+	const titleOrders = [];
+	const cotalityDataArray = [];
+	const locatorDataArray = [];
+
+	// Get titleReferences from landTitleSelection
+	const titleReferences = ldata.landTitleSelection?.titleReferences || [];
+	const detail = ldata.landTitleSelection?.detail || 'ALL';
+	
+	if (titleReferences.length === 0) {
+		throw new Error('No title references found in land title selection');
+	}
+
+	// Filter titleReferences based on detail selection
+	let filteredTitleReferences = titleReferences;
+	if (detail === 'CURRENT') {
+		// For CURRENT, we need to determine which are current - this will be handled by the stored data
+		filteredTitleReferences = titleReferences;
+	} else if (detail === 'PAST') {
+		// For PAST, historical count is always 0, so this would be empty
+		filteredTitleReferences = [];
+	}
+
+	// Process each titleReference
+	for (const titleRefItem of filteredTitleReferences) {
+		try {
+			// Fetch stored data from api_data table
+			const [storedData] = await sequelize.query(`
+				SELECT rdata FROM api_data
+				WHERE rtype = 'land-title-reference' AND uuid = $1
+				ORDER BY created_at DESC
+				LIMIT 1
+			`, {
+				bind: [titleRefItem.titleReference]
+			});
+
+			// Extract ABN and company name from business data for individual searches
+			const abnForTitleOrder = ldata?.Abn || ldata?.abn || null;
+			const companyNameForTitleOrder = ldata?.Name || ldata?.name || null;
+			
+			// Call createTitleOrder for each titleReference
+			// Pass ABN and company name if available from business data
+			const titleOrderData = await createTitleOrder(titleRefItem.jurisdiction, titleRefItem.titleReference, abnForTitleOrder, companyNameForTitleOrder);
+			titleOrders.push(titleOrderData);
+
+			// If addOn is enabled, get cotality data for each titleReference
+			if (ldata.landTitleSelection.addOn === true && titleOrderData) {
+				const loc = titleOrderData?.LocationSegment?.[0]?.Address;
+				const formattedAddress = loc ? `${loc.StreetNumber} ${loc.StreetName} ${loc.StreetType} ${loc.City} ${loc.State} ${loc.PostCode}` : null;
+				if (formattedAddress) {
+					try {
+						const cotalityData = await get_cotality_pid(formattedAddress);
+						cotalityDataArray.push(cotalityData);
+					} catch (error) {
+						console.error(`Error fetching cotality data for ${titleRefItem.titleReference}:`, error);
+					}
+				}
+			}
+		} catch (error) {
+			console.error(`Error processing titleReference ${titleRefItem.titleReference}:`, error);
+			// Continue with other titleReferences even if one fails
+		}
+	}
+
+	// Merge all results
+	const reportData = {
+		status: true,
+		data: {
+			currentCount: ldata.landTitleSelection?.currentCount || 0,
+			historicalCount: ldata.landTitleSelection?.historicalCount || 0,
+			allCount: (ldata.landTitleSelection?.currentCount || 0) + (ldata.landTitleSelection?.historicalCount || 0),
+			titleOrders: titleOrders, // Array of all title orders
+			cotality: cotalityDataArray.length > 0 ? cotalityDataArray : null, // Array of cotality data
+			locatorData: locatorDataArray.length > 0 ? locatorDataArray : null, // Array of locator data
+			storedLocatorData: titleReferences.map(tr => {
+				// Return stored locator data structure
+				return {
+					titleReference: tr.titleReference,
+					jurisdiction: tr.jurisdiction
+				};
+			})
+		}
+	};
+	reportData.data.uuid = "12345678";
+	return reportData;
+}
+
+async function createTitleOrder(jurisdiction, titleReference, abn = null, companyName = null) {
+	// First, check if data already exists in api_data table for this titleReference
+	const [existingData] = await sequelize.query(`
+		SELECT rdata, id
+		FROM api_data
+		WHERE rtype = 'land-title-reference' AND uuid = $1
+		ORDER BY created_at DESC
+		LIMIT 1
+	`, {
+		bind: [titleReference]
+	});
+
+	if (existingData && existingData.length > 0) {
+		console.log(`✅ Found existing title order data for ${titleReference}, using cached data`);
+		try {
+			const rdata = typeof existingData[0].rdata === 'string' 
+				? JSON.parse(existingData[0].rdata) 
+				: existingData[0].rdata;
+			
+			// Return the cached data in the same format as the API response
+			// The stored data should be the full API response from the title order
+			return rdata;
+		} catch (parseError) {
+			console.error('Error parsing cached title order data:', parseError);
+			// Fall through to API call if parsing fails
+		}
+	}
+
+	// No cached data found, proceed with API call
+	console.log(`🔄 No cached data found for titleReference ${titleReference}, calling API`);
+	
 	bearerToken = await getToken('landtitle');
 
-	url = 'https://staging-online.globalx.com.au/api/national-property/title-orders';
+	url = 'https://online.globalx.com.au/api/national-property/title-orders';
 
 	payload = {
 		OrderRequestBlock: {
@@ -798,13 +1044,65 @@ async function createTitleOrder(jurisdiction, titleReference) {
 
 	orderIdentifier = rdata.data?.OrderResultBlock?.OrderIdentifier; // expected 201 with OrderResultBlock + ResultURI
 	await delay(50000);
-	durl = `https://staging-online.globalx.com.au/api/national-property/title-orders/${orderIdentifier}`;
+	durl = `https://online.globalx.com.au/api/national-property/title-orders/${orderIdentifier}`;
 	tdata = await axios.get(durl, {
 		headers: {
 			Authorization: `Bearer ${bearerToken}`,
 			Accept: 'application/json',
 		},
 	});
+	
+	// Store the title order data in api_data table for future use
+	if (tdata.data) {
+		try {
+			// Check if record already exists
+			const [existingRecord] = await sequelize.query(`
+				SELECT id FROM api_data
+				WHERE rtype = 'land-title-reference' AND uuid = $1
+				LIMIT 1
+			`, {
+				bind: [titleReference]
+			});
+
+			if (existingRecord && existingRecord.length > 0) {
+				// Update existing record - update ABN and search_word if provided
+				await sequelize.query(`
+					UPDATE api_data
+					SET rdata = $1, abn = $2, search_word = $3, updated_at = NOW()
+					WHERE id = $4
+				`, {
+					bind: [
+						JSON.stringify(tdata.data),
+						abn || null,
+						companyName || titleReference, // Use company name if available, otherwise titleReference
+						existingRecord[0].id
+					]
+				});
+				console.log(`✅ Updated title order data for ${titleReference} with ABN: ${abn}, Company: ${companyName}`);
+			} else {
+				// Insert new record - store ABN and company name if provided
+				await sequelize.query(`
+					INSERT INTO api_data (rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at)
+					VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+				`, {
+					bind: [
+						'land-title-reference',
+						titleReference,
+						companyName || titleReference, // Use company name if available, otherwise titleReference
+						abn || null, // Store ABN if provided
+						null, // ACN
+						JSON.stringify(tdata.data),
+						false
+					]
+				});
+				console.log(`✅ Stored title order data for ${titleReference} with ABN: ${abn}, Company: ${companyName}`);
+			}
+		} catch (storeError) {
+			console.error(`Error storing title order data for ${titleReference}:`, storeError);
+			// Continue even if storage fails
+		}
+	}
+	
 	return tdata.data;
 }
 
@@ -831,8 +1129,8 @@ async function get_cotality_pid(address) {
 		}
 
 		const [salesHistory, propertyData] = await Promise.all([
-			get_cotality_saleshistory(propertyId, bearerToken),
-			get_cotality_propertydata(propertyId, bearerToken)
+			get_cotality_saleshistory(propertyId),
+			get_cotality_propertydata(propertyId)
 		]);
 
 		return {
@@ -847,9 +1145,9 @@ async function get_cotality_pid(address) {
 	}
 }
 
-async function get_cotality_saleshistory(propertyId, bearerToken) {
+async function get_cotality_saleshistory(propertyId) {
 	const includeHistoric = false;
-
+	const bearerToken = await getToken('corelogic');
 	const url = `https://api-sbox.corelogic.asia/property-details/au/properties/${propertyId}/sales`;
 
 	try {
@@ -857,7 +1155,7 @@ async function get_cotality_saleshistory(propertyId, bearerToken) {
 			params: { includeHistoric },
 			headers: {
 				'accept': 'application/json',
-				'Authorization': `Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6IkRlZmF1bHQiLCJwaS5hdG0iOiJxdzhlIn0.eyJzY29wZSI6WyJwcm9maWxlIiwib3BlbmlkIl0sImNsaWVudF9pZCI6IkxjNUlBVHBvbUxhUmNvbkhseE5yUmlZOEJsTTVadjVuIiwiaXNzIjoiaHR0cHM6Ly9hdXRoLmNvcmVsb2dpYy5hc2lhIiwiZXhwIjoxNzYyOTE2MjMxfQ.utNGstXNMU7qX9n6_1Kv2jWbw_Zy_EV44mn3Pp5NuLZCctibLeB1_bJnD6qO0V3hmFVLqhK2idem0-zCuERXul28LCRkxcktIaXv1QLXaX8M_2lK3QoCOCv5vGb5s8K8nn6qVuw7YfA6szWjoVTkYDSnw9rbWEC9IKg85Phe2pjTG53cZ-EGm6HBiCzpdkwK9ugRdz65p35qd5F7TXBzKZk5UhJ9Qr0LPgDfIjnlvyNduH7Z6nj6GQay6Hz53Lp3LBRbE4-0_5PiMGQigZb_SKeDxErENEnJFvEL4EL3ArWWcBIOVfLBQJT5PK2zuwSxzcfBnPnYjnp2E2U6j1fy9g`,
+				'Authorization': `Bearer ${bearerToken}`
 			},
 		});
 
@@ -868,8 +1166,9 @@ async function get_cotality_saleshistory(propertyId, bearerToken) {
 	}
 }
 
-async function get_cotality_propertydata(propertyId, bearerToken) {
+async function get_cotality_propertydata(propertyId) {
 	const includeHistoric = false;
+	const bearerToken = await getToken('corelogic');
 	const url = `https://api-sbox.corelogic.asia/property-details/au/properties/${propertyId}/attributes/core`;
 
 	try {
@@ -877,7 +1176,7 @@ async function get_cotality_propertydata(propertyId, bearerToken) {
 			params: { includeHistoric },
 			headers: {
 				'accept': 'application/json',
-				'Authorization': `Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6IkRlZmF1bHQiLCJwaS5hdG0iOiJxdzhlIn0.eyJzY29wZSI6WyJwcm9maWxlIiwib3BlbmlkIl0sImNsaWVudF9pZCI6IkxjNUlBVHBvbUxhUmNvbkhseE5yUmlZOEJsTTVadjVuIiwiaXNzIjoiaHR0cHM6Ly9hdXRoLmNvcmVsb2dpYy5hc2lhIiwiZXhwIjoxNzYyOTE2MjMxfQ.utNGstXNMU7qX9n6_1Kv2jWbw_Zy_EV44mn3Pp5NuLZCctibLeB1_bJnD6qO0V3hmFVLqhK2idem0-zCuERXul28LCRkxcktIaXv1QLXaX8M_2lK3QoCOCv5vGb5s8K8nn6qVuw7YfA6szWjoVTkYDSnw9rbWEC9IKg85Phe2pjTG53cZ-EGm6HBiCzpdkwK9ugRdz65p35qd5F7TXBzKZk5UhJ9Qr0LPgDfIjnlvyNduH7Z6nj6GQay6Hz53Lp3LBRbE4-0_5PiMGQigZb_SKeDxErENEnJFvEL4EL3ArWWcBIOVfLBQJT5PK2zuwSxzcfBnPnYjnp2E2U6j1fy9g`
+				'Authorization': `Bearer ${bearerToken}`
 			},
 		});
 		return response.data;
@@ -1035,13 +1334,17 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 			} else if (type == "director-court-criminal") {
 				reportData = await director_court_criminal(business.fname, business.lname, business.dob);
 			} else if (type == 'property') {
-				reportData = await property(business.Abn, business.Name, business.landTitleSelection);
+				reportData = await property(business.Abn, business.Name, business);
 			} else if (type == 'director-property') {
-				reportData = await director_property(business.fname, business.lname, business.dob, business.landTitleSelection);
+				reportData = await director_property(business.fname, business.lname, business.dob, business);
 			} else if (type == 'land-title-reference') {
-				reportData = await land_title_reference(business.landTitleSelection);
+				reportData = await land_title_reference(business);
 			} else if (type == 'land-title-address') {
-				reportData = await land_title_address(business.landTitleSelection);
+				reportData = await land_title_address(business);
+			} else if (type == 'land-title-organisation') {
+				reportData = await land_title_organisation(business);
+			} else if (type == 'land-title-individual') {
+				reportData = await land_title_individual(business);
 			}
 			// Ensure reportData has the correct structure
 			if (!existingReport && reportData) {
@@ -1091,6 +1394,11 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 			reportData = { data: reportData };
 		}
 
+		// For land title reports, include business object in reportData for PDF generation
+		if ((type === 'land-title-organisation' || type === 'land-title-individual') && business) {
+			reportData.business = business;
+		}
+
 		if (ispdfcreate) {
 			pdffilename = await addDownloadReportInDB(reportData, userId, matterId, reportId, `${uuidv4()}`, type);
 			return pdffilename;
@@ -1102,7 +1410,6 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 
 	} catch (error) {
 		console.error('Error creating report:', error);
-		console.log("mital");
 		if (error.response) {
 			// API returned an error response
 			throw new Error(`Report API error: ${error.response.status} - ${error.response.data?.message || error.response.statusText}`);
@@ -1111,7 +1418,7 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 			throw new Error('Report API request failed - no response received');
 		} else {
 			// Something else happened
-			throw new Error(`rrrrrrReport creation failed: ${error.message}`);
+			throw new Error(`Report creation failed: ${error.message}`);
 		}
 	}
 }
@@ -1371,7 +1678,600 @@ router.delete('/payment-methods/:id', authenticateSession, async (req, res) => {
 	}
 });
 
+async function searchLandTitleByOrganization(abn, state, companyName) {
+	const bearerToken = await getToken('landtitle');
+	const url = 'https://online.globalx.com.au/api/national-property/locator-orders';
 
+	// If company name is not provided, get it from ABN lookup
+	let organizationName = companyName;
+	if (!organizationName && abn) {
+		try {
+			const abnInfo = await getABNInfo(abn);
+			organizationName = abnInfo?.EntityName || abnInfo?.Name || null;
+		} catch (error) {
+			console.error('Error fetching company name from ABN:', error);
+			// If ABN lookup fails, use ABN as fallback
+			organizationName = abn;
+		}
+	}
+
+	if (!organizationName) {
+		throw new Error('Company name is required for organization search');
+	}
+
+	const body = {
+		OrderRequestBlock: {
+			OrderReference: 'Credion',
+		},
+		ServiceRequestBlock: {
+			Jurisdiction: state,
+			"Owner": {
+				"Organisation": {
+					"Name": organizationName
+				}
+			}
+		}
+	};
+	
+	try {
+		const response = await axios.post(url, body, {
+			headers: {
+				'Authorization': `Bearer ${bearerToken}`,
+				'Content-Type': 'application/json',
+				'Accept': 'application/json'
+			},
+			timeout: 10000 // optional
+		});
+
+		const orderIdentifier = response.data?.OrderResultBlock?.OrderIdentifier;
+		if (!orderIdentifier) {
+			throw new Error('No order identifier received from API');
+		}
+
+		// Wait for order to complete
+		await delay(50000);
+		
+		const durl = `https://online.globalx.com.au/api/national-property/locator-orders/${orderIdentifier}`;
+		const tdata = await axios.get(durl, {
+			headers: {
+				Authorization: `Bearer ${bearerToken}`,
+				Accept: 'application/json',
+			},
+		});
+		
+		// Count IdentityBlock items in RealPropertySegment and extract TitleReferences with jurisdiction
+		const realPropertySegment = tdata.data?.RealPropertySegment || [];
+		const currentCount = realPropertySegment.length; // Total count of IdentityBlock items
+		const historicalCount = 0; // Always 0 as per requirements
+		
+		// Extract all TitleReferences with their jurisdictions from IdentityBlock
+		const titleReferences = realPropertySegment
+			.map(segment => ({
+				titleReference: segment?.IdentityBlock?.TitleReference,
+				jurisdiction: segment?.IdentityBlock?.Jurisdiction || state
+			}))
+			.filter(item => item.titleReference != null); // Filter out null/undefined values
+
+		return {
+			current: currentCount,
+			historical: historicalCount,
+			titleReferences: titleReferences,
+			fullApiResponse: tdata.data // Return full API response for storage
+		};
+	} catch (err) {
+		if (err.response) {
+			console.error('❌ API Error:', err.response.status, err.response.data);
+		} else {
+			console.error('❌ Request Error:', err.message);
+		}
+		throw err;
+	}
+}
+
+async function searchLandTitleByPerson(firstName, lastName, state, dob) {
+	const bearerToken = await getToken('landtitle');
+	const url = 'https://online.globalx.com.au/api/national-property/locator-orders';
+
+	if (!lastName) {
+		throw new Error('Last name is required for individual search');
+	}
+
+	const body = {
+		OrderRequestBlock: {
+			OrderReference: 'Credion',
+		},
+		ServiceRequestBlock: {
+			Jurisdiction: state,
+			"Owner": {
+				"Individual": {
+					"FirstName": firstName || "",
+					"LastName": lastName
+				}
+			}
+		}
+	};
+	
+	try {
+		const response = await axios.post(url, body, {
+			headers: {
+				'Authorization': `Bearer ${bearerToken}`,
+				'Content-Type': 'application/json',
+				'Accept': 'application/json'
+			},
+			timeout: 10000 // optional
+		});
+
+		const orderIdentifier = response.data?.OrderResultBlock?.OrderIdentifier;
+		if (!orderIdentifier) {
+			throw new Error('No order identifier received from API');
+		}
+
+		// Wait for order to complete
+		await delay(50000);
+		
+		const durl = `https://online.globalx.com.au/api/national-property/locator-orders/${orderIdentifier}`;
+		const tdata = await axios.get(durl, {
+			headers: {
+				Authorization: `Bearer ${bearerToken}`,
+				Accept: 'application/json',
+			},
+		});
+		
+		// Count IdentityBlock items in RealPropertySegment and extract TitleReferences with jurisdiction
+		const realPropertySegment = tdata.data?.RealPropertySegment || [];
+		const currentCount = realPropertySegment.length; // Total count of IdentityBlock items
+		const historicalCount = 0; // Always 0 as per requirements
+		
+		// Extract all TitleReferences with their jurisdictions from IdentityBlock
+		const titleReferences = realPropertySegment
+			.map(segment => ({
+				titleReference: segment?.IdentityBlock?.TitleReference,
+				jurisdiction: segment?.IdentityBlock?.Jurisdiction || state
+			}))
+			.filter(item => item.titleReference != null); // Filter out null/undefined values
+
+		return {
+			current: currentCount,
+			historical: historicalCount,
+			titleReferences: titleReferences,
+			fullApiResponse: tdata.data // Return full API response for storage
+		};
+	} catch (err) {
+		if (err.response) {
+			console.error('❌ API Error:', err.response.status, err.response.data);
+		} else {
+			console.error('❌ Request Error:', err.message);
+		}
+		throw err;
+	}
+}
+
+// Land title counts endpoint
+router.post('/land-title/counts', async (req, res) => {
+	console.log('✅ Land title counts endpoint hit!', req.body);
+	try {
+		const { type, abn, companyName, firstName, lastName, dob, startYear, endYear, states } = req.body;
+
+		if (!type || !['organization', 'individual'].includes(type)) {
+			return res.status(400).json({
+				success: false,
+				error: 'INVALID_TYPE',
+				message: 'Type must be either "organization" or "individual"'
+			});
+		}
+
+		if (!states || !Array.isArray(states) || states.length === 0) {
+			return res.status(400).json({
+				success: false,
+				error: 'MISSING_STATES',
+				message: 'At least one state is required'
+			});
+		}
+
+		let currentCount = 0;
+		let historicalCount = 0;
+		const allTitleReferences = []; // Collect all TitleReferences from all states
+		const storedDataIds = []; // Collect stored data IDs
+
+		try {
+			if (type === 'organization') {
+				if (!abn) {
+					return res.status(400).json({
+						success: false,
+						error: 'MISSING_ABN',
+						message: 'ABN is required for organization search'
+					});
+				}
+
+				// Check if data already exists in api_data table for this ABN
+				const [existingData] = await sequelize.query(`
+					SELECT uuid, rdata, id
+					FROM api_data
+					WHERE rtype = 'land-title-organisation' AND abn = $1
+					ORDER BY created_at DESC
+				`, {
+					bind: [abn]
+				});
+
+				if (existingData && existingData.length > 0) {
+					console.log(`✅ Found existing data for ABN ${abn}, using cached data`);
+					
+					// Extract data from the summary record (land-title-organisation)
+					// This record contains the aggregated counts and titleReferences
+					try {
+						const summaryRecord = existingData[0]; // Get the most recent summary record
+						const rdata = typeof summaryRecord.rdata === 'string' 
+							? JSON.parse(summaryRecord.rdata) 
+							: summaryRecord.rdata;
+						
+						// Extract counts and titleReferences from summary record
+						currentCount = rdata?.currentCount || 0;
+						historicalCount = rdata?.historicalCount || 0;
+						
+						// Extract titleReferences from summary record
+						if (rdata?.titleReferences && Array.isArray(rdata.titleReferences)) {
+							allTitleReferences.push(...rdata.titleReferences);
+							
+							// Build storedDataIds from titleReferences
+							// We need to get the dataId from individual titleReference records
+							for (const titleRef of rdata.titleReferences) {
+								try {
+									const [titleRefRecord] = await sequelize.query(`
+										SELECT id FROM api_data
+										WHERE rtype = 'land-title-reference' AND uuid = $1
+										ORDER BY created_at DESC
+										LIMIT 1
+									`, {
+										bind: [titleRef.titleReference]
+									});
+									
+									if (titleRefRecord && titleRefRecord.length > 0) {
+										storedDataIds.push({
+											titleReference: titleRef.titleReference,
+											jurisdiction: titleRef.jurisdiction,
+											dataId: titleRefRecord[0].id
+										});
+									}
+								} catch (idError) {
+									console.error(`Error fetching dataId for ${titleRef.titleReference}:`, idError);
+									// Continue even if we can't get the dataId
+									storedDataIds.push({
+										titleReference: titleRef.titleReference,
+										jurisdiction: titleRef.jurisdiction,
+										dataId: null
+									});
+								}
+							}
+						}
+						
+						// Return cached data
+						return res.json({
+							success: true,
+							current: currentCount,
+							historical: historicalCount,
+							titleReferences: allTitleReferences,
+							storedDataIds: storedDataIds,
+							cached: true // Flag to indicate this is cached data
+						});
+					} catch (parseError) {
+						console.error('Error parsing cached summary data:', parseError);
+						// Fall through to API call if parsing fails
+					}
+				}
+
+				// Get company name if not provided
+				let organizationName = companyName;
+				if (!organizationName && abn) {
+					try {
+						const abnInfo = await getABNInfo(abn);
+						organizationName = abnInfo?.EntityName || abnInfo?.Name || abn;
+					} catch (error) {
+						console.error('Error fetching company name from ABN:', error);
+						organizationName = abn;
+					}
+				}
+
+				// No cached data found, proceed with API call
+				console.log(`🔄 No cached data found for ABN ${abn}, calling API`);
+				
+				// Search for land titles by organization/ABN across all states
+				for (const state of states) {
+					try {
+						const searchResults = await searchLandTitleByOrganization(abn, state, organizationName);
+						currentCount += searchResults.current || 0;
+						historicalCount += searchResults.historical || 0;
+						
+						// Store API response for each titleReference
+						if (searchResults.titleReferences && Array.isArray(searchResults.titleReferences) && searchResults.fullApiResponse) {
+							for (const titleRef of searchResults.titleReferences) {
+								allTitleReferences.push(titleRef);
+								
+								// Store in api_data table
+								try {
+									const [result] = await sequelize.query(`
+										INSERT INTO api_data (rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at)
+										VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+										RETURNING id
+									`, {
+										bind: [
+											'land-title-reference',
+											titleRef.titleReference,
+											organizationName || abn,
+											abn, // Store ABN for business searches
+											null, // ACN
+											JSON.stringify(searchResults.fullApiResponse),
+											false
+										]
+									});
+									
+									if (result && result.length > 0) {
+										storedDataIds.push({
+											titleReference: titleRef.titleReference,
+											jurisdiction: titleRef.jurisdiction,
+											dataId: result[0].id
+										});
+									}
+								} catch (dbError) {
+									console.error(`Error storing data for titleReference ${titleRef.titleReference}:`, dbError);
+									// Continue even if storage fails
+								}
+							}
+						}
+					} catch (error) {
+						console.error(`Error searching land title for state ${state}:`, error);
+						// Continue with other states even if one fails
+					}
+				}
+
+			} else {
+				// Individual search
+				if (!lastName) {
+					return res.status(400).json({
+						success: false,
+						error: 'MISSING_LAST_NAME',
+						message: 'Last name is required for individual search'
+					});
+				}
+
+				// Build search term: firstName lastName date
+				const searchTerm = `${firstName || ''} ${lastName} ${dob || ''}`.trim();
+
+				// Check if data already exists in api_data table for this individual
+				// For individuals, we check by rtype and search_word (which contains firstName lastName dob)
+				const [existingData] = await sequelize.query(`
+					SELECT uuid, rdata, id
+					FROM api_data
+					WHERE rtype = 'land-title-reference' 
+						AND search_word = $1
+						AND abn IS NULL
+					ORDER BY created_at DESC
+				`, {
+					bind: [searchTerm]
+				});
+
+				if (existingData && existingData.length > 0) {
+					console.log(`✅ Found existing data for individual ${searchTerm}, using cached data`);
+					
+					// Extract data from stored records
+					const uniqueTitleRefs = new Map(); // Use Map to avoid duplicates
+					
+					for (const record of existingData) {
+						try {
+							const rdata = typeof record.rdata === 'string' ? JSON.parse(record.rdata) : record.rdata;
+							const realPropertySegment = rdata?.RealPropertySegment || [];
+							
+							// Extract titleReferences from stored data
+							realPropertySegment.forEach(segment => {
+								const titleRef = segment?.IdentityBlock?.TitleReference;
+								const jurisdiction = segment?.IdentityBlock?.Jurisdiction;
+								
+								if (titleRef && !uniqueTitleRefs.has(titleRef)) {
+									uniqueTitleRefs.set(titleRef, {
+										titleReference: titleRef,
+										jurisdiction: jurisdiction || 'NSW', // Default jurisdiction
+										dataId: record.id
+									});
+								}
+							});
+							
+							// Add to counts
+							currentCount += realPropertySegment.length;
+							historicalCount += 0; // Always 0 as per requirements
+						} catch (parseError) {
+							console.error('Error parsing stored data:', parseError);
+							// Continue with next record
+						}
+					}
+					
+					// Convert Map to array
+					const titleRefsArray = Array.from(uniqueTitleRefs.values());
+					allTitleReferences.push(...titleRefsArray);
+					
+					// Build storedDataIds from existing records
+					titleRefsArray.forEach(tr => {
+						storedDataIds.push({
+							titleReference: tr.titleReference,
+							jurisdiction: tr.jurisdiction,
+							dataId: tr.dataId
+						});
+					});
+					
+					// Return cached data
+					return res.json({
+						success: true,
+						current: currentCount,
+						historical: historicalCount,
+						titleReferences: allTitleReferences,
+						storedDataIds: storedDataIds,
+						cached: true // Flag to indicate this is cached data
+					});
+				}
+
+				// No cached data found, proceed with API call
+				console.log(`🔄 No cached data found for individual ${searchTerm}, calling API`);
+
+				// Search for land titles by individual name across all states
+				for (const state of states) {
+					try {
+						const searchResults = await searchLandTitleByPerson(firstName, lastName, state, dob);
+						currentCount += searchResults.current || 0;
+						historicalCount += searchResults.historical || 0;
+						
+						// Store API response for each titleReference
+						if (searchResults.titleReferences && Array.isArray(searchResults.titleReferences) && searchResults.fullApiResponse) {
+							for (const titleRef of searchResults.titleReferences) {
+								allTitleReferences.push(titleRef);
+								
+								// Store in api_data table
+								try {
+									const [result] = await sequelize.query(`
+										INSERT INTO api_data (rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at)
+										VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+										RETURNING id
+									`, {
+										bind: [
+											'land-title-reference',
+											titleRef.titleReference,
+											searchTerm,
+											null, // ABN for individual
+											null, // ACN for individual
+											JSON.stringify(searchResults.fullApiResponse),
+											false
+										]
+									});
+									
+									if (result && result.length > 0) {
+										storedDataIds.push({
+											titleReference: titleRef.titleReference,
+											jurisdiction: titleRef.jurisdiction,
+											dataId: result[0].id
+										});
+									}
+								} catch (dbError) {
+									console.error(`Error storing data for titleReference ${titleRef.titleReference}:`, dbError);
+									// Continue even if storage fails
+								}
+							}
+						}
+					} catch (error) {
+						console.error(`Error searching land title for state ${state}:`, error);
+						// Continue with other states even if one fails
+					}
+				}
+			}
+
+			// Store summary record for organization searches with rtype = 'land-title-organisation'
+			if (type === 'organization' && abn && allTitleReferences.length > 0) {
+				try {
+					// Validate ABN is not null/undefined
+					if (!abn || abn === 'null' || abn === 'undefined') {
+						console.error('❌ Invalid ABN value, skipping summary record storage');
+						throw new Error('Invalid ABN value');
+					}
+
+					// Get company name if not provided
+					let organizationName = companyName;
+					if (!organizationName && abn) {
+						try {
+							const abnInfo = await getABNInfo(abn);
+							organizationName = abnInfo?.EntityName || abnInfo?.Name || abn;
+						} catch (error) {
+							console.error('Error fetching company name from ABN:', error);
+							organizationName = abn;
+						}
+					}
+
+					// Store summary data with rtype = 'land-title-organisation'
+					// Match the structure shown in the database: uuid, allCount, cotality, locatorData, titleOrders
+					const summaryData = {
+						uuid: abn,
+						abn: abn, // Store ABN in rdata for easy retrieval
+						companyName: organizationName || abn, // Store company name in rdata
+						allCount: currentCount + historicalCount,
+						currentCount: currentCount,
+						historicalCount: historicalCount,
+						titleReferences: allTitleReferences,
+						cotality: null,
+						locatorData: null,
+						titleOrders: [] // Will be populated when reports are generated
+					};
+
+					// Check if summary record already exists
+					const [existingSummary] = await sequelize.query(`
+						SELECT id FROM api_data
+						WHERE rtype = 'land-title-organisation' AND abn = $1
+						LIMIT 1
+					`, {
+						bind: [abn]
+					});
+
+					if (existingSummary && existingSummary.length > 0) {
+						// Update existing record - ensure ABN is updated too
+						await sequelize.query(`
+							UPDATE api_data
+							SET rdata = $1, search_word = $2, abn = $3, uuid = $4, updated_at = NOW()
+							WHERE id = $5
+						`, {
+							bind: [
+								JSON.stringify(summaryData),
+								organizationName || abn,
+								abn, // Ensure ABN is updated
+								abn, // Ensure uuid is also updated
+								existingSummary[0].id
+							]
+						});
+						console.log(`✅ Updated summary record for ABN ${abn} with rtype 'land-title-organisation'`);
+					} else {
+						// Insert new record - ensure ABN is properly stored
+						console.log(`📝 Inserting summary record: rtype='land-title-organisation', uuid='${abn}', abn='${abn}', search_word='${organizationName || abn}'`);
+						await sequelize.query(`
+							INSERT INTO api_data (rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at)
+							VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+						`, {
+							bind: [
+								'land-title-organisation',
+								abn, // uuid = abn
+								organizationName || abn, // search_word = company name
+								abn, // abn field = abn (ensure this is properly stored)
+								null, // ACN
+								JSON.stringify(summaryData),
+								false
+							]
+						});
+						console.log(`✅ Stored new summary record for ABN ${abn} with rtype 'land-title-organisation'`);
+					}
+				} catch (summaryError) {
+					console.error('Error storing summary record:', summaryError);
+					// Continue even if summary storage fails
+				}
+			}
+
+			return res.json({
+				success: true,
+				current: currentCount,
+				historical: historicalCount,
+				titleReferences: allTitleReferences,
+				storedDataIds: storedDataIds // Return stored data IDs
+			});
+
+		} catch (apiError) {
+			console.error('Error fetching land title counts from API:', apiError?.response?.data || apiError.message);
+			throw apiError;
+		}
+
+	} catch (error) {
+		console.error('Error in land title counts endpoint:', error?.response?.data || error.message);
+		
+		const status = error?.response?.status || 500;
+		const message = error?.response?.data?.message || error?.message || 'Failed to fetch land title counts';
+
+		return res.status(status).json({
+			success: false,
+			error: 'LAND_TITLE_COUNTS_ERROR',
+			message
+		});
+	}
+});
 
 // Export functions for testing
 module.exports = {

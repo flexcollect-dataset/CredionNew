@@ -474,6 +474,34 @@ class ApiService {
     return this.request<DirectorRelatedSearchResponse>(endpoint);
   }
 
+  async getLandTitleCounts(params: {
+    type: 'organization' | 'individual';
+    abn?: string;
+    companyName?: string;
+    firstName?: string;
+    lastName?: string;
+    dob?: string;
+    startYear?: string;
+    endYear?: string;
+    states: string[];
+  }): Promise<{
+    success: boolean;
+    current: number;
+    historical: number;
+    titleReferences: Array<{ titleReference: string; jurisdiction: string }>;
+    storedDataIds?: Array<{ titleReference: string; jurisdiction: string; dataId: number }>;
+  }> {
+    return this.request<{
+      success: boolean;
+      current: number;
+      historical: number;
+      titleReferences: Array<{ titleReference: string; jurisdiction: string }>;
+    }>('/api/land-title/counts', {
+      method: 'POST',
+      body: JSON.stringify(params)
+    });
+  }
+
 }
 
 export const apiService = new ApiService();
