@@ -13,16 +13,44 @@ const PORT = process.env.PORT || 3001;
 const sanitizeBaseUrl = (url) => (url ? url.replace(/\/$/, '') : '');
 const FRONTEND_BASE_URL = sanitizeBaseUrl(process.env.FRONTEND_APP_URL || process.env.FRONTEND_URL || '');
 
-const allowedOrigins = (process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || 'http://localhost:5173')
+// Allow all origins in production if CORS_ORIGINS is not set, or allow specific origins
+const defaultOrigins = process.env.NODE_ENV === 'production' 
+  ? ['http://localhost:5173', 'https://credion.com.au', 'https://credion.netlify.app', 'https://*.netlify.app']
+  : ['http://localhost:5173'];
+
+const allowedOrigins = (process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || defaultOrigins.join(','))
   .split(',')
   .map(origin => origin.trim())
   .filter(Boolean);
 
+// For Netlify subdomains, allow any netlify.app domain
+const isNetlifyOrigin = (origin) => {
+  return origin && (
+    origin.includes('netlify.app') || 
+    origin.includes('credion.com.au') ||
+    allowedOrigins.includes(origin)
+  );
+};
+
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) {
       return callback(null, true);
     }
+    // Allow if in allowedOrigins list
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    // Allow Netlify domains
+    if (isNetlifyOrigin(origin)) {
+      return callback(null, true);
+    }
+    // Allow in development
+    if (process.env.NODE_ENV !== 'production') {
+      return callback(null, true);
+    }
+    console.log('CORS blocked origin:', origin);
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
@@ -31,7 +59,16 @@ app.use(cors({
 
 app.options('*', cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (!origin) {
+      return callback(null, true);
+    }
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    if (isNetlifyOrigin(origin)) {
+      return callback(null, true);
+    }
+    if (process.env.NODE_ENV !== 'production') {
       return callback(null, true);
     }
     return callback(new Error('Not allowed by CORS'));
