@@ -1,0 +1,1071 @@
+{
+  "id": 244,
+  "rtype": "land-title-organisation",
+  "uuid": "12345678",
+  "search_word": null,
+  "abn": null,
+  "acn": null,
+  "rdata": {
+    "uuid": "12345678",
+    "allCount": 9,
+    "cotality": null,
+    "locatorData": null,
+    "titleOrders": [
+      {
+        "LocationSegment": [
+          {
+            "Address": {
+              "City": "PENSHURST",
+              "State": "NSW",
+              "PostCode": "2222",
+              "StreetName": "AUSTRAL",
+              "StreetType": "ST",
+              "StreetNumber": "20"
+            },
+            "Identifier": "1"
+          }
+        ],
+        "ResourceSegment": [
+          {
+            "Identifier": "b2ea4702-08dd-4d33-99f5-fc8b3b15555f",
+            "ResourceURI": "https://online.globalx.com.au/api/national-property/title-orders/OR-1BS2DDBX4VH8LV/resources/b2ea4702-08dd-4d33-99f5-fc8b3b15555f",
+            "ExpiryDateTime": "2025-12-15T11:14:59.7426983+10:00",
+            "ResourceStatus": "AVAILABLE",
+            "CreatedDateTime": "2025-11-17T11:14:56.687+10:00"
+          }
+        ],
+        "OrderResultBlock": {
+          "ResultURI": "https://online.globalx.com.au/api/national-property/title-orders/OR-1BS2DDBX4VH8LV",
+          "DataSources": [
+            {
+              "Type": "NSW-LAND_REGISTRY-CERTIFICATE_OF_TITLE",
+              "Authority": "NSW-LAND_REGISTRY",
+              "EditionNumber": "4",
+              "SearchDateTime": "2025-11-17T01:14:00+00:00",
+              "ResourceIdentifier": "b2ea4702-08dd-4d33-99f5-fc8b3b15555f",
+              "EditionIssuedDateTime": "2012-03-20T00:00:00+10:00"
+            }
+          ],
+          "OrderStatus": "COMPLETE",
+          "ServiceCode": "TITLE",
+          "OrderReference": "orderReference",
+          "OrderIdentifier": "OR-1BS2DDBX4VH8LV",
+          "OrderExpiryDateTime": "2025-12-15T11:14:59.7426983+10:00",
+          "OrderCreatedDateTime": "2025-11-17T01:14:38.232444+00:00",
+          "OrderReceivedDateTime": "2025-11-17T01:14:38.232444+00:00",
+          "OrderCompletedDateTime": "2025-11-17T11:14:59.7426983+10:00"
+        },
+        "ServiceResultBlock": {
+          "TitleResultStatus": "CURRENT",
+          "TitleResourceIdentifier": "b2ea4702-08dd-4d33-99f5-fc8b3b15555f"
+        },
+        "RealPropertySegment": [
+          {
+            "IdentityBlock": {
+              "Jurisdiction": "NSW",
+              "AddressString": "20 AUSTRAL ST, PENSHURST NSW 2222",
+              "TitleReference": "1/191455",
+              "ParcelDescription": [
+                "1/DP191455"
+              ],
+              "LocationIdentifier": "1"
+            },
+            "RegistryBlock": {
+              "Folio": "101",
+              "Plans": [
+                {
+                  "Type": "DEPOSITED_PLAN",
+                  "Reference": "191455",
+                  "LotReference": "1",
+                  "ParcelDescription": "1/DP191455"
+                }
+              ],
+              "Volume": "3914",
+              "Interests": [
+                {
+                  "Type": "LEGAL",
+                  "Dealing": [
+                    {
+                      "Type": "EASEMENT",
+                      "Reference": "U301669"
+                    }
+                  ],
+                  "SubType": "EASEMENT",
+                  "Identifier": 1,
+                  "Description": "U301669 EASEMENT TO DRAIN WATER 1 WIDE AFFECTING PART OF THE LAND ABOVE DESCRIBED SHOWN SO BURDENED IN PLAN WITH U301669"
+                },
+                {
+                  "Type": "LEGAL",
+                  "Dealing": [
+                    {
+                      "Type": "COVENANT",
+                      "Reference": "AF713717"
+                    }
+                  ],
+                  "SubType": "COVENANT",
+                  "Identifier": 2,
+                  "Description": "AF713717 POSITIVE COVENANT"
+                },
+                {
+                  "Type": "LEGAL",
+                  "Dealing": [
+                    {
+                      "Type": "LEASE",
+                      "Reference": "AG860319"
+                    }
+                  ],
+                  "SubType": "LEASE",
+                  "Identifier": 3,
+                  "Description": "AG860319 LEASE TO LITTLE ACHIEVERS KINDERGARTEN PTY LTD EXPIRES: 31/12/2016. OPTION OF RENEWAL: 5 YEARS."
+                }
+              ],
+              "Ownership": {
+                "Owners": [
+                  {
+                    "Name": "KML CONSTRUCTIONS & DEVELOPMENTS PTY LIMITED",
+                    "Type": "ORGANISATION"
+                  }
+                ],
+                "Tenancy": "SOLE_PROPRIETOR",
+                "Dealings": [
+                  {
+                    "Type": "TRANSFER",
+                    "Reference": "8972458"
+                  }
+                ]
+              },
+              "TitleType": "DEPOSITED_PLAN",
+              "EstateType": "FEE_SIMPLE"
+            }
+          }
+        ]
+      },
+      {
+        "LocationSegment": [
+          {
+            "Address": {
+              "City": "OATLEY",
+              "State": "NSW",
+              "PostCode": "2223",
+              "StreetName": "MULGA",
+              "StreetType": "RD",
+              "StreetNumber": "89"
+            },
+            "Identifier": "1"
+          }
+        ],
+        "ResourceSegment": [
+          {
+            "Identifier": "64b3c33e-6fb1-4cd0-9a8d-44274a1f0664",
+            "ResourceURI": "https://online.globalx.com.au/api/national-property/title-orders/OR-1BS2DO9RKJ2117/resources/64b3c33e-6fb1-4cd0-9a8d-44274a1f0664",
+            "ExpiryDateTime": "2025-12-15T11:15:40.7854215+10:00",
+            "ResourceStatus": "AVAILABLE",
+            "CreatedDateTime": "2025-11-17T11:15:37.58+10:00"
+          }
+        ],
+        "OrderResultBlock": {
+          "ResultURI": "https://online.globalx.com.au/api/national-property/title-orders/OR-1BS2DO9RKJ2117",
+          "DataSources": [
+            {
+              "Type": "NSW-LAND_REGISTRY-CERTIFICATE_OF_TITLE",
+              "Authority": "NSW-LAND_REGISTRY",
+              "EditionNumber": "10",
+              "SearchDateTime": "2025-11-17T01:15:00+00:00",
+              "ResourceIdentifier": "64b3c33e-6fb1-4cd0-9a8d-44274a1f0664",
+              "EditionIssuedDateTime": "2022-05-31T00:00:00+10:00"
+            }
+          ],
+          "OrderStatus": "COMPLETE",
+          "ServiceCode": "TITLE",
+          "OrderReference": "orderReference",
+          "OrderIdentifier": "OR-1BS2DO9RKJ2117",
+          "OrderExpiryDateTime": "2025-12-15T11:15:40.7854215+10:00",
+          "OrderCreatedDateTime": "2025-11-17T01:15:29.331614+00:00",
+          "OrderReceivedDateTime": "2025-11-17T01:15:29.331614+00:00",
+          "OrderCompletedDateTime": "2025-11-17T11:15:40.7854215+10:00"
+        },
+        "ServiceResultBlock": {
+          "TitleResultStatus": "CURRENT",
+          "TitleResourceIdentifier": "64b3c33e-6fb1-4cd0-9a8d-44274a1f0664"
+        },
+        "RealPropertySegment": [
+          {
+            "IdentityBlock": {
+              "Locality": "OATLEY",
+              "Jurisdiction": "NSW",
+              "AddressString": "89 MULGA RD, OATLEY NSW 2223",
+              "TitleReference": "11/1118195",
+              "ParcelDescription": [
+                "11/DP1118195"
+              ],
+              "LocationIdentifier": "1"
+            },
+            "RegistryBlock": {
+              "Plans": [
+                {
+                  "Type": "DEPOSITED_PLAN",
+                  "Reference": "1118195",
+                  "LotReference": "11",
+                  "ParcelDescription": "11/DP1118195"
+                }
+              ],
+              "Interests": [
+                {
+                  "Type": "LEGAL",
+                  "Dealing": [
+                    {
+                      "Type": "LEASE",
+                      "Reference": "AN939108"
+                    }
+                  ],
+                  "SubType": "LEASE",
+                  "Identifier": 1,
+                  "Description": "AN939108 LEASE TO VINEET GURMUKHANI OF SHOP 1, 89 MULGA ROAD, OATLEY. EXPIRES: 30/6/2023. OPTION OF RENEWAL: 5 YEARS."
+                },
+                {
+                  "Type": "LEGAL",
+                  "Dealing": [
+                    {
+                      "Type": "LEASE",
+                      "Reference": "AN988896"
+                    }
+                  ],
+                  "SubType": "LEASE",
+                  "Identifier": 2,
+                  "Description": "AN988896 LEASE TO ROTARY CLUB OF HURSTVILLE INCORPORATED OF SHOP 2, 89 MULGA ROAD, OATLEY. EXPIRES: 19/12/2023. OPTION OF RENEWAL: 5 YEARS."
+                },
+                {
+                  "Type": "LEGAL",
+                  "Dealing": [
+                    {
+                      "Type": "LEASE",
+                      "Reference": "AP763949"
+                    }
+                  ],
+                  "SubType": "LEASE",
+                  "Identifier": 3,
+                  "Description": "AP763949 LEASE TO GUNNEBO AUSTRALIA PTY LTD OF SUITE 3, 89 MULGA ROAD, OATLEY. EXPIRES: 31/8/2021. OPTION OF RENEWAL: 2 YEARS."
+                },
+                {
+                  "Type": "LEGAL",
+                  "Dealing": [
+                    {
+                      "Type": "LEASE",
+                      "Reference": "AS172619"
+                    }
+                  ],
+                  "SubType": "LEASE",
+                  "Identifier": 4,
+                  "Description": "AS172619 LEASE TO RE THINKMORE PTY LTD OF SUITE 4, 89 MULGA ROAD OATLEY. EXPIRES: 30/4/2026. OPTION OF RENEWAL: 4 YEARS."
+                }
+              ],
+              "Ownership": {
+                "Owners": [
+                  {
+                    "Name": "KML CONSTRUCTIONS & DEVELOPMENTS PTY LTD",
+                    "Type": "ORGANISATION"
+                  }
+                ],
+                "Tenancy": "SOLE_PROPRIETOR"
+              },
+              "TitleType": "DEPOSITED_PLAN",
+              "EstateType": "FEE_SIMPLE",
+              "UnregisteredDealings": [
+                {
+                  "Type": "UNKNOWN",
+                  "Reference": "SP82404"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "LocationSegment": [
+          {
+            "Address": {
+              "StreetName": ""
+            },
+            "Identifier": ""
+          }
+        ],
+        "ResourceSegment": [
+          {
+            "Identifier": "6e7a9391-17b3-468c-8746-0bb794da5bfd",
+            "ResourceURI": "https://online.globalx.com.au/api/national-property/title-orders/OR-1BS2DZ58JNOXXA/resources/6e7a9391-17b3-468c-8746-0bb794da5bfd",
+            "ExpiryDateTime": "2025-12-15T11:16:30.9527488+10:00",
+            "ResourceStatus": "AVAILABLE",
+            "CreatedDateTime": "2025-11-17T11:16:27.623+10:00"
+          }
+        ],
+        "OrderResultBlock": {
+          "ResultURI": "https://online.globalx.com.au/api/national-property/title-orders/OR-1BS2DZ58JNOXXA",
+          "DataSources": [
+            {
+              "Type": "NSW-LAND_REGISTRY-CERTIFICATE_OF_TITLE",
+              "Authority": "NSW-LAND_REGISTRY",
+              "SearchDateTime": "2025-11-17T01:16:00+00:00",
+              "ResourceIdentifier": "6e7a9391-17b3-468c-8746-0bb794da5bfd"
+            }
+          ],
+          "OrderStatus": "COMPLETE",
+          "ServiceCode": "TITLE",
+          "OrderReference": "orderReference",
+          "OrderIdentifier": "OR-1BS2DZ58JNOXXA",
+          "OrderExpiryDateTime": "2025-12-15T11:16:30.9527488+10:00",
+          "OrderCreatedDateTime": "2025-11-17T01:16:20.124364+00:00",
+          "OrderReceivedDateTime": "2025-11-17T01:16:20.124364+00:00",
+          "OrderCompletedDateTime": "2025-11-17T11:16:30.9527488+10:00"
+        },
+        "ServiceResultBlock": {
+          "TitleResultStatus": "CURRENT_PDF_ONLY",
+          "TitleResourceIdentifier": "6e7a9391-17b3-468c-8746-0bb794da5bfd"
+        }
+      },
+      {
+        "LocationSegment": [
+          {
+            "Address": {
+              "City": "COBAR",
+              "State": "NSW",
+              "PostCode": "2835",
+              "StreetName": "CAMPBELL",
+              "StreetType": "ST",
+              "StreetNumber": "20"
+            },
+            "Identifier": "1"
+          }
+        ],
+        "ResourceSegment": [
+          {
+            "Identifier": "563fac35-7230-4726-b5eb-9ee5fef71a26",
+            "ResourceURI": "https://online.globalx.com.au/api/national-property/title-orders/OR-1BS2EA05TL5OM5/resources/563fac35-7230-4726-b5eb-9ee5fef71a26",
+            "ExpiryDateTime": "2025-12-15T11:17:21.9402624+10:00",
+            "ResourceStatus": "AVAILABLE",
+            "CreatedDateTime": "2025-11-17T11:17:18.607+10:00"
+          }
+        ],
+        "OrderResultBlock": {
+          "ResultURI": "https://online.globalx.com.au/api/national-property/title-orders/OR-1BS2EA05TL5OM5",
+          "DataSources": [
+            {
+              "Type": "NSW-LAND_REGISTRY-CERTIFICATE_OF_TITLE",
+              "Authority": "NSW-LAND_REGISTRY",
+              "EditionNumber": "3",
+              "SearchDateTime": "2025-11-17T01:17:00+00:00",
+              "ResourceIdentifier": "563fac35-7230-4726-b5eb-9ee5fef71a26",
+              "EditionIssuedDateTime": "2004-05-22T00:00:00+10:00"
+            }
+          ],
+          "OrderStatus": "COMPLETE",
+          "ServiceCode": "TITLE",
+          "OrderReference": "orderReference",
+          "OrderIdentifier": "OR-1BS2EA05TL5OM5",
+          "OrderExpiryDateTime": "2025-12-15T11:17:21.9402624+10:00",
+          "OrderCreatedDateTime": "2025-11-17T01:17:10.84487+00:00",
+          "OrderReceivedDateTime": "2025-11-17T01:17:10.84487+00:00",
+          "OrderCompletedDateTime": "2025-11-17T11:17:21.9402624+10:00"
+        },
+        "ServiceResultBlock": {
+          "TitleResultStatus": "CURRENT",
+          "TitleResourceIdentifier": "563fac35-7230-4726-b5eb-9ee5fef71a26"
+        },
+        "RealPropertySegment": [
+          {
+            "IdentityBlock": {
+              "Locality": "COBAR",
+              "Jurisdiction": "NSW",
+              "AddressString": "20 CAMPBELL ST, COBAR NSW 2835",
+              "TitleReference": "10/3/1355",
+              "ParcelDescription": [
+                "10/3/DP1355",
+                "50/DP589930"
+              ],
+              "LocationIdentifier": "1"
+            },
+            "RegistryBlock": {
+              "Folio": "67",
+              "Plans": [
+                {
+                  "Type": "DEPOSITED_PLAN",
+                  "Reference": "1355",
+                  "LotReference": "10",
+                  "SectionReference": "3",
+                  "ParcelDescription": "10/3/DP1355"
+                },
+                {
+                  "Type": "DEPOSITED_PLAN",
+                  "Reference": "589930",
+                  "LotReference": "50",
+                  "ParcelDescription": "50/DP589930"
+                }
+              ],
+              "Volume": "15454",
+              "Ownership": {
+                "Owners": [
+                  {
+                    "Name": "KML INDUSTRIES PTY LIMITED",
+                    "Type": "ORGANISATION"
+                  }
+                ],
+                "Tenancy": "SOLE_PROPRIETOR",
+                "Dealings": [
+                  {
+                    "Type": "TRANSFER",
+                    "Reference": "AA659686"
+                  }
+                ]
+              },
+              "TitleType": "DEPOSITED_PLAN",
+              "EstateType": "FEE_SIMPLE"
+            }
+          }
+        ]
+      },
+      {
+        "LocationSegment": [
+          {
+            "Address": {
+              "City": "COBAR",
+              "State": "NSW",
+              "PostCode": "2835",
+              "StreetName": "CAMPBELL",
+              "StreetType": "ST",
+              "StreetNumber": "20"
+            },
+            "Identifier": "1"
+          }
+        ],
+        "ResourceSegment": [
+          {
+            "Identifier": "51f35a34-8443-4ac5-b9cd-6b6e44ac0695",
+            "ResourceURI": "https://online.globalx.com.au/api/national-property/title-orders/OR-1BS2EKYTY1AFEV/resources/51f35a34-8443-4ac5-b9cd-6b6e44ac0695",
+            "ExpiryDateTime": "2025-12-15T11:18:13.4241696+10:00",
+            "ResourceStatus": "AVAILABLE",
+            "CreatedDateTime": "2025-11-17T11:18:10.25+10:00"
+          }
+        ],
+        "OrderResultBlock": {
+          "ResultURI": "https://online.globalx.com.au/api/national-property/title-orders/OR-1BS2EKYTY1AFEV",
+          "DataSources": [
+            {
+              "Type": "NSW-LAND_REGISTRY-CERTIFICATE_OF_TITLE",
+              "Authority": "NSW-LAND_REGISTRY",
+              "EditionNumber": "4",
+              "SearchDateTime": "2025-11-17T01:18:00+00:00",
+              "ResourceIdentifier": "51f35a34-8443-4ac5-b9cd-6b6e44ac0695",
+              "EditionIssuedDateTime": "2004-05-22T00:00:00+10:00"
+            }
+          ],
+          "OrderStatus": "COMPLETE",
+          "ServiceCode": "TITLE",
+          "OrderReference": "orderReference",
+          "OrderIdentifier": "OR-1BS2EKYTY1AFEV",
+          "OrderExpiryDateTime": "2025-12-15T11:18:13.4241696+10:00",
+          "OrderCreatedDateTime": "2025-11-17T01:18:02.05162+00:00",
+          "OrderReceivedDateTime": "2025-11-17T01:18:02.05162+00:00",
+          "OrderCompletedDateTime": "2025-11-17T11:18:13.4241696+10:00"
+        },
+        "ServiceResultBlock": {
+          "TitleResultStatus": "CURRENT",
+          "TitleResourceIdentifier": "51f35a34-8443-4ac5-b9cd-6b6e44ac0695"
+        },
+        "RealPropertySegment": [
+          {
+            "IdentityBlock": {
+              "Locality": "COBAR",
+              "Jurisdiction": "NSW",
+              "AddressString": "20 CAMPBELL ST, COBAR NSW 2835",
+              "TitleReference": "50/589930",
+              "ParcelDescription": [
+                "50/DP589930",
+                "10/3/DP1355"
+              ],
+              "LocationIdentifier": "1"
+            },
+            "RegistryBlock": {
+              "Folio": "212",
+              "Plans": [
+                {
+                  "Type": "DEPOSITED_PLAN",
+                  "Reference": "589930",
+                  "LotReference": "50",
+                  "ParcelDescription": "50/DP589930"
+                },
+                {
+                  "Type": "DEPOSITED_PLAN",
+                  "Reference": "1355",
+                  "LotReference": "10",
+                  "SectionReference": "3",
+                  "ParcelDescription": "10/3/DP1355"
+                }
+              ],
+              "Volume": "13377",
+              "Interests": [
+                {
+                  "Type": "LEGAL",
+                  "Dealing": [
+                    {
+                      "Type": "COVENANT",
+                      "Reference": "Q322608"
+                    }
+                  ],
+                  "SubType": "COVENANT",
+                  "Identifier": 1,
+                  "Description": "Q322608 COVENANT"
+                }
+              ],
+              "Ownership": {
+                "Owners": [
+                  {
+                    "Name": "KML INDUSTRIES PTY LIMITED",
+                    "Type": "ORGANISATION"
+                  }
+                ],
+                "Tenancy": "SOLE_PROPRIETOR",
+                "Dealings": [
+                  {
+                    "Type": "TRANSFER",
+                    "Reference": "AA659686"
+                  }
+                ]
+              },
+              "TitleType": "DEPOSITED_PLAN",
+              "EstateType": "FEE_SIMPLE"
+            }
+          }
+        ]
+      },
+      {
+        "LocationSegment": [
+          {
+            "Address": {
+              "City": "COBAR",
+              "State": "NSW",
+              "PostCode": "2835",
+              "StreetName": "HARTMAN",
+              "StreetType": "ST",
+              "StreetNumber": "16"
+            },
+            "Identifier": "1"
+          }
+        ],
+        "ResourceSegment": [
+          {
+            "Identifier": "82c4a3b5-9727-489a-8cc7-bbdc25414241",
+            "ResourceURI": "https://online.globalx.com.au/api/national-property/title-orders/OR-1BS2EVUAX5XC60/resources/82c4a3b5-9727-489a-8cc7-bbdc25414241",
+            "ExpiryDateTime": "2025-12-15T11:19:03.9303395+10:00",
+            "ResourceStatus": "AVAILABLE",
+            "CreatedDateTime": "2025-11-17T11:19:01+10:00"
+          }
+        ],
+        "OrderResultBlock": {
+          "ResultURI": "https://online.globalx.com.au/api/national-property/title-orders/OR-1BS2EVUAX5XC60",
+          "DataSources": [
+            {
+              "Type": "NSW-LAND_REGISTRY-CERTIFICATE_OF_TITLE",
+              "Authority": "NSW-LAND_REGISTRY",
+              "EditionNumber": "2",
+              "SearchDateTime": "2025-11-17T01:18:00+00:00",
+              "ResourceIdentifier": "82c4a3b5-9727-489a-8cc7-bbdc25414241",
+              "EditionIssuedDateTime": "2012-06-14T00:00:00+10:00"
+            }
+          ],
+          "OrderStatus": "COMPLETE",
+          "ServiceCode": "TITLE",
+          "OrderReference": "orderReference",
+          "OrderIdentifier": "OR-1BS2EVUAX5XC60",
+          "OrderExpiryDateTime": "2025-12-15T11:19:03.9303395+10:00",
+          "OrderCreatedDateTime": "2025-11-17T01:18:52.844006+00:00",
+          "OrderReceivedDateTime": "2025-11-17T01:18:52.844006+00:00",
+          "OrderCompletedDateTime": "2025-11-17T11:19:03.9303395+10:00"
+        },
+        "ServiceResultBlock": {
+          "TitleResultStatus": "CURRENT",
+          "TitleResourceIdentifier": "82c4a3b5-9727-489a-8cc7-bbdc25414241"
+        },
+        "RealPropertySegment": [
+          {
+            "IdentityBlock": {
+              "Locality": "COBAR",
+              "Jurisdiction": "NSW",
+              "AddressString": "16 HARTMAN ST, COBAR NSW 2835",
+              "TitleReference": "9/3/1355",
+              "ParcelDescription": [
+                "9/3/DP1355"
+              ],
+              "LocationIdentifier": "1"
+            },
+            "RegistryBlock": {
+              "Folio": "66",
+              "Plans": [
+                {
+                  "Type": "DEPOSITED_PLAN",
+                  "Reference": "1355",
+                  "LotReference": "9",
+                  "SectionReference": "3",
+                  "ParcelDescription": "9/3/DP1355"
+                }
+              ],
+              "Volume": "15454",
+              "Ownership": {
+                "Owners": [
+                  {
+                    "Name": "KML INDUSTRIES PTY LIMITED",
+                    "Type": "ORGANISATION"
+                  }
+                ],
+                "Tenancy": "SOLE_PROPRIETOR",
+                "Dealings": [
+                  {
+                    "Type": "TRANSFER",
+                    "Reference": "AH46460"
+                  }
+                ]
+              },
+              "TitleType": "DEPOSITED_PLAN",
+              "EstateType": "FEE_SIMPLE"
+            }
+          }
+        ]
+      },
+      {
+        "LocationSegment": [
+          {
+            "Address": {
+              "City": "ELIZABETH BAY",
+              "Unit": "209",
+              "State": "NSW",
+              "PostCode": "2011",
+              "StreetName": "MACLEAY",
+              "StreetType": "ST",
+              "StreetNumber": "46A"
+            },
+            "Identifier": "1"
+          }
+        ],
+        "ResourceSegment": [
+          {
+            "Identifier": "7d067aa9-cfe5-4416-ae71-dd33e64e19e4",
+            "ResourceURI": "https://online.globalx.com.au/api/national-property/title-orders/OR-1BS2F6SYRMGP15/resources/7d067aa9-cfe5-4416-ae71-dd33e64e19e4",
+            "ExpiryDateTime": "2025-12-15T11:19:54.8895472+10:00",
+            "ResourceStatus": "AVAILABLE",
+            "CreatedDateTime": "2025-11-17T11:19:51.577+10:00"
+          }
+        ],
+        "OrderResultBlock": {
+          "ResultURI": "https://online.globalx.com.au/api/national-property/title-orders/OR-1BS2F6SYRMGP15",
+          "DataSources": [
+            {
+              "Type": "NSW-LAND_REGISTRY-CERTIFICATE_OF_TITLE",
+              "Authority": "NSW-LAND_REGISTRY",
+              "EditionNumber": "4",
+              "SearchDateTime": "2025-11-17T01:19:00+00:00",
+              "ResourceIdentifier": "7d067aa9-cfe5-4416-ae71-dd33e64e19e4",
+              "EditionIssuedDateTime": "2018-08-02T00:00:00+10:00"
+            }
+          ],
+          "OrderStatus": "COMPLETE",
+          "ServiceCode": "TITLE",
+          "OrderReference": "orderReference",
+          "OrderIdentifier": "OR-1BS2F6SYRMGP15",
+          "OrderExpiryDateTime": "2025-12-15T11:19:54.8895472+10:00",
+          "OrderCreatedDateTime": "2025-11-17T01:19:44.050026+00:00",
+          "OrderReceivedDateTime": "2025-11-17T01:19:44.050026+00:00",
+          "OrderCompletedDateTime": "2025-11-17T11:19:54.8895472+10:00"
+        },
+        "ServiceResultBlock": {
+          "TitleResultStatus": "CURRENT",
+          "TitleResourceIdentifier": "7d067aa9-cfe5-4416-ae71-dd33e64e19e4"
+        },
+        "RealPropertySegment": [
+          {
+            "IdentityBlock": {
+              "Locality": "ELIZABETH BAY",
+              "Jurisdiction": "NSW",
+              "AddressString": "UNIT 209 46A MACLEAY ST, ELIZABETH BAY NSW 2011",
+              "TitleReference": "17/SP80345",
+              "ParcelDescription": [
+                "17/SP80345"
+              ],
+              "LocationIdentifier": "1"
+            },
+            "RegistryBlock": {
+              "Plans": [
+                {
+                  "Type": "STRATA_PLAN",
+                  "Reference": "80345",
+                  "LotReference": "17",
+                  "ParcelDescription": "17/SP80345"
+                }
+              ],
+              "Interests": [
+                {
+                  "Type": "LEGAL",
+                  "Dealing": [
+                    {
+                      "Type": "LEASE",
+                      "Reference": "AN545396"
+                    }
+                  ],
+                  "SubType": "LEASE",
+                  "Identifier": 1,
+                  "Description": "AN545396 LEASE TO COUTTS AND CO LAWYERS PTY LTD EXPIRES: 31/5/2021. OPTION OF RENEWAL: 3 YEARS."
+                }
+              ],
+              "Ownership": {
+                "Owners": [
+                  {
+                    "Name": "KML INVESTMENTS PTY LTD",
+                    "Type": "ORGANISATION"
+                  }
+                ],
+                "Tenancy": "SOLE_PROPRIETOR",
+                "Dealings": [
+                  {
+                    "Type": "TRANSFER",
+                    "Reference": "AF687855"
+                  }
+                ]
+              },
+              "TitleType": "STRATA_PLAN",
+              "EstateType": "FEE_SIMPLE"
+            }
+          }
+        ]
+      },
+      {
+        "LocationSegment": [
+          {
+            "Address": {
+              "City": "GLEDSWOOD HILLS",
+              "State": "NSW",
+              "PostCode": "2557",
+              "StreetName": "BOWEN",
+              "StreetType": "CCT",
+              "StreetNumber": "8"
+            },
+            "Identifier": "1"
+          }
+        ],
+        "ResourceSegment": [
+          {
+            "Identifier": "0bae30de-d6b6-4684-8153-ef67c04f98a3",
+            "ResourceURI": "https://online.globalx.com.au/api/national-property/title-orders/OR-1BS2FHRI69HXMQ/resources/0bae30de-d6b6-4684-8153-ef67c04f98a3",
+            "ExpiryDateTime": "2025-12-15T11:20:46.4701087+10:00",
+            "ResourceStatus": "AVAILABLE",
+            "CreatedDateTime": "2025-11-17T11:20:43.017+10:00"
+          }
+        ],
+        "OrderResultBlock": {
+          "ResultURI": "https://online.globalx.com.au/api/national-property/title-orders/OR-1BS2FHRI69HXMQ",
+          "DataSources": [
+            {
+              "Type": "NSW-LAND_REGISTRY-CERTIFICATE_OF_TITLE",
+              "Authority": "NSW-LAND_REGISTRY",
+              "EditionNumber": "3",
+              "SearchDateTime": "2025-11-17T01:20:00+00:00",
+              "ResourceIdentifier": "0bae30de-d6b6-4684-8153-ef67c04f98a3",
+              "EditionIssuedDateTime": "2018-05-28T00:00:00+10:00"
+            }
+          ],
+          "OrderStatus": "COMPLETE",
+          "ServiceCode": "TITLE",
+          "OrderReference": "orderReference",
+          "OrderIdentifier": "OR-1BS2FHRI69HXMQ",
+          "OrderExpiryDateTime": "2025-12-15T11:20:46.4701087+10:00",
+          "OrderCreatedDateTime": "2025-11-17T01:20:35.240062+00:00",
+          "OrderReceivedDateTime": "2025-11-17T01:20:35.240062+00:00",
+          "OrderCompletedDateTime": "2025-11-17T11:20:46.4701087+10:00"
+        },
+        "ServiceResultBlock": {
+          "TitleResultStatus": "CURRENT",
+          "TitleResourceIdentifier": "0bae30de-d6b6-4684-8153-ef67c04f98a3"
+        },
+        "RealPropertySegment": [
+          {
+            "IdentityBlock": {
+              "Locality": "GLEDSWOOD HILLS",
+              "Jurisdiction": "NSW",
+              "AddressString": "8 BOWEN CCT, GLEDSWOOD HILLS NSW 2557",
+              "TitleReference": "2341/1209496",
+              "ParcelDescription": [
+                "2341/DP1209496"
+              ],
+              "LocationIdentifier": "1"
+            },
+            "RegistryBlock": {
+              "Plans": [
+                {
+                  "Type": "DEPOSITED_PLAN",
+                  "Reference": "1209496",
+                  "LotReference": "2341",
+                  "ParcelDescription": "2341/DP1209496"
+                }
+              ],
+              "Interests": [
+                {
+                  "Type": "LEGAL",
+                  "SubType": "EASEMENT",
+                  "Identifier": 1,
+                  "Description": "DP1161618 RESTRICTION(S) ON THE USE OF LAND REFERRED TO AND NUMBERED (9) IN THE S.88B INSTRUMENT"
+                },
+                {
+                  "Type": "LEGAL",
+                  "SubType": "EASEMENT",
+                  "Identifier": 2,
+                  "Description": "DP1209496 EASEMENT TO DRAIN WATER 1.5 METRE(S) WIDE AFFECTING THE PART(S) SHOWN SO BURDENED IN THE TITLE DIAGRAM"
+                },
+                {
+                  "Type": "LEGAL",
+                  "SubType": "EASEMENT",
+                  "Identifier": 3,
+                  "Description": "DP1209496 EASEMENT TO DRAIN WATER 1.5 METRE(S) WIDE APPURTENANT TO THE LAND ABOVE DESCRIBED"
+                },
+                {
+                  "Type": "LEGAL",
+                  "SubType": "EASEMENT",
+                  "Identifier": 4,
+                  "Description": "DP1209496 RESTRICTION(S) ON THE USE OF LAND REFERRED TO AND NUMBERED (2) IN THE S.88B INSTRUMENT AFFECTING THE PART(S) SHOWN SO BURDENED IN THE TITLE DIAGRAM"
+                },
+                {
+                  "Type": "LEGAL",
+                  "SubType": "COVENANT",
+                  "Identifier": 5,
+                  "Description": "DP1209496 POSITIVE COVENANT REFERRED TO AND NUMBERED (3) IN THE S.88B INSTRUMENT AFFECTING THE PART(S) SHOWN SO BURDENED IN THE TITLE DIAGRAM"
+                },
+                {
+                  "Type": "LEGAL",
+                  "SubType": "EASEMENT",
+                  "Identifier": 6,
+                  "Description": "DP1209496 RESTRICTION(S) ON THE USE OF LAND REFERRED TO AND NUMBERED (4) IN THE S.88B INSTRUMENT"
+                },
+                {
+                  "Type": "LEGAL",
+                  "SubType": "EASEMENT",
+                  "Identifier": 7,
+                  "Description": "DP1209496 RESTRICTION(S) ON THE USE OF LAND REFERRED TO AND NUMBERED (6) IN THE S.88B INSTRUMENT"
+                },
+                {
+                  "Type": "LEGAL",
+                  "SubType": "COVENANT",
+                  "Identifier": 8,
+                  "Description": "DP1209496 POSITIVE COVENANT REFERRED TO AND NUMBERED (7) IN THE S.88B INSTRUMENT"
+                },
+                {
+                  "Type": "LEGAL",
+                  "SubType": "EASEMENT",
+                  "Identifier": 9,
+                  "Description": "DP1209496 RESTRICTION(S) ON THE USE OF LAND REFERRED TO AND NUMBERED (8) IN THE S.88B INSTRUMENT"
+                }
+              ],
+              "Ownership": {
+                "Owners": [
+                  {
+                    "Name": "KML PRIVATE WEALTH PTY LTD",
+                    "Type": "ORGANISATION"
+                  }
+                ],
+                "Tenancy": "SOLE_PROPRIETOR",
+                "Dealings": [
+                  {
+                    "Type": "TRANSFER",
+                    "Reference": "AN368334"
+                  }
+                ]
+              },
+              "TitleType": "DEPOSITED_PLAN",
+              "EstateType": "FEE_SIMPLE"
+            }
+          }
+        ]
+      },
+      {
+        "LocationSegment": [
+          {
+            "Address": {
+              "City": "CARLTON",
+              "State": "NSW",
+              "PostCode": "2218",
+              "StreetName": "PRINCES",
+              "StreetType": "HWY",
+              "StreetNumber": "367"
+            },
+            "Identifier": "1"
+          }
+        ],
+        "ResourceSegment": [
+          {
+            "Identifier": "28ea40bc-4a84-4550-aecb-7de968286480",
+            "ResourceURI": "https://online.globalx.com.au/api/national-property/title-orders/OR-1BS2FSNCQU8LMQ/resources/28ea40bc-4a84-4550-aecb-7de968286480",
+            "ExpiryDateTime": "2025-12-15T11:21:37.4484148+10:00",
+            "ResourceStatus": "AVAILABLE",
+            "CreatedDateTime": "2025-11-17T11:21:33.763+10:00"
+          }
+        ],
+        "OrderResultBlock": {
+          "ResultURI": "https://online.globalx.com.au/api/national-property/title-orders/OR-1BS2FSNCQU8LMQ",
+          "DataSources": [
+            {
+              "Type": "NSW-LAND_REGISTRY-CERTIFICATE_OF_TITLE",
+              "Authority": "NSW-LAND_REGISTRY",
+              "EditionNumber": "9",
+              "SearchDateTime": "2025-11-17T01:21:00+00:00",
+              "ResourceIdentifier": "28ea40bc-4a84-4550-aecb-7de968286480",
+              "EditionIssuedDateTime": "2023-06-13T00:00:00+10:00"
+            }
+          ],
+          "OrderStatus": "COMPLETE",
+          "ServiceCode": "TITLE",
+          "OrderReference": "orderReference",
+          "OrderIdentifier": "OR-1BS2FSNCQU8LMQ",
+          "OrderExpiryDateTime": "2025-12-15T11:21:37.4484148+10:00",
+          "OrderCreatedDateTime": "2025-11-17T01:21:26.081368+00:00",
+          "OrderReceivedDateTime": "2025-11-17T01:21:26.081368+00:00",
+          "OrderCompletedDateTime": "2025-11-17T11:21:37.4484148+10:00"
+        },
+        "ServiceResultBlock": {
+          "TitleResultStatus": "CURRENT",
+          "TitleResourceIdentifier": "28ea40bc-4a84-4550-aecb-7de968286480"
+        },
+        "RealPropertySegment": [
+          {
+            "IdentityBlock": {
+              "Locality": "ALLAWAH",
+              "Jurisdiction": "NSW",
+              "AddressString": "367 PRINCES HWY, CARLTON NSW 2218",
+              "TitleReference": "101/810718",
+              "ParcelDescription": [
+                "101/DP810718"
+              ],
+              "LocationIdentifier": "1"
+            },
+            "RegistryBlock": {
+              "Plans": [
+                {
+                  "Type": "DEPOSITED_PLAN",
+                  "Reference": "810718",
+                  "LotReference": "101",
+                  "ParcelDescription": "101/DP810718"
+                }
+              ],
+              "Interests": [
+                {
+                  "Type": "LEGAL",
+                  "Dealing": [
+                    {
+                      "Type": "LEASE",
+                      "Reference": "AP149132"
+                    }
+                  ],
+                  "SubType": "LEASE",
+                  "Identifier": 1,
+                  "Description": "AP149132 LEASE TO BRIGHTLITE NOMINEES PTY LTD OF 367 PRINCES HIGHWAY, CARLTON. EXPIRES: 28/4/2024. OPTION OF RENEWAL: 7 YEARS."
+                }
+              ],
+              "Ownership": {
+                "Tenancy": "TENANTS_IN_COMMON",
+                "Dealings": [
+                  {
+                    "Type": "TRANSMISSION_APPLICATION",
+                    "Reference": "AT166636"
+                  }
+                ],
+                "TotalShares": 4,
+                "TenantsInCommon": [
+                  {
+                    "Owners": [
+                      {
+                        "Name": "KMLEO PTY LTD",
+                        "Type": "ORGANISATION"
+                      }
+                    ],
+                    "Shares": 1,
+                    "Tenancy": "TENANTS_IN_COMMON"
+                  },
+                  {
+                    "Owners": [
+                      {
+                        "Name": "DBOURNE PTY LTD",
+                        "Type": "ORGANISATION"
+                      }
+                    ],
+                    "Shares": 1,
+                    "Tenancy": "TENANTS_IN_COMMON"
+                  },
+                  {
+                    "Owners": [
+                      {
+                        "Name": "DENISE LEO",
+                        "Type": "INDIVIDUAL",
+                        "Individual": {
+                          "LastName": "LEO",
+                          "FirstName": "DENISE"
+                        }
+                      },
+                      {
+                        "Name": "BRUNO CHARLES LEO",
+                        "Type": "INDIVIDUAL",
+                        "Individual": {
+                          "LastName": "LEO",
+                          "FirstName": "BRUNO CHARLES"
+                        }
+                      }
+                    ],
+                    "Shares": 2,
+                    "Tenancy": "JOINT_TENANTS"
+                  }
+                ]
+              },
+              "TitleType": "DEPOSITED_PLAN",
+              "EstateType": "FEE_SIMPLE"
+            }
+          }
+        ]
+      }
+    ],
+    "currentCount": 9,
+    "historicalCount": 0,
+    "storedLocatorData": [
+      {
+        "jurisdiction": "NSW",
+        "titleReference": "1/191455"
+      },
+      {
+        "jurisdiction": "NSW",
+        "titleReference": "11/1118195"
+      },
+      {
+        "jurisdiction": "NSW",
+        "titleReference": "8/LF314"
+      },
+      {
+        "jurisdiction": "NSW",
+        "titleReference": "10/3/1355"
+      },
+      {
+        "jurisdiction": "NSW",
+        "titleReference": "50/589930"
+      },
+      {
+        "jurisdiction": "NSW",
+        "titleReference": "9/3/1355"
+      },
+      {
+        "jurisdiction": "NSW",
+        "titleReference": "17/SP80345"
+      },
+      {
+        "jurisdiction": "NSW",
+        "titleReference": "2341/1209496"
+      },
+      {
+        "jurisdiction": "NSW",
+        "titleReference": "101/810718"
+      }
+    ]
+  },
+  "alert": false,
+  "created_at": "2025-11-17 01:22:16.696866",
+  "updated_at": "2025-11-17 01:22:16.696866"
+}
