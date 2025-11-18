@@ -162,6 +162,240 @@ router.get('/director-related/matches', async (req, res) => {
 	}
 });
 
+// Bankruptcy matches endpoint
+router.get('/bankruptcy/matches', async (req, res) => {
+	console.log('🔍 Bankruptcy matches endpoint called:', {
+		query: req.query,
+		url: req.url,
+		method: req.method
+	});
+	
+	try {
+		const { firstName, lastName, dateOfBirth } = req.query;
+
+		if (!lastName || typeof lastName !== 'string' || lastName.trim().length === 0) {
+			return res.status(400).json({
+				success: false,
+				error: 'MISSING_SURNAME',
+				message: 'Last name is required to search bankruptcy records',
+				matches: []
+			});
+		}
+
+		// Get dynamic token for Bankruptcy
+		const bearerToken = await getToken('bankruptcy');
+		
+		const apiUrl = 'https://services.afsa.gov.au/brs/api/v2/search-by-name';
+		const params = {
+			debtorSurname: lastName.trim()
+		};
+		
+		if (firstName && typeof firstName === 'string' && firstName.trim().length > 0) {
+			params.debtorGivenName = firstName.trim();
+		}
+		
+		if (dateOfBirth && typeof dateOfBirth === 'string' && dateOfBirth.trim().length > 0) {
+			// Format date of birth if needed (AFSA API might expect specific format)
+			params.debtorDateOfBirth = dateOfBirth.trim();
+		}
+
+		const response = await axios.get(apiUrl, {
+			params: params,
+			headers: {
+				'Authorization': `Bearer ${bearerToken}`,
+				'Accept': 'application/json'
+			},
+			timeout: 30000 // 30 second timeout
+		});
+
+		// AFSA API returns data with insolvencies array
+		// Extract matches from response - AFSA returns { insolvencies: [...], insolvencySearchId: "...", resultCount: ... }
+		let matches = [];
+		if (response.data) {
+			if (Array.isArray(response.data.insolvencies)) {
+				matches = response.data.insolvencies;
+			} else if (Array.isArray(response.data)) {
+				matches = response.data;
+			} else if (Array.isArray(response.data?.results)) {
+				matches = response.data.results;
+			} else if (Array.isArray(response.data?.data)) {
+				matches = response.data.data;
+			} else if (response.data?.data && !Array.isArray(response.data.data)) {
+				matches = [response.data.data];
+			}
+		}
+
+		return res.json({
+			success: true,
+			matches: matches || []
+		});
+	} catch (error) {
+		console.error('Error searching bankruptcy matches:', error?.response?.data || error.message);
+		
+		const status = error?.response?.status || 500;
+		const message =
+			error?.response?.data?.message ||
+			error?.message ||
+			'Failed to retrieve bankruptcy records';
+
+		return res.status(status).json({
+			success: false,
+			error: 'BANKRUPTCY_SEARCH_FAILED',
+			message,
+			matches: []
+		});
+	}
+});
+
+// Court name search endpoint
+router.get('/court/name-search', async (req, res) => {
+	console.log('🔍 Court name search endpoint called:', {
+		query: req.query,
+		url: req.url,
+		method: req.method
+	});
+	
+	try {
+		const { firstName, lastName, state, courtType } = req.query;
+
+		if (!lastName || typeof lastName !== 'string' || lastName.trim().length === 0) {
+			return res.status(400).json({
+				success: false,
+				error: 'MISSING_SURNAME',
+				message: 'Last name is required to search court records',
+				matches: []
+			});
+		}
+
+		const bearerToken = '3eiXhUHT9G25QO9'; // Court API key
+		const matches = [];
+
+		// Determine which court types to search
+		const searchCriminal = !courtType || courtType === 'ALL' || courtType === 'CRIMINAL';
+		const searchCivil = !courtType || courtType === 'ALL' || courtType === 'CIVIL';
+
+		// Search Criminal Court if needed
+		if (searchCriminal) {
+			try {
+				const criminalApiUrl = 'https://corp-api.courtdata.com.au/api/search/criminal/name';
+				const criminalParams = {
+					surname: lastName.trim()
+				};
+				
+				if (firstName && typeof firstName === 'string' && firstName.trim().length > 0) {
+					criminalParams.given_name = firstName.trim();
+				}
+				
+				if (state && typeof state === 'string' && state.trim().length > 0) {
+					criminalParams.state = state.trim();
+				}
+
+				const criminalResponse = await axios.get(criminalApiUrl, {
+					params: criminalParams,
+					headers: {
+						'Api-Key': bearerToken,
+						'accept': 'application/json',
+						'X-CSRF-TOKEN': ''
+					},
+					timeout: 30000
+				});
+
+				// Extract matches from criminal response
+				if (criminalResponse.data && Array.isArray(criminalResponse.data)) {
+					criminalResponse.data.forEach((item, index) => {
+						matches.push({
+							...item,
+							courtType: 'CRIMINAL',
+							source: 'criminal'
+						});
+					});
+				} else if (criminalResponse.data?.results && Array.isArray(criminalResponse.data.results)) {
+					criminalResponse.data.results.forEach((item) => {
+						matches.push({
+							...item,
+							courtType: 'CRIMINAL',
+							source: 'criminal'
+						});
+					});
+				}
+			} catch (error) {
+				console.error('Error searching criminal court:', error?.response?.data || error.message);
+				// Continue to civil search even if criminal fails
+			}
+		}
+
+		// Search Civil Court if needed
+		if (searchCivil) {
+			try {
+				const civilApiUrl = 'https://corp-api.courtdata.com.au/api/search/civil/name';
+				const civilParams = {
+					surname: lastName.trim()
+				};
+				
+				if (firstName && typeof firstName === 'string' && firstName.trim().length > 0) {
+					civilParams.given_name = firstName.trim();
+				}
+				
+				if (state && typeof state === 'string' && state.trim().length > 0) {
+					civilParams.state = state.trim();
+				}
+
+				const civilResponse = await axios.get(civilApiUrl, {
+					params: civilParams,
+					headers: {
+						'Api-Key': bearerToken,
+						'accept': 'application/json',
+						'X-CSRF-TOKEN': ''
+					},
+					timeout: 30000
+				});
+
+				// Extract matches from civil response
+				if (civilResponse.data && Array.isArray(civilResponse.data)) {
+					civilResponse.data.forEach((item) => {
+						matches.push({
+							...item,
+							courtType: 'CIVIL',
+							source: 'civil'
+						});
+					});
+				} else if (civilResponse.data?.results && Array.isArray(civilResponse.data.results)) {
+					civilResponse.data.results.forEach((item) => {
+						matches.push({
+							...item,
+							courtType: 'CIVIL',
+							source: 'civil'
+						});
+					});
+				}
+			} catch (error) {
+				console.error('Error searching civil court:', error?.response?.data || error.message);
+				// Continue even if civil search fails
+			}
+		}
+
+		return res.json({
+			success: true,
+			matches: matches || []
+		});
+	} catch (error) {
+		console.error('Error searching court names:', error?.response?.data || error.message);
+		
+		const status = error?.response?.status || 500;
+		const message =
+			error?.response?.data?.message ||
+			error?.message ||
+			'Failed to retrieve court records';
+
+		return res.status(status).json({
+			success: false,
+			error: 'COURT_SEARCH_FAILED',
+			message,
+			matches: []
+		});
+	}
+});
+
 async function checkExistingReportData(abn, type) {
 	const existingReport = await ApiData.findOne({
 		where: {

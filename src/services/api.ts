@@ -530,6 +530,51 @@ class ApiService {
     });
   }
 
+  async searchIndividualCourtMatches(params: {
+    firstName?: string;
+    lastName: string;
+    state?: string;
+    courtType?: 'ALL' | 'CRIMINAL' | 'CIVIL';
+  }): Promise<{
+    success: boolean;
+    matches: Array<{
+      fullname?: string;
+      given_name?: string;
+      surname?: string;
+      state?: string;
+      courtType?: string;
+      source?: string;
+      [key: string]: any;
+    }>;
+    error?: string;
+    message?: string;
+  }> {
+    const searchParams = new URLSearchParams();
+    if (params.firstName) {
+      searchParams.append('firstName', params.firstName);
+    }
+    if (params.lastName) {
+      searchParams.append('lastName', params.lastName);
+    }
+    if (params.state) {
+      searchParams.append('state', params.state);
+    }
+    if (params.courtType) {
+      searchParams.append('courtType', params.courtType);
+    }
+
+    const query = searchParams.toString();
+    const basePath = '/api/court/name-search';
+    const endpoint = query.length > 0 ? `${basePath}?${query}` : basePath;
+
+    return this.request<{
+      success: boolean;
+      matches: Array<any>;
+      error?: string;
+      message?: string;
+    }>(endpoint);
+  }
+
 }
 
 export const apiService = new ApiService();
