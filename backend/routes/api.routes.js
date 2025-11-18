@@ -61,29 +61,85 @@ router.get('/routes-check', (req, res) => {
   }
 });
 
-// Authentication routes are now in app.js directly
-// Removed to prevent duplicate routes
-
-// Search functionality moved to frontend - direct API calls to Australian Business Register
 
 // Proxy routes for bankruptcy and director-related endpoints
-// These are needed because ALB path-based routing may not include these paths
-// The actual routes are in payment.routes.js, but we add proxies here to ensure they're accessible
-router.get('/bankruptcy/matches', async (req, res, next) => {
-	// Forward to the actual route handler in payment.routes
-	const paymentRoutes = require('./payment.routes');
-	// Use the paymentRoutes router to handle this request
-	paymentRoutes.router.handle(req, res, next);
+// Duplicate the actual implementation here to ensure ALB routing works
+router.get('/bankruptcy/matches', async (req, res) => {
+	try {
+		const { firstName, lastName, dateOfBirth } = req.query;
+		const { getToken } = require('./apiClients');
+		const axios = require('axios');
+
+		if (!lastName || typeof lastName !== 'string' || lastName.trim().length === 0) {
+			return res.status(400).json({
+				success: false,
+				error: 'MISSING_SURNAME',
+				message: 'Last name is required to search bankruptcy records',
+				matches: []
+			});
+		}
+
+		// Get dynamic token for Bankruptcy
+		const bearerToken = await getToken('bankruptcy');
+		
+		const apiUrl = 'https://services.afsa.gov.au/brs/api/v2/search-by-name';
+		const params = {
+			debtorSurname: lastName.trim()
+		};
+		
+		if (firstName && typeof firstName === 'string' && firstName.trim().length > 0) {
+			params.debtorGivenName = firstName.trim();
+		}
+		
+		if (dateOfBirth && typeof dateOfBirth === 'string' && dateOfBirth.trim().length > 0) {
+			params.debtorDateOfBirth = dateOfBirth.trim();
+		}
+
+		const response = await axios.get(apiUrl, {
+			params: params,
+			headers: {
+				'Authorization': `Bearer ${bearerToken}`,
+				'Accept': 'application/json'
+			},
+			timeout: 30000
+		});
+
+		let matches = [];
+		if (response.data) {
+			if (Array.isArray(response.data.insolvencies)) {
+				matches = response.data.insolvencies;
+			} else if (Array.isArray(response.data)) {
+				matches = response.data;
+			} else if (Array.isArray(response.data?.results)) {
+				matches = response.data.results;
+			} else if (Array.isArray(response.data?.data)) {
+				matches = response.data.data;
+			} else if (response.data?.data && !Array.isArray(response.data.data)) {
+				matches = [response.data.data];
+			}
+		}
+
+		return res.json({
+			success: true,
+			matches: matches || []
+		});
+	} catch (error) {
+		console.error('Error searching bankruptcy matches:', error?.response?.data || error.message);
+		
+		const status = error?.response?.status || 500;
+		const message =
+			error?.response?.data?.message ||
+			error?.message ||
+			'Failed to retrieve bankruptcy records';
+
+		return res.status(status).json({
+			success: false,
+			error: 'BANKRUPTCY_SEARCH_FAILED',
+			message,
+			matches: []
+		});
+	}
 });
 
-router.get('/director-related/matches', async (req, res, next) => {
-	// Forward to the actual route handler in payment.routes
-	const paymentRoutes = require('./payment.routes');
-	// Use the paymentRoutes router to handle this request
-	paymentRoutes.router.handle(req, res, next);
-});
-
-// Add more routes here as needed
-// router.use('/users', require('./users.routes'));
 
 module.exports = router;
