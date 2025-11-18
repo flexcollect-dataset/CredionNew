@@ -66,6 +66,23 @@ router.get('/routes-check', (req, res) => {
 
 // Search functionality moved to frontend - direct API calls to Australian Business Register
 
+// Proxy routes for bankruptcy and director-related endpoints
+// These are needed because ALB path-based routing may not include these paths
+// The actual routes are in payment.routes.js, but we add proxies here to ensure they're accessible
+router.get('/bankruptcy/matches', async (req, res, next) => {
+	// Forward to the actual route handler in payment.routes
+	const paymentRoutes = require('./payment.routes');
+	// Use the paymentRoutes router to handle this request
+	paymentRoutes.router.handle(req, res, next);
+});
+
+router.get('/director-related/matches', async (req, res, next) => {
+	// Forward to the actual route handler in payment.routes
+	const paymentRoutes = require('./payment.routes');
+	// Use the paymentRoutes router to handle this request
+	paymentRoutes.router.handle(req, res, next);
+});
+
 // Add more routes here as needed
 // router.use('/users', require('./users.routes'));
 
