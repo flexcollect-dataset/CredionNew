@@ -348,7 +348,7 @@ const Search: React.FC = () => {
     }
   > = {
     'ABN/ACN LAND TITLE': {
-      summaryTitle: 'Land Title Summary Report',
+      summaryTitle: 'Land Title - Locate Title Reference',
       summaryDescription:
         'A summary report will outline land title references located for the organisation search. Select continue to choose detailed options.',
       detailTitle: 'Land Title Report Options',
@@ -358,10 +358,10 @@ const Search: React.FC = () => {
         'Property Value + Sales History + More provides property value, sales history report, and extended property detail.'
     },
     'DIRECTOR LAND TITLE': {
-      summaryTitle: 'Director Property Title - Summary Report',
+      summaryTitle: 'Director Property Title -  Locate Title Reference',
       summaryDescription:
         'A summary report will display any recorded title references from your search. For full details on current or past titles, select after processing or continue with the summary only.',
-      detailTitle: 'Director Property Title',
+      detailTitle: 'Land Title Deed Search',
       detailDescription: 'Select detailed property reports for the director search.',
       addOnTitle: 'Additional Selections',
       addOnDescription:
@@ -557,7 +557,7 @@ const Search: React.FC = () => {
           return 'All';
         case 'SUMMARY':
         default:
-          return 'Summary Report Only';
+          return 'Title References Only';
       }
     }
     if (landTitleSearchTypeLabelMap[search]) {
@@ -2359,6 +2359,19 @@ setLandTitleOrganisationSearchTerm(displayText);
   const handleLandTitleSummaryContinue = async () => {
     if (!landTitleModalOpen) return;
 
+    // For ORGANISATION category with DIRECTOR LAND TITLE, skip counts API call and proceed directly
+    if (landTitleModalOpen === 'DIRECTOR LAND TITLE' && selectedCategory === 'ORGANISATION') {
+      setPendingLandTitleSelection(prev => ({ ...prev, summary: true }));
+      setLandTitleModalStep('DETAIL');
+      // Set default counts (will be determined when processing reports with actual directors)
+      setLandTitleCounts({
+        current: 0,
+        historical: 0,
+        titleReferences: []
+      });
+      return;
+    }
+
     setIsLoadingLandTitleCounts(true);
     setLandTitleCounts({ current: null, historical: null, titleReferences: [] });
 
@@ -2419,8 +2432,9 @@ setLandTitleOrganisationSearchTerm(displayText);
           states
         };
       } else {
-        // Individual search (DIRECTOR LAND TITLE)
+        // Individual search (DIRECTOR LAND TITLE) - only for LAND TITLE category
         const states = Array.from(landTitleIndividualStates);
+        
         if (states.length === 0) {
           alert('Please select at least one state');
           setIsLoadingLandTitleCounts(false);
@@ -3315,7 +3329,11 @@ setLandTitleOrganisationSearchTerm(displayText);
             </div>
 
             {/* Select Searches Card */}
-            <div ref={searchesCardRef} className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
+            <div ref={searchesCardRef} className={`bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 transition-all duration-300 ${
+              selectedCategory === 'ORGANISATION' && isCompanyConfirmed 
+                ? 'opacity-60 pointer-events-none' 
+                : 'hover:shadow-2xl hover:-translate-y-1'
+            }`}>
               <h2 className="text-[32px] font-bold text-center mb-10 text-gray-900 tracking-tight">
                 {selectedCategory === 'ORGANISATION' || selectedCategory === 'INDIVIDUAL' ? (
                   <>Choose <span className="text-red-600 relative after:content-[''] after:absolute after:bottom-[-5px] after:left-0 after:right-0 after:h-[3px] after:bg-red-600 after:opacity-20">Report Type</span></>
@@ -3323,6 +3341,11 @@ setLandTitleOrganisationSearchTerm(displayText);
                   <>Select <span className="text-red-600 relative after:content-[''] after:absolute after:bottom-[-5px] after:left-0 after:right-0 after:h-[3px] after:bg-red-600 after:opacity-20">Searches</span></>
                 )}
               </h2>
+              {selectedCategory === 'ORGANISATION' && isCompanyConfirmed && (
+                <p className="text-center text-sm font-medium text-gray-500 mb-6">
+                  Report types are locked after company confirmation. Please proceed to Additional Searches.
+                </p>
+              )}
 
               {selectedCategory === 'LAND TITLE' ? (
                 <div className="space-y-6">
@@ -3848,7 +3871,7 @@ setLandTitleOrganisationSearchTerm(displayText);
 
             {/* Enter Search Details Card - Show when ORGANISATION selected */}
             {showEnterSearchDetails && (
-              <div ref={detailsCardRef} className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
+              <div ref={detailsCardRef} className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 relative z-10">
                 <h2 className="text-[32px] font-bold text-center mb-10 text-gray-900 tracking-tight">
                   <span className="text-red-600 relative after:content-[''] after:absolute after:bottom-[-5px] after:left-0 after:right-0 after:h-[3px] after:bg-red-600 after:opacity-20">Search for Organisation</span>
                 </h2>
@@ -3905,7 +3928,13 @@ setLandTitleOrganisationSearchTerm(displayText);
                       {showSuggestions && suggestions.length > 0 && (
                         <div
                           ref={dropdownRef}
-                          className="absolute z-50 w-full mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-2xl max-h-80 overflow-y-auto"
+                          className="absolute w-full mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-2xl max-h-80 overflow-y-auto"
+                          style={{ 
+                            backgroundColor: '#ffffff',
+                            position: 'absolute',
+                            zIndex: 99999,
+                            isolation: 'isolate'
+                          }}
                         >
                           {isLoadingSuggestions ? (
                             <div className="px-4 py-3 text-center text-gray-500">
@@ -3919,7 +3948,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                               <button
                                 key={index}
                                 onClick={() => handleSuggestionSelect(suggestion)}
-                                className="w-full px-4 py-3 text-left hover:bg-red-50 transition-colors duration-150 border-b border-gray-100 last:border-b-0 focus:outline-none focus:bg-red-50"
+                                className="w-full px-4 py-3 text-left bg-white hover:bg-red-50 transition-colors duration-150 border-b border-gray-100 last:border-b-0 focus:outline-none focus:bg-red-50"
                               >
                                 <div className="flex flex-col">
                                   {suggestion.Name && (
@@ -3987,7 +4016,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                     {/* Confirmed Company Display */}
                     {isCompanyConfirmed && pendingCompany && (
                       <div className="mt-6 bg-green-50 border-2 border-green-200 rounded-xl p-6 shadow-md">
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2">
                               <svg className="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -4004,13 +4033,6 @@ setLandTitleOrganisationSearchTerm(displayText);
                               </p>
                             </div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={handleChangeCompany}
-                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors duration-200"
-                          >
-                            Change Company
-                          </button>
                         </div>
                       </div>
                     )}
@@ -4180,9 +4202,9 @@ setLandTitleOrganisationSearchTerm(displayText);
                   )}
                   {isLandTitleIndividualSearchPerformed && (
                   <div className="space-y-4">
-                      {isIndividualBankruptcySelected && isLoadingBankruptcyMatches && (
+                      {(isLoadingBankruptcyMatches || isLoadingRelatedMatches) && (
                         <div className="rounded-xl border-2 border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">
-                          Searching bankruptcy records...
+                          Searching records...
                         </div>
                       )}
 
@@ -4193,12 +4215,6 @@ setLandTitleOrganisationSearchTerm(displayText);
                             {bankruptcyMatchesError}
                           </div>
                         )}
-
-                      {isIndividualRelatedEntitiesSelected && isLoadingRelatedMatches && (
-                        <div className="rounded-xl border-2 border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">
-                          Searching related entity records...
-                        </div>
-                      )}
 
                       {isIndividualRelatedEntitiesSelected &&
                         !isLoadingRelatedMatches &&
@@ -4383,7 +4399,7 @@ setLandTitleOrganisationSearchTerm(displayText);
             {selectedCategory === 'ORGANISATION' && !selectedSearches.has('ADD DOCUMENT SEARCH') && (
               <div
                 ref={additionalCardRef}
-                className={`bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 transition-all duration-300 ${isAdditionalSearchesDisabled ? 'opacity-60' : 'hover:shadow-2xl hover:-translate-y-1'
+                className={`bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 transition-all duration-300 relative z-0 ${isAdditionalSearchesDisabled ? 'opacity-60' : 'hover:shadow-2xl hover:-translate-y-1'
                   }`}
               >
                 <h2 className="text-[32px] font-bold text-center mb-4 text-gray-900 tracking-tight">
@@ -5013,7 +5029,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                       }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span>Summary Report Only</span>
+                      <span>Title References Only</span>
                       <span className="text-xs font-bold">—</span>
                     </div>
                   </button>
@@ -5248,7 +5264,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                           },
                           {
                             key: 'SUMMARY',
-                            label: 'Summary Report Only'
+                            label: 'Title References Only'
                           }
                         ]
                         : [
@@ -5264,7 +5280,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                             key: 'ALL',
                             label: `All${allCount > 0 ? ` (${allCount} available)` : ''}`
                           },
-                          { key: 'SUMMARY', label: 'Summary Report Only' }
+                          { key: 'SUMMARY', label: 'Title References Only' }
                         ];
                     return options.map(option => {
                       const detail = option.key as LandTitleDetailSelection;

@@ -34,13 +34,25 @@ node test-routes.js
 # This will show all routes and verify the new ones exist
 ```
 
-### Step 5: Check Current Git Status
+### Step 5: Check Current Git Status and Discard Local Changes
 ```bash
 # See if you're on the latest code
 git status
 git log --oneline -5
 
-# Pull latest code
+# If you have local changes that conflict, discard them:
+# Option 1: Discard changes to specific file (app.js)
+git checkout -- backend/app.js
+
+# Option 2: Discard ALL local changes (WARNING: This removes all uncommitted changes)
+git reset --hard HEAD
+
+# Option 3: Stash changes (saves them temporarily if you might need them later)
+git stash
+git pull origin main
+# If you need stashed changes: git stash pop
+
+# After discarding changes, pull latest code
 git fetch origin
 git pull origin main
 ```
