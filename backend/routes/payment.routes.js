@@ -114,6 +114,54 @@ router.get('/search-company/:searchTerm', async (req, res) => {
 	}
 });
 
+router.get('/director-related/matches', async (req, res) => {
+	console.log('🔍 Director-related matches endpoint called:', {
+		query: req.query,
+		url: req.url,
+		method: req.method
+	});
+	
+	try {
+		const { firstName, lastName, dobFrom, dobTo } = req.query;
+
+		if (!lastName || typeof lastName !== 'string' || lastName.trim().length === 0) {
+			return res.status(400).json({
+				success: false,
+				error: 'MISSING_SURNAME',
+				message: 'Last name is required to search director related entities'
+			});
+		}
+
+		const rawData = await searchDirectorRelatedMatches({
+			firstName: firstName && typeof firstName === 'string' ? firstName.trim() : undefined,
+			lastName: lastName.trim(),
+			dobFrom: dobFrom && typeof dobFrom === 'string' ? dobFrom.trim() : undefined,
+			dobTo: dobTo && typeof dobTo === 'string' ? dobTo.trim() : undefined
+		});
+
+		const matches = Array.isArray(rawData) ? rawData : Array.isArray(rawData?.results) ? rawData.results : [];
+
+		return res.json({
+			success: true,
+			matches
+		});
+	} catch (error) {
+		console.error('Error searching director related matches:', error?.response?.data || error.message);
+
+		const status = error?.response?.status || 500;
+		const message =
+			error?.response?.data?.message ||
+			error?.message ||
+			'Failed to retrieve director related entities';
+
+		return res.status(status).json({
+			success: false,
+			error: 'DIRECTOR_RELATED_SEARCH_FAILED',
+			message
+		});
+	}
+});
+
 async function checkExistingReportData(abn, type) {
 	const existingReport = await ApiData.findOne({
 		where: {
@@ -211,54 +259,6 @@ router.get('/bankruptcy/matches', async (req, res) => {
 		return res.status(status).json({
 			success: false,
 			error: 'BANKRUPTCY_SEARCH_FAILED',
-			message
-		});
-	}
-});
-
-router.get('/director-related/matches', async (req, res) => {
-	console.log('🔍 Director-related matches endpoint called:', {
-		query: req.query,
-		url: req.url,
-		method: req.method
-	});
-	
-	try {
-		const { firstName, lastName, dobFrom, dobTo } = req.query;
-
-		if (!lastName || typeof lastName !== 'string' || lastName.trim().length === 0) {
-			return res.status(400).json({
-				success: false,
-				error: 'MISSING_SURNAME',
-				message: 'Last name is required to search director related entities'
-			});
-		}
-
-		const rawData = await searchDirectorRelatedMatches({
-			firstName: firstName && typeof firstName === 'string' ? firstName.trim() : undefined,
-			lastName: lastName.trim(),
-			dobFrom: dobFrom && typeof dobFrom === 'string' ? dobFrom.trim() : undefined,
-			dobTo: dobTo && typeof dobTo === 'string' ? dobTo.trim() : undefined
-		});
-
-		const matches = Array.isArray(rawData) ? rawData : Array.isArray(rawData?.results) ? rawData.results : [];
-
-		return res.json({
-			success: true,
-			matches
-		});
-	} catch (error) {
-		console.error('Error searching director related matches:', error?.response?.data || error.message);
-
-		const status = error?.response?.status || 500;
-		const message =
-			error?.response?.data?.message ||
-			error?.message ||
-			'Failed to retrieve director related entities';
-
-		return res.status(status).json({
-			success: false,
-			error: 'DIRECTOR_RELATED_SEARCH_FAILED',
 			message
 		});
 	}
