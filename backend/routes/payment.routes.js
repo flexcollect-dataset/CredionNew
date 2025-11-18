@@ -897,15 +897,77 @@ async function land_title_organisation(ldata) {
 	
 	// Extract ABN and company name from business data
 	let abn = ldata?.Abn || ldata?.abn || null;
-	let companyName = ldata?.Name || ldata?.name || null;
+	// Try multiple possible property names for company name
+	let companyName = ldata?.Name || ldata?.name || ldata?.companyName || ldata?.CompanyName || null;
+	
+	// Debug logging
+	console.log('🔍 [land_title_organisation] Extracting company info:', {
+		abn,
+		companyName,
+		hasName: !!ldata?.Name,
+		hasname: !!ldata?.name,
+		hasCompanyName: !!ldata?.companyName,
+		ldataKeys: ldata ? Object.keys(ldata) : []
+	});
 	
 	// Get titleReferences from landTitleSelection
 	const titleReferences = ldata.landTitleSelection?.titleReferences || [];
 	const detail = ldata.landTitleSelection?.detail || 'ALL';
 	
-	if (titleReferences.length === 0) {
-		throw new Error('No title references found in land title selection');
+	// Check if we have NEAR_MATCHES data (no titleReferences but data exists)
+	// In this case, we'll generate a "no data available" report
+	
+	// Check if we have stored data with NEAR_MATCHES
+	// Try to get the stored data to check for NEAR_MATCHES
+	let isNearMatch = false;
+	try {
+		const [storedData] = await sequelize.query(`
+			SELECT rdata
+			FROM api_data
+			WHERE rtype = 'land-title-organisation-summary' AND abn = $1
+			ORDER BY created_at DESC
+			LIMIT 1
+		`, {
+			bind: [abn]
+		});
+		
+		if (storedData && storedData.length > 0) {
+			const rdata = typeof storedData[0].rdata === 'string' 
+				? JSON.parse(storedData[0].rdata) 
+				: storedData[0].rdata;
+			
+			// Check if the stored data has NEAR_MATCHES
+			if (rdata?.ServiceResultBlock?.MatchType === 'NEAR_MATCHES') {
+				isNearMatch = true;
+			}
+		}
+	} catch (error) {
+		console.error('Error checking for NEAR_MATCHES:', error);
 	}
+	
+	// If it's NEAR_MATCHES, generate a "no data available" report
+	if (isNearMatch) {
+		const reportData = {
+			status: true,
+			data: {
+				currentCount: 0,
+				historicalCount: 0,
+				allCount: 0,
+				titleOrders: [],
+				cotality: null,
+				locatorData: null,
+				storedLocatorData: [],
+				isNearMatch: true,
+				companyName: companyName || abn, // Fallback to ABN if companyName not found
+				noDataAvailable: true // Flag to indicate no data available
+			}
+		};
+		
+		reportData.data.uuid = "12345678";
+		return reportData;
+	}
+		
+		
 
 	// Filter titleReferences based on detail selection
 	let filteredTitleReferences = titleReferences;
@@ -977,10 +1039,6 @@ async function land_title_individual(ldata) {
 	const titleReferences = ldata.landTitleSelection?.titleReferences || [];
 	const detail = ldata.landTitleSelection?.detail || 'ALL';
 	
-	if (titleReferences.length === 0) {
-		throw new Error('No title references found in land title selection');
-	}
-
 	// Filter titleReferences based on detail selection
 	let filteredTitleReferences = titleReferences;
 	if (detail === 'CURRENT') {
@@ -1806,24 +1864,37 @@ async function searchLandTitleByOrganization(abn, state, companyName) {
 			},
 		});
 		
+		// Check if MatchType is NEAR_MATCHES
+		const matchType = tdata.data?.ServiceResultBlock?.MatchType;
+		const isNearMatch = matchType === 'NEAR_MATCHES';
+		
 		// Count IdentityBlock items in RealPropertySegment and extract TitleReferences with jurisdiction
 		const realPropertySegment = tdata.data?.RealPropertySegment || [];
-		const currentCount = realPropertySegment.length; // Total count of IdentityBlock items
-		const historicalCount = 0; // Always 0 as per requirements
 		
-		// Extract all TitleReferences with their jurisdictions from IdentityBlock
-		const titleReferences = realPropertySegment
-			.map(segment => ({
-				titleReference: segment?.IdentityBlock?.TitleReference,
-				jurisdiction: segment?.IdentityBlock?.Jurisdiction || state
-			}))
-			.filter(item => item.titleReference != null); // Filter out null/undefined values
+		// If NEAR_MATCHES, set current to 0 and don't pass titleReferences
+		let currentCount = 0;
+		let titleReferences = [];
+		
+		if (!isNearMatch) {
+			currentCount = realPropertySegment.length; // Total count of IdentityBlock items
+			// Extract all TitleReferences with their jurisdictions from IdentityBlock
+			
+		}
+		titleReferences = realPropertySegment
+				.map(segment => ({
+					titleReference: segment?.IdentityBlock?.TitleReference,
+					jurisdiction: segment?.IdentityBlock?.Jurisdiction || state
+				}))
+				.filter(item => item.titleReference != null); // Filter out null/undefined values
+		const historicalCount = 0; // Always 0 as per requirements
 
 		return {
 			current: currentCount,
 			historical: historicalCount,
 			titleReferences: titleReferences,
-			fullApiResponse: tdata.data // Return full API response for storage
+			fullApiResponse: tdata.data, // Return full API response for storage
+			matchType: matchType, // Include matchType for reference
+			isNearMatch: isNearMatch // Flag to indicate NEAR_MATCHES
 		};
 	} catch (err) {
 		if (err.response) {
@@ -1835,7 +1906,7 @@ async function searchLandTitleByOrganization(abn, state, companyName) {
 	}
 }
 
-async function searchLandTitleByPerson(firstName, lastName, state, dob) {
+async function searchLandTitleByPerson(firstName, lastName, state) {
 	const bearerToken = await getToken('landtitle');
 	const url = 'https://online.globalx.com.au/api/national-property/locator-orders';
 
@@ -1843,9 +1914,12 @@ async function searchLandTitleByPerson(firstName, lastName, state, dob) {
 		throw new Error('Last name is required for individual search');
 	}
 
+	// Use firstName or generate a unique order reference
+	const orderReference = firstName ? firstName : `Search_${Date.now()}`;
+
 	const body = {
 		OrderRequestBlock: {
-			OrderReference: 'Credion',
+			OrderReference: orderReference,
 		},
 		ServiceRequestBlock: {
 			Jurisdiction: state,
@@ -1897,10 +1971,23 @@ async function searchLandTitleByPerson(firstName, lastName, state, dob) {
 			}))
 			.filter(item => item.titleReference != null); // Filter out null/undefined values
 
+		// Extract unique person names from OwnerNames
+		const personNamesSet = new Set();
+		realPropertySegment.forEach(segment => {
+			const ownerNames = segment?.IdentityBlock?.OwnerNames || [];
+			ownerNames.forEach(name => {
+				if (name && name.trim()) {
+					personNamesSet.add(name.trim());
+				}
+			});
+		});
+		const personNames = Array.from(personNamesSet);
+
 		return {
 			current: currentCount,
 			historical: historicalCount,
 			titleReferences: titleReferences,
+			personNames: personNames, // Add person names to response
 			fullApiResponse: tdata.data // Return full API response for storage
 		};
 	} catch (err) {
@@ -2022,11 +2109,10 @@ router.post('/land-title/counts', async (req, res) => {
 						}
 						
 						// Store API response once per state (not per titleReference)
-						if (searchResults.fullApiResponse && searchResults.titleReferences && searchResults.titleReferences.length > 0) {
+						// Store even if NEAR_MATCHES (no titleReferences) to keep the data
+						if (searchResults.fullApiResponse) {
 							try {
 								// Store the full API response once for this state search
-								// Use the first titleReference as the uuid for this stored record
-								const firstTitleRef = searchResults.titleReferences[0];
 								const [result] = await sequelize.query(`
 									INSERT INTO api_data (rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at)
 									VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`, {
@@ -2044,7 +2130,9 @@ router.post('/land-title/counts', async (req, res) => {
 								if (result && result.length > 0) {
 									// Add only one storedDataId per state search
 									storedDataIds.push({
-										dataId: result[0].id
+										dataId: result[0].id,
+										matchType: searchResults.matchType, // Store matchType for reference
+										isNearMatch: searchResults.isNearMatch // Store isNearMatch flag
 									});
 								}
 							} catch (dbError) {
@@ -2097,16 +2185,14 @@ router.post('/land-title/counts', async (req, res) => {
 						message: 'Last name is required for individual search'
 					});
 				}
-
-				// Build search term: firstName lastName date
-				const searchTerm = `${firstName || ''} ${lastName} ${dob || ''}`.trim();
+				const searchTerm = `${firstName || ''} ${lastName}`.trim();
 
 				// Check if data already exists in api_data table for this individual
 				// For individuals, we check by rtype and search_word (which contains firstName lastName dob)
 				const [existingData] = await sequelize.query(`
 					SELECT uuid, rdata, id
 					FROM api_data
-					WHERE rtype = 'land-title-reference' 
+					WHERE rtype = 'land-title-individual-summary-fullresult' 
 						AND search_word = $1
 						AND abn IS NULL
 					ORDER BY created_at DESC
@@ -2117,57 +2203,35 @@ router.post('/land-title/counts', async (req, res) => {
 				if (existingData && existingData.length > 0) {
 					console.log(`✅ Found existing data for individual ${searchTerm}, using cached data`);
 					
-					// Extract data from stored records
-					const uniqueTitleRefs = new Map(); // Use Map to avoid duplicates
-					
-					for (const record of existingData) {
-						try {
-							const rdata = typeof record.rdata === 'string' ? JSON.parse(record.rdata) : record.rdata;
-							const realPropertySegment = rdata?.RealPropertySegment || [];
-							
-							// Extract titleReferences from stored data
-							realPropertySegment.forEach(segment => {
-								const titleRef = segment?.IdentityBlock?.TitleReference;
-								const jurisdiction = segment?.IdentityBlock?.Jurisdiction;
-								
-								if (titleRef && !uniqueTitleRefs.has(titleRef)) {
-									uniqueTitleRefs.set(titleRef, {
-										titleReference: titleRef,
-										jurisdiction: jurisdiction || 'NSW', // Default jurisdiction
-										dataId: record.id
-									});
-								}
-							});
-							
-							// Add to counts
-							currentCount += realPropertySegment.length;
-							historicalCount += 0; // Always 0 as per requirements
-						} catch (parseError) {
-							console.error('Error parsing stored data:', parseError);
-							// Continue with next record
+					try {
+						const summaryRecord = existingData[0]; // Get the most recent summary record
+						// Parse rdata if it's a string (stored as JSON in PostgreSQL)
+						const rdata = typeof summaryRecord.rdata === 'string' 
+							? JSON.parse(summaryRecord.rdata) 
+							: summaryRecord.rdata;
+						
+						// Extract counts and titleReferences from summary record
+						currentCount = rdata?.currentCount || 0;
+						historicalCount = rdata?.historicalCount || 0;
+						
+						// Extract titleReferences from summary record
+						if (rdata?.titleReferences && Array.isArray(rdata.titleReferences)) {
+							allTitleReferences.push(...rdata.titleReferences);
 						}
-					}
-					
-					// Convert Map to array
-					const titleRefsArray = Array.from(uniqueTitleRefs.values());
-					allTitleReferences.push(...titleRefsArray);
-					
-					// Add only one storedDataId from the first record
-					if (titleRefsArray.length > 0 && titleRefsArray[0].dataId) {
-						storedDataIds.push({
-							dataId: titleRefsArray[0].dataId
+
+						// Return cached data
+						return res.json({
+							success: true,
+							current: currentCount,
+							historical: historicalCount,
+							titleReferences: allTitleReferences,
+							storedDataIds: summaryRecord.id,
+							cached: true // Flag to indicate this is cached data
 						});
+					} catch (parseError) {
+						console.error('Error parsing cached summary data:', parseError);
+						// Fall through to API call if parsing fails
 					}
-					
-					// Return cached data
-					return res.json({
-						success: true,
-						current: currentCount,
-						historical: historicalCount,
-						titleReferences: allTitleReferences,
-						storedDataIds: storedDataIds,
-						cached: true // Flag to indicate this is cached data
-					});
 				}
 
 				// No cached data found, proceed with API call
@@ -2176,7 +2240,7 @@ router.post('/land-title/counts', async (req, res) => {
 				// Search for land titles by individual name across all states
 				for (const state of states) {
 					try {
-						const searchResults = await searchLandTitleByPerson(firstName, lastName, state, dob);
+						const searchResults = await searchLandTitleByPerson(firstName, lastName, state);
 						currentCount += searchResults.current || 0;
 						historicalCount += searchResults.historical || 0;
 						
@@ -2193,15 +2257,10 @@ router.post('/land-title/counts', async (req, res) => {
 								const firstTitleRef = searchResults.titleReferences[0];
 								const [result] = await sequelize.query(`
 									INSERT INTO api_data (rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at)
-									VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-									ON CONFLICT (rtype, uuid) DO UPDATE SET
-										rdata = EXCLUDED.rdata,
-										updated_at = NOW()
-									RETURNING id
-								`, {
+									VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`, {
 									bind: [
-										'land-title-reference',
-										firstTitleRef.titleReference,
+										'land-title-individual-summary',
+										searchTerm,
 										searchTerm,
 										null,
 										null,
@@ -2226,8 +2285,39 @@ router.post('/land-title/counts', async (req, res) => {
 						// Continue with other states even if one fails
 					}
 				}
-			}
 
+				const summaryData = {
+					uuid: searchTerm,
+					abn: null, // Store ABN in rdata for easy retrieval
+					companyName: searchTerm, // Store company name in rdata
+					allCount: currentCount + historicalCount,
+					currentCount: currentCount,
+					historicalCount: historicalCount,
+					titleReferences: allTitleReferences,
+					cotality: null,
+					locatorData: null,
+					titleOrders: [] // Will be populated when reports are generated
+				};
+
+				// Insert new record - ensure ABN is properly stored
+				console.log(`📝 Inserting summary record: rtype='land-title-organisation'`);
+				await sequelize.query(`
+					INSERT INTO api_data (rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at)
+					VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+				`, {
+					bind: [
+						'land-title-individual-summary-fullresult',
+						searchTerm, // uuid = abn
+						searchTerm, // search_word = company name
+						null, // abn field = abn (ensure this is properly stored)
+						null, // ACN
+						JSON.stringify(summaryData),
+						false
+					]
+				});
+			}
+			console.log("allTitleReferences");
+			console.log(allTitleReferences);
 			return res.json({
 				success: true,
 				current: currentCount,
@@ -2250,7 +2340,63 @@ router.post('/land-title/counts', async (req, res) => {
 		return res.status(status).json({
 			success: false,
 			error: 'LAND_TITLE_COUNTS_ERROR',
-			message
+			message: message
+		});
+	}
+});
+
+// Land title person name search endpoint
+router.post('/land-title/search-person-names', async (req, res) => {
+	try {
+		const { firstName, lastName, state } = req.body;
+
+		if (!lastName || !lastName.trim()) {
+			return res.status(400).json({
+				success: false,
+				error: 'MISSING_LAST_NAME',
+				message: 'Last name is required for person name search'
+			});
+		}
+
+		if (!state || !state.trim()) {
+			return res.status(400).json({
+				success: false,
+				error: 'MISSING_STATE',
+				message: 'State is required for person name search'
+			});
+		}
+
+		try {
+			// Call the search function
+			const result = await searchLandTitleByPerson(
+				firstName?.trim() || "",
+				lastName.trim(),
+				state.trim(),
+				null // dob not used in locator search
+			);
+
+			// Return person names from the result
+			return res.json({
+				success: true,
+				personNames: result.personNames || [],
+				fullApiResponse: result.fullApiResponse // Optionally return full response
+			});
+
+		} catch (apiError) {
+			console.error('Error fetching person names from API:', apiError?.response?.data || apiError.message);
+			throw apiError;
+		}
+
+	} catch (error) {
+		console.error('Error in land title person name search endpoint:', error?.response?.data || error.message);
+		
+		const status = error?.response?.status || 500;
+		const message = error?.response?.data?.message || error?.message || 'Failed to fetch person names';
+
+		return res.status(status).json({
+			success: false,
+			error: 'LAND_TITLE_PERSON_SEARCH_ERROR',
+			message: message
 		});
 	}
 });

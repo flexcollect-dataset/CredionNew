@@ -2775,6 +2775,69 @@ function extractLandTitleData(data, reportType) {
   // Handle different data structures (could be rdata or data)
   const rdata = data.rdata || data;
   
+  // Check if this is a "no data available" report (NEAR_MATCHES)
+  if (rdata.noDataAvailable === true || rdata.isNearMatch === true) {
+    // Try to get company name from multiple sources, prioritizing the business object (searched company)
+    let companyName = 'N/A';
+    
+    // Debug logging
+    console.log('🔍 [extractLandTitleData] No data available - searching for company name');
+    console.log('📋 data keys:', Object.keys(data));
+    console.log('📋 rdata keys:', Object.keys(rdata));
+    if (data.business) {
+      console.log('📋 data.business:', { Name: data.business.Name, name: data.business.name });
+    }
+    console.log('📋 rdata.companyName:', rdata.companyName);
+    console.log('📋 data.companyName:', data.companyName);
+    
+    // First, try to get from business object (the searched company) - check multiple possible locations
+    if (data.business) {
+      companyName = data.business.Name || data.business.name || companyName;
+      console.log('✅ Found company name from data.business:', companyName);
+    }
+    
+    // Also check if business is nested in rdata
+    if (companyName === 'N/A' && rdata.business) {
+      companyName = rdata.business.Name || rdata.business.name || companyName;
+      console.log('✅ Found company name from rdata.business:', companyName);
+    }
+    
+    // If not found, try from rdata.companyName (set in land_title_organisation)
+    if (companyName === 'N/A' && rdata.companyName) {
+      companyName = rdata.companyName;
+      console.log('✅ Found company name from rdata.companyName:', companyName);
+    }
+    
+    // If still not found, try from data.companyName
+    if (companyName === 'N/A' && data.companyName) {
+      companyName = data.companyName;
+      console.log('✅ Found company name from data.companyName:', companyName);
+    }
+    
+    // Final fallback: check if data itself has Name or name property
+    if (companyName === 'N/A' && (data.Name || data.name)) {
+      companyName = data.Name || data.name;
+      console.log('✅ Found company name from data.Name/name:', companyName);
+    }
+    
+    console.log('🎯 Final company name:', companyName);
+    
+    const reportDate = moment().format('DD MMMM YYYY');
+    const reportDateTime = moment().format('DD MMMM YYYY, h:mma');
+    
+    return {
+      property_owner_name: companyName,
+      report_date: reportDate,
+      report_date_time: reportDateTime,
+      current_properties_count: '0 properties currently owned',
+      past_properties_count: '0 properties previously owned',
+      title_search_information_sections: [],
+      complete_property_portfolio_page: '',
+      no_data_available: true,
+      company_name: companyName
+    };
+  }
+  
   // Get titleOrders array
   const titleOrders = Array.isArray(rdata.titleOrders) ? rdata.titleOrders : [];
   
@@ -2801,6 +2864,43 @@ function extractLandTitleData(data, reportType) {
         }
       }
     }
+  }
+  
+  // If no property owner name found and no titleOrders, try to get from business object (searched company)
+  if (propertyOwnerName === 'N/A' && titleOrders.length === 0) {
+    console.log('🔍 [extractLandTitleData] No titleOrders - searching for company name');
+    
+    // First, try from business object (the searched company) - check multiple possible locations
+    if (data.business) {
+      propertyOwnerName = data.business.Name || data.business.name || propertyOwnerName;
+      console.log('✅ Found company name from data.business:', propertyOwnerName);
+    }
+    
+    // Also check if business is nested in rdata
+    if (propertyOwnerName === 'N/A' && rdata.business) {
+      propertyOwnerName = rdata.business.Name || rdata.business.name || propertyOwnerName;
+      console.log('✅ Found company name from rdata.business:', propertyOwnerName);
+    }
+    
+    // Also try from rdata.companyName
+    if (propertyOwnerName === 'N/A' && rdata.companyName) {
+      propertyOwnerName = rdata.companyName;
+      console.log('✅ Found company name from rdata.companyName:', propertyOwnerName);
+    }
+    
+    // Also try from data.companyName
+    if (propertyOwnerName === 'N/A' && data.companyName) {
+      propertyOwnerName = data.companyName;
+      console.log('✅ Found company name from data.companyName:', propertyOwnerName);
+    }
+    
+    // Final fallback: check if data itself has Name or name property
+    if (propertyOwnerName === 'N/A' && (data.Name || data.name)) {
+      propertyOwnerName = data.Name || data.name;
+      console.log('✅ Found company name from data.Name/name:', propertyOwnerName);
+    }
+    
+    console.log('🎯 Final property owner name (no titleOrders):', propertyOwnerName);
   }
   
   // Report date
@@ -3433,131 +3533,166 @@ function replaceVariables(htmlContent, data, reportype) {
     console.log('🔍 Title search sections length:', extractedData.title_search_information_sections?.length || 0);
     console.log('🔍 Portfolio page length:', extractedData.complete_property_portfolio_page?.length || 0);
     
-    // Replace hardcoded owner name on cover page
-    const ownerNameRegex = /INDRA BUDIMAN/gi;
-    updatedHtml = updatedHtml.replace(ownerNameRegex, extractedData.property_owner_name || 'N/A');
-    
-    // Replace hardcoded report date on cover page
-    const reportDateRegex = /Report Date: 20 October 2025/gi;
-    updatedHtml = updatedHtml.replace(reportDateRegex, `Report Date: ${extractedData.report_date || reportDate}`);
-    
-    // Replace hardcoded counts in executive summary
-    const currentCountRegex = /1 property currently owned/gi;
-    updatedHtml = updatedHtml.replace(currentCountRegex, extractedData.current_properties_count || '0 properties currently owned');
-    
-    const pastCountRegex = /12 properties previously owned/gi;
-    updatedHtml = updatedHtml.replace(pastCountRegex, extractedData.past_properties_count || '0 properties previously owned');
-    
-    // Replace the static Title Search Information section with dynamic sections
-    // Match from PAGE 3 comment to PAGE 4 comment (including any comment text in between)
-    const titleSearchRegex = /<!-- PAGE 3: TITLE SEARCH INFORMATION -->[\s\S]*?<!-- PAGE 4: COMPLETE PROPERTY PORTFOLIO -->/;
-    if (extractedData.title_search_information_sections && extractedData.title_search_information_sections.length > 0) {
-      const replacement = extractedData.title_search_information_sections + '\n\n  <!-- PAGE 4: COMPLETE PROPERTY PORTFOLIO -->';
-      const beforeLength = updatedHtml.length;
-      updatedHtml = updatedHtml.replace(titleSearchRegex, replacement);
-      const afterLength = updatedHtml.length;
-      if (beforeLength !== afterLength) {
-        console.log('✅ Replaced Title Search Information section (length changed:', beforeLength, '->', afterLength, ')');
-      } else {
-        console.log('⚠️ Title Search Information regex did not match');
-      }
-    } else {
-      console.log('⚠️ No title_search_information_sections found in extractedData or it is empty');
-      console.log('   title_search_information_sections type:', typeof extractedData.title_search_information_sections);
-      console.log('   title_search_information_sections length:', extractedData.title_search_information_sections?.length || 0);
-    }
-    
-    // Replace the static Complete Property Portfolio section with dynamic content
-    // Match from PAGE 4 comment to PAGE 5 comment or PAGE 6 comment
-    const portfolioRegex = /<!-- PAGE 4: COMPLETE PROPERTY PORTFOLIO -->[\s\S]*?(<!-- PAGE 5: PROPERTY VALUATION|<!-- PAGE 6: DOCUMENT INFORMATION)/;
-    if (extractedData.complete_property_portfolio_page && extractedData.complete_property_portfolio_page.length > 0) {
-      // Replace {{total_pages}} and {{portfolio_page_number}} in portfolio page
-      let portfolioPageHtml = extractedData.complete_property_portfolio_page
-        .replace(/\{\{total_pages\}\}/g, String(extractedData.total_pages || 6))
-        .replace(/\{\{portfolio_page_number\}\}/g, String(extractedData.portfolio_page_number || 4));
+    // Handle "no data available" case (NEAR_MATCHES)
+    if (extractedData.no_data_available === true) {
+      // Replace hardcoded owner name on cover page with company name
+      const ownerNameRegex = /INDRA BUDIMAN/gi;
+      updatedHtml = updatedHtml.replace(ownerNameRegex, extractedData.company_name || extractedData.property_owner_name || 'N/A');
       
-      const replacement = portfolioPageHtml + '\n\n  ' + (extractedData.has_valuation ? '<!-- PAGE 5: PROPERTY VALUATION' : '<!-- PAGE 6: DOCUMENT INFORMATION');
-      const beforeLength = updatedHtml.length;
-      updatedHtml = updatedHtml.replace(portfolioRegex, replacement);
-      const afterLength = updatedHtml.length;
-      if (beforeLength !== afterLength) {
-        console.log('✅ Replaced Complete Property Portfolio section (length changed:', beforeLength, '->', afterLength, ')');
-      } else {
-        console.log('⚠️ Complete Property Portfolio regex did not match');
-      }
-    } else {
-      console.log('⚠️ No complete_property_portfolio_page found in extractedData or it is empty');
-      console.log('   complete_property_portfolio_page type:', typeof extractedData.complete_property_portfolio_page);
-      console.log('   complete_property_portfolio_page length:', extractedData.complete_property_portfolio_page?.length || 0);
-    }
-    
-    // Replace the static Property Valuation section with dynamic content (if exists)
-    if (extractedData.property_valuation_page && extractedData.property_valuation_page.length > 0) {
-      // Replace {{total_pages}} and {{valuation_page_number}} in valuation page
-      let valuationPageHtml = extractedData.property_valuation_page
-        .replace(/\{\{total_pages\}\}/g, String(extractedData.total_pages || 6))
-        .replace(/\{\{valuation_page_number\}\}/g, String(extractedData.valuation_page_number || 5));
+      // Replace the content sections with "No data available" message
+      // This will show just the company name in the header and a message that no data is available
+      const noDataMessage = `
+        <div style="padding: 40px; text-align: center;">
+          <h2 style="color: #666; margin-bottom: 20px;">No Data Available</h2>
+          <p style="color: #999; font-size: 14px;">No matching property records were found for this search.</p>
+        </div>
+      `;
       
-      const valuationRegex = /<!-- PAGE 5: PROPERTY VALUATION & SALES HISTORY -->[\s\S]*?<!-- PAGE 6: DOCUMENT INFORMATION/;
-      const replacement = valuationPageHtml + '\n\n  <!-- PAGE 6: DOCUMENT INFORMATION';
-      const beforeLength = updatedHtml.length;
-      updatedHtml = updatedHtml.replace(valuationRegex, replacement);
-      const afterLength = updatedHtml.length;
-      if (beforeLength !== afterLength) {
-        console.log('✅ Replaced Property Valuation section (length changed:', beforeLength, '->', afterLength, ')');
-      } else {
-        console.log('⚠️ Property Valuation regex did not match');
-      }
+      // Replace title search information section with no data message
+      const titleSearchRegex = /<!-- PAGE 3: TITLE SEARCH INFORMATION -->[\s\S]*?<!-- PAGE 4: COMPLETE PROPERTY PORTFOLIO -->/;
+      updatedHtml = updatedHtml.replace(titleSearchRegex, `<!-- PAGE 3: TITLE SEARCH INFORMATION -->${noDataMessage}<!-- PAGE 4: COMPLETE PROPERTY PORTFOLIO -->`);
+      
+      // Replace portfolio section with empty content
+      const portfolioRegex = /<!-- PAGE 4: COMPLETE PROPERTY PORTFOLIO -->[\s\S]*?<!-- PAGE 5: PROPERTY DETAILS -->/;
+      updatedHtml = updatedHtml.replace(portfolioRegex, `<!-- PAGE 4: COMPLETE PROPERTY PORTFOLIO -->${noDataMessage}<!-- PAGE 5: PROPERTY DETAILS -->`);
+      
+      // Replace hardcoded report date on cover page
+      const reportDateRegex = /Report Date: 20 October 2025/gi;
+      updatedHtml = updatedHtml.replace(reportDateRegex, `Report Date: ${extractedData.report_date || reportDate}`);
+      
+      // Replace hardcoded counts in executive summary
+      const currentCountRegex = /1 property currently owned/gi;
+      updatedHtml = updatedHtml.replace(currentCountRegex, extractedData.current_properties_count || '0 properties currently owned');
+      
+      const pastCountRegex = /12 properties previously owned/gi;
+      updatedHtml = updatedHtml.replace(pastCountRegex, extractedData.past_properties_count || '0 properties previously owned');
     } else {
-      // Remove the valuation section if it doesn't exist
-      const valuationRegex = /<!-- PAGE 5: PROPERTY VALUATION & SALES HISTORY -->[\s\S]*?<!-- PAGE 6: DOCUMENT INFORMATION/;
-      updatedHtml = updatedHtml.replace(valuationRegex, '<!-- PAGE 6: DOCUMENT INFORMATION');
-      console.log('⚠️ No property_valuation_page found - removed valuation section');
-    }
+      // Replace hardcoded owner name on cover page
+      const ownerNameRegex = /INDRA BUDIMAN/gi;
+      updatedHtml = updatedHtml.replace(ownerNameRegex, extractedData.property_owner_name || 'N/A');
+      
+      // Replace hardcoded report date on cover page
+      const reportDateRegex = /Report Date: 20 October 2025/gi;
+      updatedHtml = updatedHtml.replace(reportDateRegex, `Report Date: ${extractedData.report_date || reportDate}`);
+      
+      // Replace hardcoded counts in executive summary
+      const currentCountRegex = /1 property currently owned/gi;
+      updatedHtml = updatedHtml.replace(currentCountRegex, extractedData.current_properties_count || '0 properties currently owned');
     
-    // Replace page numbers in title search sections
-    if (extractedData.title_search_information_sections) {
-      updatedHtml = updatedHtml.replace(
-        /Page \d+ of \{\{total_pages\}\}/g,
-        (match) => {
-          // Extract the page number and replace total_pages
-          const pageMatch = match.match(/Page (\d+) of/);
-          if (pageMatch) {
-            return `Page ${pageMatch[1]} of ${extractedData.total_pages || 6}`;
-          }
-          return match.replace(/\{\{total_pages\}\}/g, String(extractedData.total_pages || 6));
+      const pastCountRegex = /12 properties previously owned/gi;
+      updatedHtml = updatedHtml.replace(pastCountRegex, extractedData.past_properties_count || '0 properties previously owned');
+    
+      // Replace the static Title Search Information section with dynamic sections
+      // Match from PAGE 3 comment to PAGE 4 comment (including any comment text in between)
+      const titleSearchRegex = /<!-- PAGE 3: TITLE SEARCH INFORMATION -->[\s\S]*?<!-- PAGE 4: COMPLETE PROPERTY PORTFOLIO -->/;
+      if (extractedData.title_search_information_sections && extractedData.title_search_information_sections.length > 0) {
+        const replacement = extractedData.title_search_information_sections + '\n\n  <!-- PAGE 4: COMPLETE PROPERTY PORTFOLIO -->';
+        const beforeLength = updatedHtml.length;
+        updatedHtml = updatedHtml.replace(titleSearchRegex, replacement);
+        const afterLength = updatedHtml.length;
+        if (beforeLength !== afterLength) {
+          console.log('✅ Replaced Title Search Information section (length changed:', beforeLength, '->', afterLength, ')');
+        } else {
+          console.log('⚠️ Title Search Information regex did not match');
         }
-      );
+      } else {
+        console.log('⚠️ No title_search_information_sections found in extractedData or it is empty');
+        console.log('   title_search_information_sections type:', typeof extractedData.title_search_information_sections);
+        console.log('   title_search_information_sections length:', extractedData.title_search_information_sections?.length || 0);
+      }
+    
+      // Replace the static Complete Property Portfolio section with dynamic content
+      // Match from PAGE 4 comment to PAGE 5 comment or PAGE 6 comment
+      const portfolioRegex = /<!-- PAGE 4: COMPLETE PROPERTY PORTFOLIO -->[\s\S]*?(<!-- PAGE 5: PROPERTY VALUATION|<!-- PAGE 6: DOCUMENT INFORMATION)/;
+      if (extractedData.complete_property_portfolio_page && extractedData.complete_property_portfolio_page.length > 0) {
+        // Replace {{total_pages}} and {{portfolio_page_number}} in portfolio page
+        let portfolioPageHtml = extractedData.complete_property_portfolio_page
+          .replace(/\{\{total_pages\}\}/g, String(extractedData.total_pages || 6))
+          .replace(/\{\{portfolio_page_number\}\}/g, String(extractedData.portfolio_page_number || 4));
+        
+        const replacement = portfolioPageHtml + '\n\n  ' + (extractedData.has_valuation ? '<!-- PAGE 5: PROPERTY VALUATION' : '<!-- PAGE 6: DOCUMENT INFORMATION');
+        const beforeLength = updatedHtml.length;
+        updatedHtml = updatedHtml.replace(portfolioRegex, replacement);
+        const afterLength = updatedHtml.length;
+        if (beforeLength !== afterLength) {
+          console.log('✅ Replaced Complete Property Portfolio section (length changed:', beforeLength, '->', afterLength, ')');
+        } else {
+          console.log('⚠️ Complete Property Portfolio regex did not match');
+        }
+      } else {
+        console.log('⚠️ No complete_property_portfolio_page found in extractedData or it is empty');
+        console.log('   complete_property_portfolio_page type:', typeof extractedData.complete_property_portfolio_page);
+        console.log('   complete_property_portfolio_page length:', extractedData.complete_property_portfolio_page?.length || 0);
+      }
+    
+      // Replace the static Property Valuation section with dynamic content (if exists)
+      if (extractedData.property_valuation_page && extractedData.property_valuation_page.length > 0) {
+        // Replace {{total_pages}} and {{valuation_page_number}} in valuation page
+        let valuationPageHtml = extractedData.property_valuation_page
+          .replace(/\{\{total_pages\}\}/g, String(extractedData.total_pages || 6))
+          .replace(/\{\{valuation_page_number\}\}/g, String(extractedData.valuation_page_number || 5));
+        
+        const valuationRegex = /<!-- PAGE 5: PROPERTY VALUATION & SALES HISTORY -->[\s\S]*?<!-- PAGE 6: DOCUMENT INFORMATION/;
+        const replacement = valuationPageHtml + '\n\n  <!-- PAGE 6: DOCUMENT INFORMATION';
+        const beforeLength = updatedHtml.length;
+        updatedHtml = updatedHtml.replace(valuationRegex, replacement);
+        const afterLength = updatedHtml.length;
+        if (beforeLength !== afterLength) {
+          console.log('✅ Replaced Property Valuation section (length changed:', beforeLength, '->', afterLength, ')');
+        } else {
+          console.log('⚠️ Property Valuation regex did not match');
+        }
+      } else {
+        // Remove the valuation section if it doesn't exist
+        const valuationRegex = /<!-- PAGE 5: PROPERTY VALUATION & SALES HISTORY -->[\s\S]*?<!-- PAGE 6: DOCUMENT INFORMATION/;
+        updatedHtml = updatedHtml.replace(valuationRegex, '<!-- PAGE 6: DOCUMENT INFORMATION');
+        console.log('⚠️ No property_valuation_page found - removed valuation section');
+      }
+    
+      // Replace page numbers in title search sections
+      if (extractedData.title_search_information_sections) {
+        updatedHtml = updatedHtml.replace(
+          /Page \d+ of \{\{total_pages\}\}/g,
+          (match) => {
+            // Extract the page number and replace total_pages
+            const pageMatch = match.match(/Page (\d+) of/);
+            if (pageMatch) {
+              return `Page ${pageMatch[1]} of ${extractedData.total_pages || 6}`;
+            }
+            return match.replace(/\{\{total_pages\}\}/g, String(extractedData.total_pages || 6));
+          }
+        );
+      }
+    
+      // Replace cover page variables (using replaceVar for any remaining placeholders)
+      replaceVar('property_owner_name', extractedData.property_owner_name || 'N/A');
+      replaceVar('report_date', extractedData.report_date || reportDate);
+      replaceVar('report_date_time', extractedData.report_date_time || reportDate);
+    
+      // Replace executive summary variables
+      replaceVar('current_properties_count', extractedData.current_properties_count || '0 properties currently owned');
+      replaceVar('past_properties_count', extractedData.past_properties_count || '0 properties previously owned');
+      replaceVar('primary_property_address', extractedData.primary_property_address || 'N/A');
+      replaceVar('primary_property_value', extractedData.primary_property_value || 'N/A');
+    
+      // Replace page number variables
+      replaceVar('total_pages', String(extractedData.total_pages || 6));
+      replaceVar('portfolio_page_number', String(extractedData.portfolio_page_number || 4));
+      replaceVar('valuation_page_number', String(extractedData.valuation_page_number || 5));
+      replaceVar('disclaimers_page_number', String(extractedData.disclaimers_page_number || 6));
+    
+      // Replace hardcoded primary property address in executive summary
+      const primaryAddressRegex = /56 Kings Road, Vaucluse NSW 2030/gi;
+      updatedHtml = updatedHtml.replace(primaryAddressRegex, extractedData.primary_property_address || 'N/A');
+    
+      // Replace hardcoded estimated value in executive summary
+      const estimatedValueRegex = /\$11,300,000/gi;
+      updatedHtml = updatedHtml.replace(estimatedValueRegex, extractedData.primary_property_value || 'N/A');
+    
+      // Replace disclaimers page number
+      const disclaimersPageRegex = /Page 6 of 6/gi;
+      updatedHtml = updatedHtml.replace(disclaimersPageRegex, `Page ${extractedData.disclaimers_page_number || extractedData.total_pages || 6} of ${extractedData.total_pages || 6}`);
     }
-    
-    // Replace cover page variables (using replaceVar for any remaining placeholders)
-    replaceVar('property_owner_name', extractedData.property_owner_name || 'N/A');
-    replaceVar('report_date', extractedData.report_date || reportDate);
-    replaceVar('report_date_time', extractedData.report_date_time || reportDate);
-    
-    // Replace executive summary variables
-    replaceVar('current_properties_count', extractedData.current_properties_count || '0 properties currently owned');
-    replaceVar('past_properties_count', extractedData.past_properties_count || '0 properties previously owned');
-    replaceVar('primary_property_address', extractedData.primary_property_address || 'N/A');
-    replaceVar('primary_property_value', extractedData.primary_property_value || 'N/A');
-    
-    // Replace page number variables
-    replaceVar('total_pages', String(extractedData.total_pages || 6));
-    replaceVar('portfolio_page_number', String(extractedData.portfolio_page_number || 4));
-    replaceVar('valuation_page_number', String(extractedData.valuation_page_number || 5));
-    replaceVar('disclaimers_page_number', String(extractedData.disclaimers_page_number || 6));
-    
-    // Replace hardcoded primary property address in executive summary
-    const primaryAddressRegex = /56 Kings Road, Vaucluse NSW 2030/gi;
-    updatedHtml = updatedHtml.replace(primaryAddressRegex, extractedData.primary_property_address || 'N/A');
-    
-    // Replace hardcoded estimated value in executive summary
-    const estimatedValueRegex = /\$11,300,000/gi;
-    updatedHtml = updatedHtml.replace(estimatedValueRegex, extractedData.primary_property_value || 'N/A');
-    
-    // Replace disclaimers page number
-    const disclaimersPageRegex = /Page 6 of 6/gi;
-    updatedHtml = updatedHtml.replace(disclaimersPageRegex, `Page ${extractedData.disclaimers_page_number || extractedData.total_pages || 6} of ${extractedData.total_pages || 6}`);
   }
 
   // Property title reference specific variables
