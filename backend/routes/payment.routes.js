@@ -217,6 +217,12 @@ router.get('/bankruptcy/matches', async (req, res) => {
 });
 
 router.get('/director-related/matches', async (req, res) => {
+	console.log('🔍 Director-related matches endpoint called:', {
+		query: req.query,
+		url: req.url,
+		method: req.method
+	});
+	
 	try {
 		const { firstName, lastName, dobFrom, dobTo } = req.query;
 
