@@ -118,41 +118,21 @@ class ApiService {
 
     try {
       const response = await fetch(url, config);
-      
-      // Handle non-JSON responses
-      let data;
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        data = await response.json();
-      } else {
-        const text = await response.text();
-        data = { message: text || 'An error occurred', error: 'UNKNOWN_ERROR' };
-      }
+      const data = await response.json();
 
       if (!response.ok) {
         console.error('API Error Response:', {
           status: response.status,
           statusText: response.statusText,
-          url: url,
           data: data
         });
-        
-        // Provide more specific error messages
-        if (response.status === 404) {
-          throw new Error(`API endpoint not found: ${url}. Please check if the backend server is running and the route is registered.`);
-        }
-        
-        throw new Error(data.message || data.error || `API request failed with status ${response.status}`);
+        throw new Error(data.message || data.error || 'An error occurred');
       }
 
       return data;
     } catch (error) {
-      if (error instanceof Error) {
-        console.error('API request failed:', error.message, 'URL:', url);
-        throw error;
-      }
       console.error('API request failed:', error);
-      throw new Error('API request failed: ' + String(error));
+      throw error;
     }
   }
 
@@ -446,16 +426,12 @@ class ApiService {
 
   async searchIndividualBankruptcyMatches(params: {
     firstName?: string;
-    middleName?: string;
     lastName: string;
     dateOfBirth?: string;
   }): Promise<BankruptcySearchResponse> {
     const searchParams = new URLSearchParams();
     if (params.firstName) {
       searchParams.append('firstName', params.firstName);
-    }
-    if (params.middleName) {
-      searchParams.append('middleName', params.middleName);
     }
     if (params.lastName) {
       searchParams.append('lastName', params.lastName);
@@ -473,7 +449,6 @@ class ApiService {
 
   async searchIndividualRelatedEntityMatches(params: {
     firstName?: string;
-    middleName?: string;
     lastName: string;
     dobFrom?: string;
     dobTo?: string;
@@ -481,9 +456,6 @@ class ApiService {
     const searchParams = new URLSearchParams();
     if (params.firstName) {
       searchParams.append('firstName', params.firstName);
-    }
-    if (params.middleName) {
-      searchParams.append('middleName', params.middleName);
     }
     if (params.lastName) {
       searchParams.append('lastName', params.lastName);
@@ -507,7 +479,6 @@ class ApiService {
     abn?: string;
     companyName?: string;
     firstName?: string;
-    middleName?: string;
     lastName?: string;
     dob?: string;
     startYear?: string;

@@ -198,8 +198,11 @@ const Search: React.FC = () => {
   }, []);
 
   const [landTitleIndividualFirstName, setLandTitleIndividualFirstName] = useState('');
-  const [landTitleIndividualMiddleName, setLandTitleIndividualMiddleName] = useState('');
   const [landTitleIndividualLastName, setLandTitleIndividualLastName] = useState('');
+  const [landTitleIndividualDobMode, setLandTitleIndividualDobMode] = useState<'EXACT' | 'RANGE'>('EXACT');
+  const [landTitleIndividualDob, setLandTitleIndividualDob] = useState('');
+  const [landTitleIndividualStartYear, setLandTitleIndividualStartYear] = useState('');
+  const [landTitleIndividualEndYear, setLandTitleIndividualEndYear] = useState('');
   const [landTitleIndividualStates, setLandTitleIndividualStates] = useState<Set<string>>(new Set());
   const [isIndividualNameConfirmed, setIsIndividualNameConfirmed] = useState(false);
   const [landTitleAddress, setLandTitleAddress] = useState('');
@@ -672,8 +675,11 @@ const Search: React.FC = () => {
     setLandTitleReferenceId('');
     setLandTitleOrganisationStates(new Set());
     setLandTitleIndividualFirstName('');
-    setLandTitleIndividualMiddleName('');
     setLandTitleIndividualLastName('');
+    setLandTitleIndividualDobMode('EXACT');
+    setLandTitleIndividualDob('');
+    setLandTitleIndividualStartYear('');
+    setLandTitleIndividualEndYear('');
     setLandTitleIndividualStates(new Set());
     setLandTitleAddress('');
     setLandTitleAddressDetails(null);
@@ -712,6 +718,10 @@ const Search: React.FC = () => {
         setLandTitleOrganisationStates(new Set());
         setLandTitleIndividualFirstName('');
         setLandTitleIndividualLastName('');
+        setLandTitleIndividualDobMode('EXACT');
+        setLandTitleIndividualDob('');
+        setLandTitleIndividualStartYear('');
+        setLandTitleIndividualEndYear('');
         setLandTitleIndividualStates(new Set());
         setLandTitleAddress('');
         setLandTitleAddressDetails(null);
@@ -741,6 +751,10 @@ const Search: React.FC = () => {
         setLandTitleOrganisationStates(new Set());
         setLandTitleIndividualFirstName('');
         setLandTitleIndividualLastName('');
+        setLandTitleIndividualDobMode('EXACT');
+        setLandTitleIndividualDob('');
+        setLandTitleIndividualStartYear('');
+        setLandTitleIndividualEndYear('');
         setLandTitleIndividualStates(new Set());
         setLandTitleAddress('');
         setLandTitleAddressDetails(null);
@@ -1061,8 +1075,11 @@ const Search: React.FC = () => {
           try {
             const response = await apiService.searchIndividualBankruptcyMatches({
               firstName: landTitleIndividualFirstName.trim() || undefined,
-              middleName: landTitleIndividualMiddleName.trim() || undefined,
-              lastName: landTitleIndividualLastName.trim()
+              lastName: landTitleIndividualLastName.trim(),
+              dateOfBirth:
+                landTitleIndividualDobMode === 'EXACT' && landTitleIndividualDob
+                  ? landTitleIndividualDob
+                  : undefined
             });
 
             const matches = response?.matches || [];
@@ -1118,13 +1135,27 @@ const Search: React.FC = () => {
       setRelatedMatchesError(null);
       setIsLoadingRelatedMatches(true);
 
+      const dobFromParam =
+        landTitleIndividualDobMode === 'EXACT'
+          ? formatDobForAlares(landTitleIndividualDob)
+          : landTitleIndividualDobMode === 'RANGE' && landTitleIndividualStartYear.trim()
+            ? `01-01-${landTitleIndividualStartYear.trim()}`
+            : undefined;
+      const dobToParam =
+        landTitleIndividualDobMode === 'EXACT'
+          ? formatDobForAlares(landTitleIndividualDob)
+          : landTitleIndividualDobMode === 'RANGE' && landTitleIndividualEndYear.trim()
+            ? `31-12-${landTitleIndividualEndYear.trim()}`
+            : undefined;
+
       fetchTasks.push(
         (async () => {
           try {
             const response = await apiService.searchIndividualRelatedEntityMatches({
               firstName: landTitleIndividualFirstName.trim() || undefined,
-              middleName: landTitleIndividualMiddleName.trim() || undefined,
-              lastName: landTitleIndividualLastName.trim()
+              lastName: landTitleIndividualLastName.trim(),
+              dobFrom: dobFromParam,
+              dobTo: dobToParam
             });
 
             const matches = response?.matches || [];
@@ -1178,11 +1209,15 @@ const Search: React.FC = () => {
     }
   }, [
     formatDisplayDate,
+    formatDobForAlares,
     isIndividualBankruptcySelected,
     isIndividualRelatedEntitiesSelected,
+    landTitleIndividualDob,
+    landTitleIndividualDobMode,
+    landTitleIndividualEndYear,
     landTitleIndividualFirstName,
-    landTitleIndividualMiddleName,
-    landTitleIndividualLastName
+    landTitleIndividualLastName,
+    landTitleIndividualStartYear
   ]);
 
   const handleConfirmIndividualName = useCallback(() => {
@@ -2370,11 +2405,17 @@ setLandTitleOrganisationSearchTerm(displayText);
           return;
         }
 
+        const dobParam = landTitleIndividualDobMode === 'EXACT' && landTitleIndividualDob
+          ? landTitleIndividualDob
+          : undefined;
+
         params = {
           type: 'individual',
           firstName: landTitleIndividualFirstName.trim() || undefined,
-          middleName: landTitleIndividualMiddleName.trim() || undefined,
           lastName: landTitleIndividualLastName.trim(),
+          dob: dobParam,
+          startYear: landTitleIndividualDobMode === 'RANGE' ? landTitleIndividualStartYear : undefined,
+          endYear: landTitleIndividualDobMode === 'RANGE' ? landTitleIndividualEndYear : undefined,
           states
         };
       }
@@ -2775,6 +2816,19 @@ setLandTitleOrganisationSearchTerm(displayText);
             setIsProcessingReports(false);
             return;
           }
+          if (landTitleIndividualDobMode === 'EXACT' && !landTitleIndividualDob) {
+            alert('Please enter a date of birth');
+            setIsProcessingReports(false);
+            return;
+          }
+          if (
+            landTitleIndividualDobMode === 'RANGE' &&
+            (!landTitleIndividualStartYear.trim() || !landTitleIndividualEndYear.trim())
+          ) {
+            alert('Please enter a start and end year');
+            setIsProcessingReports(false);
+            return;
+          }
           if (landTitleIndividualStates.size === 0) {
             alert('Please select at least one state');
             setIsProcessingReports(false);
@@ -2834,8 +2888,11 @@ setLandTitleOrganisationSearchTerm(displayText);
           case 'LAND_INDIVIDUAL':
             landTitleMeta.person = {
               firstName: landTitleIndividualFirstName.trim(),
-              middleName: landTitleIndividualMiddleName.trim() || undefined,
               lastName: landTitleIndividualLastName.trim(),
+              dobMode: landTitleIndividualDobMode,
+              dob: landTitleIndividualDob,
+              startYear: landTitleIndividualStartYear.trim(),
+              endYear: landTitleIndividualEndYear.trim(),
               states: Array.from(landTitleIndividualStates)
             };
             // Include landTitleSelection with titleReferences for looping
@@ -3010,12 +3067,16 @@ setLandTitleOrganisationSearchTerm(displayText);
               landTitleIndividualFirstName.trim() || individualFirstName;
             const effectiveLastName =
               landTitleIndividualLastName.trim() || individualLastName;
+            const effectiveDob =
+              landTitleIndividualDobMode === 'EXACT' && landTitleIndividualDob
+                ? landTitleIndividualDob
+                : individualDateOfBirth;
 
             businessData = {
               ...(businessData || {}),
               fname: effectiveFirstName,
               lname: effectiveLastName,
-              dob: individualDateOfBirth,
+              dob: effectiveDob,
               isCompany: 'INDIVIDUAL'
             };
 
@@ -3617,20 +3678,92 @@ setLandTitleOrganisationSearchTerm(displayText);
                                 />
                               </div>
                             </div>
-                            <div>
-                              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                Middle Name
-                              </label>
-                              <input
-                                type="text"
-                                value={landTitleIndividualMiddleName}
-                                onChange={(event) => {
-                                  setLandTitleIndividualMiddleName(event.target.value);
-                                  resetIndividualSearchState();
-                                }}
-                                placeholder="Enter middle name (optional)"
-                                className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
-                              />
+
+                            <div className="space-y-4">
+                              <span className="block text-sm font-semibold text-gray-700">
+                                Date of Birth Options<span className="text-red-500">*</span>
+                              </span>
+                              <div className="flex flex-wrap gap-3">
+                                {[
+                                  { key: 'EXACT' as const, label: 'Exact Date of Birth' },
+                                  { key: 'RANGE' as const, label: 'Birth Year Range' }
+                                ].map(option => {
+                                  const isSelected = landTitleIndividualDobMode === option.key;
+                                  return (
+                                    <button
+                                      key={option.key}
+                                      type="button"
+                                      onClick={() => {
+                                        setLandTitleIndividualDobMode(option.key);
+                                      resetIndividualSearchState();
+                                      }}
+                                      className={`
+                                      px-5 py-3 rounded-xl border-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200
+                                      ${isSelected
+                                          ? 'border-red-600 bg-red-600 text-white shadow-red-600/30'
+                                          : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'}
+                                    `}
+                                    >
+                                      {option.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              {landTitleIndividualDobMode === 'EXACT' ? (
+                                <input
+                                  type="date"
+                                  value={landTitleIndividualDob}
+                                  onChange={(event) => {
+                                    setLandTitleIndividualDob(event.target.value);
+                                    resetIndividualSearchState();
+                                  }}
+                                  className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
+                                />
+                              ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                  <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                      Start Year<span className="text-red-500">*</span>
+                                    </label>
+                                    <select
+                                      value={landTitleIndividualStartYear}
+                                      onChange={(event) => {
+                                        setLandTitleIndividualStartYear(event.target.value);
+                                        resetIndividualSearchState();
+                                      }}
+                                      className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
+                                    >
+                                      <option value="">Select start year</option>
+                                      {startYearOptions.map(year => (
+                                        <option key={year} value={year.toString()}>
+                                          {year}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                      End Year<span className="text-red-500">*</span>
+                                    </label>
+                                    <select
+                                      value={landTitleIndividualEndYear}
+                                      onChange={(event) => {
+                                        setLandTitleIndividualEndYear(event.target.value);
+                                        resetIndividualSearchState();
+                                      }}
+                                      className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
+                                    >
+                                      <option value="">Select end year</option>
+                                      {endYearOptions.map(year => (
+                                        <option key={year} value={year.toString()}>
+                                          {year}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </div>
+                              )}
                             </div>
 
                             <div>
@@ -3995,22 +4128,100 @@ setLandTitleOrganisationSearchTerm(displayText);
                       />
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Middle Name
-                    </label>
-                    <input
-                      type="text"
-                      value={landTitleIndividualMiddleName}
-                      onChange={(event) => {
-                        setLandTitleIndividualMiddleName(event.target.value);
-                        setIsIndividualNameConfirmed(false);
-                        setIsLandTitleIndividualSearchPerformed(false);
-                        setSelectedLandTitleIndividualMatch(null);
-                      }}
-                      placeholder="Enter middle name (optional)"
-                      className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
-                    />
+
+                  <div className="space-y-4">
+                    <span className="block text-sm font-semibold text-gray-700">
+                      Date of Birth Options<span className="text-red-500">*</span>
+                    </span>
+                    <div className="flex flex-wrap gap-3">
+                      {[
+                        { key: 'EXACT' as const, label: 'Exact Date of Birth' },
+                        { key: 'RANGE' as const, label: 'Birth Year Range' }
+                      ].map(option => {
+                        const isSelected = landTitleIndividualDobMode === option.key;
+                        return (
+                      <button
+                        key={option.key}
+                        type="button"
+                        onClick={() => {
+                          setLandTitleIndividualDobMode(option.key);
+                          setIsIndividualNameConfirmed(false);
+                          setIsLandTitleIndividualSearchPerformed(false);
+                          setSelectedLandTitleIndividualMatch(null);
+                        }}
+                            className={`
+                      px-5 py-3 rounded-xl border-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200
+                      ${isSelected
+                                ? 'border-red-600 bg-red-600 text-white shadow-red-600/30'
+                                : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'}
+                    `}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {landTitleIndividualDobMode === 'EXACT' ? (
+                      <input
+                        type="date"
+                        value={landTitleIndividualDob}
+                        onChange={(event) => {
+                          setLandTitleIndividualDob(event.target.value);
+                          setIsIndividualNameConfirmed(false);
+                          setIsLandTitleIndividualSearchPerformed(false);
+                          setSelectedLandTitleIndividualMatch(null);
+                        }}
+                        className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
+                      />
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Start Year<span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            value={landTitleIndividualStartYear}
+                            onChange={(event) => {
+                              setLandTitleIndividualStartYear(event.target.value);
+                              setIsIndividualNameConfirmed(false);
+                              setIsLandTitleIndividualSearchPerformed(false);
+                              setSelectedLandTitleIndividualMatch(null);
+                            }}
+                            className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
+                          >
+                            <option value="">Select start year</option>
+                            {startYearOptions.map(year => (
+                              <option key={year} value={year.toString()}>
+                                {year}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            End Year<span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            value={landTitleIndividualEndYear}
+                            onChange={(event) => {
+                              setLandTitleIndividualEndYear(event.target.value);
+                              setIsIndividualNameConfirmed(false);
+                              setIsLandTitleIndividualSearchPerformed(false);
+                              setSelectedLandTitleIndividualMatch(null);
+                            }}
+                            className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
+                          >
+                            <option value="">Select end year</option>
+                            {endYearOptions.map(year => (
+                              <option key={year} value={year.toString()}>
+                                {year}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <button
