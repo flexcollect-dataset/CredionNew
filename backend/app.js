@@ -533,7 +533,10 @@ app.post('/api/send-reports', async (req, res) => {
 });
 
 // General API Routes - Mount AFTER payment routes to avoid conflicts
+// Mount at /api/general to avoid conflicts with payment routes
 const apiRoutes = require('./routes/api.routes');
+app.use('/api/general', apiRoutes);
+// Also mount at /api for backward compatibility, but after payment routes
 app.use('/api', apiRoutes);
 
 // 404 handler
