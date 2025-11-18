@@ -453,25 +453,53 @@ class ApiService {
     dobFrom?: string;
     dobTo?: string;
   }): Promise<DirectorRelatedSearchResponse> {
-    const searchParams = new URLSearchParams();
+    const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
+    const apiUrl = 'https://alares.com.au/api/asic/search';
+
+    const requestParams = new URLSearchParams();
+    requestParams.append('last_name', params.lastName);
+    
     if (params.firstName) {
-      searchParams.append('firstName', params.firstName);
-    }
-    if (params.lastName) {
-      searchParams.append('lastName', params.lastName);
+      requestParams.append('first_name', params.firstName);
     }
     if (params.dobFrom) {
-      searchParams.append('dobFrom', params.dobFrom);
+      requestParams.append('dob_from', params.dobFrom);
     }
     if (params.dobTo) {
-      searchParams.append('dobTo', params.dobTo);
+      requestParams.append('dob_to', params.dobTo);
     }
 
-    const query = searchParams.toString();
-    const basePath = '/api/director-related/matches';
-    const endpoint = query.length > 0 ? `${basePath}?${query}` : basePath;
+    const url = `${apiUrl}?${requestParams.toString()}`;
 
-    return this.request<DirectorRelatedSearchResponse>(endpoint);
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${bearerToken}`,
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const matches = Array.isArray(data) ? data : Array.isArray(data?.results) ? data.results : [];
+
+      return {
+        success: true,
+        matches
+      };
+    } catch (error) {
+      console.error('Error searching director related matches:', error);
+      return {
+        success: false,
+        matches: [],
+        error: 'DIRECTOR_RELATED_SEARCH_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to retrieve director related entities'
+      };
+    }
   }
 
   async getLandTitleCounts(params: {
