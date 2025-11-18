@@ -2377,17 +2377,45 @@ setLandTitleOrganisationSearchTerm(displayText);
 
       if (landTitleModalOpen === 'ABN/ACN LAND TITLE') {
         // Organization search
-        const states = Array.from(landTitleOrganisationStates);
-        if (states.length === 0) {
+        // For ORGANISATION category, use all states by default (no user selection required)
+        // For LAND TITLE category, use selected states
+        const states = selectedCategory === 'ORGANISATION' 
+          ? Array.from(landTitleStateOptions)
+          : Array.from(landTitleOrganisationStates);
+        
+        if (selectedCategory !== 'ORGANISATION' && states.length === 0) {
           alert('Please select at least one state');
           setIsLoadingLandTitleCounts(false);
           return;
         }
 
+        // Use confirmed company data when in ORGANISATION category, otherwise use land title organisation data
+        let abn = '';
+        let companyName: string | undefined = undefined;
+        
+        if (selectedCategory === 'ORGANISATION' && isCompanyConfirmed && pendingCompany) {
+          // Use confirmed company from ORGANISATION category
+          abn = pendingCompany.abn;
+          companyName = pendingCompany.name;
+        } else {
+          // Use land title organisation selection
+          abn = landTitleOrganisationSelected?.Abn || landTitleOrganisationSearchTerm;
+          companyName = landTitleOrganisationSelected?.Name;
+          
+          // If abn is from search term, try to extract it
+          if (!abn && organisationSearchTerm) {
+            const abnMatch = organisationSearchTerm.match(/ABN:\s*(\d+)/i);
+            if (abnMatch) {
+              abn = abnMatch[1];
+              companyName = organisationSearchTerm.replace(/\s*ABN:.*$/i, '').trim() || undefined;
+            }
+          }
+        }
+
         params = {
           type: 'organization',
-          abn: landTitleOrganisationSelected?.Abn || landTitleOrganisationSearchTerm,
-          companyName: landTitleOrganisationSelected?.Name || undefined,
+          abn: abn,
+          companyName: companyName,
           states
         };
       } else {
@@ -5122,11 +5150,58 @@ setLandTitleOrganisationSearchTerm(displayText);
                 <p className="text-sm text-gray-600 leading-relaxed">
                   {landTitleModalCopy[landTitleModalOpen].summaryDescription}
                 </p>
+                
+                {/* State Selection for ABN/ACN LAND TITLE - only show for LAND TITLE category, not ORGANISATION */}
+                {landTitleModalOpen === 'ABN/ACN LAND TITLE' && selectedCategory !== 'ORGANISATION' && (
+                  <div className="mt-6">
+                    <span className="block text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
+                      Select States<span className="text-red-500">*</span>
+                    </span>
+                    <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
+                      {landTitleStateOptions.map(state => {
+                        const isSelected = landTitleOrganisationStates.has(state);
+                        return (
+                          <button
+                            key={state}
+                            type="button"
+                            onClick={() => handleLandTitleOrganisationStateToggle(state)}
+                            className={`
+                              px-4 py-2 rounded-xl border-2 text-xs font-semibold uppercase tracking-wide transition-all duration-200
+                              ${isSelected
+                                ? 'border-red-600 bg-red-600 text-white shadow-red-600/30'
+                                : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'}
+                            `}
+                          >
+                            {state}
+                          </button>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        onClick={handleLandTitleOrganisationStateSelectAll}
+                        className={`
+                          px-4 py-2 rounded-xl border-2 text-xs font-semibold uppercase tracking-wide transition-all duration-200
+                          ${landTitleOrganisationStates.size === landTitleStateOptions.length
+                            ? 'border-red-600 bg-red-600 text-white shadow-red-600/30'
+                            : 'border-gray-200 bg-white text-red-600 hover:border-red-600'}
+                        `}
+                      >
+                        Select All
+                      </button>
+                    </div>
+                    {landTitleOrganisationStates.size === 0 && (
+                      <p className="mt-2 text-xs text-red-600 font-medium">
+                        Please select at least one state
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <div className="mt-8 space-y-3">
                   <button
                     type="button"
                     onClick={handleLandTitleSummaryContinue}
-                    disabled={isLoadingLandTitleCounts}
+                    disabled={isLoadingLandTitleCounts || (landTitleModalOpen === 'ABN/ACN LAND TITLE' && selectedCategory !== 'ORGANISATION' && landTitleOrganisationStates.size === 0)}
                     className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isLoadingLandTitleCounts ? 'Processing...' : `Process – ${formatCurrency(landTitlePricingConfig.base[landTitleModalOpen])}`}

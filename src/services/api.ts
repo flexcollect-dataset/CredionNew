@@ -429,22 +429,78 @@ class ApiService {
     lastName: string;
     dateOfBirth?: string;
   }): Promise<BankruptcySearchResponse> {
-    const searchParams = new URLSearchParams();
-    if (params.firstName) {
-      searchParams.append('firstName', params.firstName);
-    }
-    if (params.lastName) {
-      searchParams.append('lastName', params.lastName);
-    }
-    if (params.dateOfBirth) {
-      searchParams.append('dateOfBirth', params.dateOfBirth);
-    }
+    const clientId = '8d2e211a-88d5-446f-b355-6b10a8278e3f';
+    const clientSecret = 'VBqsIg9683V652UadICDkjNw205h576mnw1Y23Gw5y7isp9hR1AC28c9RCBcYjYj';
+    const authUrl = 'https://services.afsa.gov.au/authentication-service/api/v2/login';
+    const apiUrl = 'https://services.afsa.gov.au/brs/api/v2/search-by-name';
 
-    const query = searchParams.toString();
-    const basePath = '/api/bankruptcy/matches';
-    const endpoint = query.length > 0 ? `${basePath}?${query}` : basePath;
+    try {
+      // Step 1: Authenticate to get token
+      const authResponse = await fetch(authUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          clientId,
+          clientSecret
+        })
+      });
 
-    return this.request<BankruptcySearchResponse>(endpoint);
+      if (!authResponse.ok) {
+        throw new Error(`Authentication failed: ${authResponse.status} ${authResponse.statusText}`);
+      }
+
+      const authData = await authResponse.json();
+      const bearerToken = authData.accessToken;
+
+      if (!bearerToken) {
+        throw new Error('No access token received from authentication');
+      }
+
+      // Step 2: Search with the token
+      const requestParams = new URLSearchParams();
+      requestParams.append('debtorSurname', params.lastName);
+      
+      if (params.firstName) {
+        requestParams.append('debtorGivenName', params.firstName);
+      }
+      if (params.dateOfBirth) {
+        requestParams.append('debtorDateOfBirth', params.dateOfBirth);
+      }
+
+      const searchUrl = `${apiUrl}?${requestParams.toString()}`;
+      const searchResponse = await fetch(searchUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${bearerToken}`,
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!searchResponse.ok) {
+        throw new Error(`Search API error: ${searchResponse.status} ${searchResponse.statusText}`);
+      }
+
+      const data = await searchResponse.json();
+      const matches = Array.isArray(data?.insolvencies) ? data.insolvencies : [];
+
+      return {
+        success: true,
+        matches,
+        resultCount: data?.resultCount ?? matches.length,
+        resultLimitExceeded: data?.resultLimitExceeded ?? false,
+        operationFeeAmount: data?.operationFeeAmount ?? null
+      };
+    } catch (error) {
+      console.error('Error searching bankruptcy matches:', error);
+      return {
+        success: false,
+        matches: [],
+        error: 'BANKRUPTCY_SEARCH_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to retrieve bankruptcy records'
+      };
+    }
   }
 
   async searchIndividualRelatedEntityMatches(params: {
