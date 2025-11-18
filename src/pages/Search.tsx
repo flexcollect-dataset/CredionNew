@@ -322,6 +322,14 @@ const Search: React.FC = () => {
     'COMPANY': 30.00
   };
 
+  const mockLandTitleIndividualMatches: string[] = [
+    'William P.J. Pike (16/10/1960)',
+    'William Peter J Pike (16/10/1960)',
+    'William P James Pike (16/10/1960)',
+    'W.P.J. Pike (16/10/1960)',
+    'William Peter James Pike (16/10/1960)'
+  ];
+
   // Base prices for additional searches (per director for director-related searches)
   const additionalSearchBasePrices: Record<string, number> = {
     'ABN/ACN PPSR': 50,
@@ -1091,7 +1099,8 @@ const Search: React.FC = () => {
     const isRelatedEntitiesSearch = isIndividualRelatedEntitiesSelected;
     const isIndividualCourtSearch = selectedCategory === 'INDIVIDUAL' && selectedSearches.has('COURT');
     const isIndividualLandTitleSearch = selectedCategory === 'INDIVIDUAL' && selectedSearches.has('INDIVIDUAL LAND TITLE');
-
+    const isLandTitleSearch = selectedCategory === 'LAND TITLE';
+    
     if ((isBankruptcySearch || isRelatedEntitiesSearch) && !landTitleIndividualLastName.trim()) {
       alert('Please enter a last name to search records');
       return;
