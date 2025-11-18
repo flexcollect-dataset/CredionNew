@@ -451,9 +451,21 @@ app.post('/api/create-report', async (req, res) => {
   }
 });
 
-// Now mount payment routes
+// Now mount payment routes - MUST be before other /api routes
+// Mount at /api first to ensure bankruptcy, director-related, and land-title routes are accessible
+app.use('/api', paymentRoutes.router);
 app.use('/api/payment', paymentRoutes.router);
-app.use('/api', paymentRoutes.router); // Mount at /api for check-data endpoint
+
+// Log registered routes for debugging (development only)
+if (process.env.NODE_ENV !== 'production') {
+  console.log('📋 Registered payment routes:');
+  paymentRoutes.router.stack.forEach((middleware) => {
+    if (middleware.route) {
+      const methods = Object.keys(middleware.route.methods).map(m => m.toUpperCase()).join(', ');
+      console.log(`   ${methods} /api${middleware.route.path}`);
+    }
+  });
+}
 
 // Email Service
 const emailService = require('./services/email.service');

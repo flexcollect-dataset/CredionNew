@@ -776,53 +776,6 @@ async function land_title_organisation(ldata) {
 	let abn = ldata?.Abn || ldata?.abn || null;
 	let companyName = ldata?.Name || ldata?.name || null;
 	
-	// If ABN or company name is missing, try to get from summary record
-	if (abn && (!companyName || companyName === 'Unknown')) {
-		try {
-			const [summaryRecord] = await sequelize.query(`
-				SELECT rdata, search_word, abn
-				FROM api_data
-				WHERE rtype = 'land-title-organisation' AND abn = $1
-				ORDER BY created_at DESC
-				LIMIT 1
-			`, {
-				bind: [abn]
-			});
-			
-			if (summaryRecord && summaryRecord.length > 0) {
-				const record = summaryRecord[0];
-				// Get company name from search_word or rdata
-				if (!companyName || companyName === 'Unknown') {
-					companyName = record.search_word || companyName;
-				}
-				
-				// Also try to get from rdata if available
-				if ((!companyName || companyName === 'Unknown') && record.rdata) {
-					try {
-						const rdata = typeof record.rdata === 'string' ? JSON.parse(record.rdata) : record.rdata;
-						companyName = rdata?.companyName || companyName;
-					} catch (parseError) {
-						console.error('Error parsing rdata for company name:', parseError);
-					}
-				}
-				
-				// Ensure ABN is set from record if not already set
-				if (!abn && record.abn) {
-					abn = record.abn;
-				}
-			}
-		} catch (error) {
-			console.error('Error fetching ABN/company name from summary record:', error);
-			// Continue with existing values
-		}
-	}
-	
-	console.log('==========================');
-	console.log('land_title_organisation - ldata:', ldata);
-	console.log('Extracted ABN:', abn);
-	console.log('Extracted Company Name:', companyName);
-	console.log('==========================');
-	
 	// Get titleReferences from landTitleSelection
 	const titleReferences = ldata.landTitleSelection?.titleReferences || [];
 	const detail = ldata.landTitleSelection?.detail || 'ALL';
@@ -844,16 +797,6 @@ async function land_title_organisation(ldata) {
 	// Process each titleReference
 	for (const titleRefItem of filteredTitleReferences) {
 		try {
-			// Fetch stored data from api_data table
-			const [storedData] = await sequelize.query(`
-				SELECT rdata FROM api_data
-				WHERE rtype = 'land-title-reference' AND uuid = $1
-				ORDER BY created_at DESC
-				LIMIT 1
-			`, {
-				bind: [titleRefItem.titleReference]
-			});
-
 			// Call createTitleOrder for each titleReference
 			// Pass ABN and company name if available from business data
 			const titleOrderData = await createTitleOrder(titleRefItem.jurisdiction, titleRefItem.titleReference, abn, companyName);
@@ -1849,7 +1792,6 @@ async function searchLandTitleByPerson(firstName, lastName, state, dob) {
 
 // Land title counts endpoint
 router.post('/land-title/counts', async (req, res) => {
-	console.log('✅ Land title counts endpoint hit!', req.body);
 	try {
 		const { type, abn, companyName, firstName, lastName, dob, startYear, endYear, states } = req.body;
 
@@ -1888,12 +1830,11 @@ router.post('/land-title/counts', async (req, res) => {
 				const [existingData] = await sequelize.query(`
 					SELECT uuid, rdata, id
 					FROM api_data
-					WHERE rtype = 'land-title-organisation' AND abn = $1
+					WHERE rtype = 'land-title-organisation-summary-fullresult' AND abn = $1
 					ORDER BY created_at DESC
 				`, {
 					bind: [abn]
 				});
-
 				if (existingData && existingData.length > 0) {
 					console.log(`✅ Found existing data for ABN ${abn}, using cached data`);
 					
@@ -1901,6 +1842,7 @@ router.post('/land-title/counts', async (req, res) => {
 					// This record contains the aggregated counts and titleReferences
 					try {
 						const summaryRecord = existingData[0]; // Get the most recent summary record
+						// Parse rdata if it's a string (stored as JSON in PostgreSQL)
 						const rdata = typeof summaryRecord.rdata === 'string' 
 							? JSON.parse(summaryRecord.rdata) 
 							: summaryRecord.rdata;
@@ -1912,46 +1854,15 @@ router.post('/land-title/counts', async (req, res) => {
 						// Extract titleReferences from summary record
 						if (rdata?.titleReferences && Array.isArray(rdata.titleReferences)) {
 							allTitleReferences.push(...rdata.titleReferences);
-							
-							// Build storedDataIds from titleReferences
-							// We need to get the dataId from individual titleReference records
-							for (const titleRef of rdata.titleReferences) {
-								try {
-									const [titleRefRecord] = await sequelize.query(`
-										SELECT id FROM api_data
-										WHERE rtype = 'land-title-reference' AND uuid = $1
-										ORDER BY created_at DESC
-										LIMIT 1
-									`, {
-										bind: [titleRef.titleReference]
-									});
-									
-									if (titleRefRecord && titleRefRecord.length > 0) {
-										storedDataIds.push({
-											titleReference: titleRef.titleReference,
-											jurisdiction: titleRef.jurisdiction,
-											dataId: titleRefRecord[0].id
-										});
-									}
-								} catch (idError) {
-									console.error(`Error fetching dataId for ${titleRef.titleReference}:`, idError);
-									// Continue even if we can't get the dataId
-									storedDataIds.push({
-										titleReference: titleRef.titleReference,
-										jurisdiction: titleRef.jurisdiction,
-										dataId: null
-									});
-								}
-							}
 						}
-						
+
 						// Return cached data
 						return res.json({
 							success: true,
 							current: currentCount,
 							historical: historicalCount,
 							titleReferences: allTitleReferences,
-							storedDataIds: storedDataIds,
+							storedDataIds: summaryRecord.id,
 							cached: true // Flag to indicate this is cached data
 						});
 					} catch (parseError) {
@@ -1982,40 +1893,40 @@ router.post('/land-title/counts', async (req, res) => {
 						currentCount += searchResults.current || 0;
 						historicalCount += searchResults.historical || 0;
 						
-						// Store API response for each titleReference
-						if (searchResults.titleReferences && Array.isArray(searchResults.titleReferences) && searchResults.fullApiResponse) {
-							for (const titleRef of searchResults.titleReferences) {
-								allTitleReferences.push(titleRef);
+						// Add titleReferences to the collection
+						if (searchResults.titleReferences && Array.isArray(searchResults.titleReferences)) {
+							allTitleReferences.push(...searchResults.titleReferences);
+						}
+						
+						// Store API response once per state (not per titleReference)
+						if (searchResults.fullApiResponse && searchResults.titleReferences && searchResults.titleReferences.length > 0) {
+							try {
+								// Store the full API response once for this state search
+								// Use the first titleReference as the uuid for this stored record
+								const firstTitleRef = searchResults.titleReferences[0];
+								const [result] = await sequelize.query(`
+									INSERT INTO api_data (rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at)
+									VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`, {
+									bind: [
+										'land-title-organisation-summary',
+										organizationName || abn,
+										organizationName || abn,
+										abn,
+										null,
+										JSON.stringify(searchResults.fullApiResponse),
+										false
+									]
+								});
 								
-								// Store in api_data table
-								try {
-									const [result] = await sequelize.query(`
-										INSERT INTO api_data (rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at)
-										VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-										RETURNING id
-									`, {
-										bind: [
-											'land-title-reference',
-											titleRef.titleReference,
-											organizationName || abn,
-											abn, // Store ABN for business searches
-											null, // ACN
-											JSON.stringify(searchResults.fullApiResponse),
-											false
-										]
+								if (result && result.length > 0) {
+									// Add only one storedDataId per state search
+									storedDataIds.push({
+										dataId: result[0].id
 									});
-									
-									if (result && result.length > 0) {
-										storedDataIds.push({
-											titleReference: titleRef.titleReference,
-											jurisdiction: titleRef.jurisdiction,
-											dataId: result[0].id
-										});
-									}
-								} catch (dbError) {
-									console.error(`Error storing data for titleReference ${titleRef.titleReference}:`, dbError);
-									// Continue even if storage fails
 								}
+							} catch (dbError) {
+								console.error(`Error storing data for state ${state}:`, dbError);
+								// Continue even if storage fails
 							}
 						}
 					} catch (error) {
@@ -2023,6 +1934,36 @@ router.post('/land-title/counts', async (req, res) => {
 						// Continue with other states even if one fails
 					}
 				}
+
+				const summaryData = {
+					uuid: abn,
+					abn: abn, // Store ABN in rdata for easy retrieval
+					companyName: organizationName || abn, // Store company name in rdata
+					allCount: currentCount + historicalCount,
+					currentCount: currentCount,
+					historicalCount: historicalCount,
+					titleReferences: allTitleReferences,
+					cotality: null,
+					locatorData: null,
+					titleOrders: [] // Will be populated when reports are generated
+				};
+
+				// Insert new record - ensure ABN is properly stored
+				console.log(`📝 Inserting summary record: rtype='land-title-organisation', uuid='${abn}', abn='${abn}', search_word='${organizationName || abn}'`);
+				await sequelize.query(`
+					INSERT INTO api_data (rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at)
+					VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+				`, {
+					bind: [
+						'land-title-organisation-summary-fullresult',
+						abn, // uuid = abn
+						organizationName || abn, // search_word = company name
+						abn, // abn field = abn (ensure this is properly stored)
+						null, // ACN
+						JSON.stringify(summaryData),
+						false
+					]
+				});
 
 			} else {
 				// Individual search
@@ -2088,14 +2029,12 @@ router.post('/land-title/counts', async (req, res) => {
 					const titleRefsArray = Array.from(uniqueTitleRefs.values());
 					allTitleReferences.push(...titleRefsArray);
 					
-					// Build storedDataIds from existing records
-					titleRefsArray.forEach(tr => {
+					// Add only one storedDataId from the first record
+					if (titleRefsArray.length > 0 && titleRefsArray[0].dataId) {
 						storedDataIds.push({
-							titleReference: tr.titleReference,
-							jurisdiction: tr.jurisdiction,
-							dataId: tr.dataId
+							dataId: titleRefsArray[0].dataId
 						});
-					});
+					}
 					
 					// Return cached data
 					return res.json({
@@ -2118,132 +2057,51 @@ router.post('/land-title/counts', async (req, res) => {
 						currentCount += searchResults.current || 0;
 						historicalCount += searchResults.historical || 0;
 						
-						// Store API response for each titleReference
-						if (searchResults.titleReferences && Array.isArray(searchResults.titleReferences) && searchResults.fullApiResponse) {
-							for (const titleRef of searchResults.titleReferences) {
-								allTitleReferences.push(titleRef);
+						// Add titleReferences to the collection
+						if (searchResults.titleReferences && Array.isArray(searchResults.titleReferences)) {
+							allTitleReferences.push(...searchResults.titleReferences);
+						}
+						
+						// Store API response once per state (not per titleReference)
+						if (searchResults.fullApiResponse && searchResults.titleReferences && searchResults.titleReferences.length > 0) {
+							try {
+								// Store the full API response once for this state search
+								// Use the first titleReference as the uuid for this stored record
+								const firstTitleRef = searchResults.titleReferences[0];
+								const [result] = await sequelize.query(`
+									INSERT INTO api_data (rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at)
+									VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+									ON CONFLICT (rtype, uuid) DO UPDATE SET
+										rdata = EXCLUDED.rdata,
+										updated_at = NOW()
+									RETURNING id
+								`, {
+									bind: [
+										'land-title-reference',
+										firstTitleRef.titleReference,
+										searchTerm,
+										null,
+										null,
+										JSON.stringify(searchResults.fullApiResponse),
+										false
+									]
+								});
 								
-								// Store in api_data table
-								try {
-									const [result] = await sequelize.query(`
-										INSERT INTO api_data (rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at)
-										VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-										RETURNING id
-									`, {
-										bind: [
-											'land-title-reference',
-											titleRef.titleReference,
-											searchTerm,
-											null, // ABN for individual
-											null, // ACN for individual
-											JSON.stringify(searchResults.fullApiResponse),
-											false
-										]
+								if (result && result.length > 0) {
+									// Add only one storedDataId per state search
+									storedDataIds.push({
+										dataId: result[0].id
 									});
-									
-									if (result && result.length > 0) {
-										storedDataIds.push({
-											titleReference: titleRef.titleReference,
-											jurisdiction: titleRef.jurisdiction,
-											dataId: result[0].id
-										});
-									}
-								} catch (dbError) {
-									console.error(`Error storing data for titleReference ${titleRef.titleReference}:`, dbError);
-									// Continue even if storage fails
 								}
+							} catch (dbError) {
+								console.error(`Error storing data for state ${state}:`, dbError);
+								// Continue even if storage fails
 							}
 						}
 					} catch (error) {
 						console.error(`Error searching land title for state ${state}:`, error);
 						// Continue with other states even if one fails
 					}
-				}
-			}
-
-			// Store summary record for organization searches with rtype = 'land-title-organisation'
-			if (type === 'organization' && abn && allTitleReferences.length > 0) {
-				try {
-					// Validate ABN is not null/undefined
-					if (!abn || abn === 'null' || abn === 'undefined') {
-						console.error('❌ Invalid ABN value, skipping summary record storage');
-						throw new Error('Invalid ABN value');
-					}
-
-					// Get company name if not provided
-					let organizationName = companyName;
-					if (!organizationName && abn) {
-						try {
-							const abnInfo = await getABNInfo(abn);
-							organizationName = abnInfo?.EntityName || abnInfo?.Name || abn;
-						} catch (error) {
-							console.error('Error fetching company name from ABN:', error);
-							organizationName = abn;
-						}
-					}
-
-					// Store summary data with rtype = 'land-title-organisation'
-					// Match the structure shown in the database: uuid, allCount, cotality, locatorData, titleOrders
-					const summaryData = {
-						uuid: abn,
-						abn: abn, // Store ABN in rdata for easy retrieval
-						companyName: organizationName || abn, // Store company name in rdata
-						allCount: currentCount + historicalCount,
-						currentCount: currentCount,
-						historicalCount: historicalCount,
-						titleReferences: allTitleReferences,
-						cotality: null,
-						locatorData: null,
-						titleOrders: [] // Will be populated when reports are generated
-					};
-
-					// Check if summary record already exists
-					const [existingSummary] = await sequelize.query(`
-						SELECT id FROM api_data
-						WHERE rtype = 'land-title-organisation' AND abn = $1
-						LIMIT 1
-					`, {
-						bind: [abn]
-					});
-
-					if (existingSummary && existingSummary.length > 0) {
-						// Update existing record - ensure ABN is updated too
-						await sequelize.query(`
-							UPDATE api_data
-							SET rdata = $1, search_word = $2, abn = $3, uuid = $4, updated_at = NOW()
-							WHERE id = $5
-						`, {
-							bind: [
-								JSON.stringify(summaryData),
-								organizationName || abn,
-								abn, // Ensure ABN is updated
-								abn, // Ensure uuid is also updated
-								existingSummary[0].id
-							]
-						});
-						console.log(`✅ Updated summary record for ABN ${abn} with rtype 'land-title-organisation'`);
-					} else {
-						// Insert new record - ensure ABN is properly stored
-						console.log(`📝 Inserting summary record: rtype='land-title-organisation', uuid='${abn}', abn='${abn}', search_word='${organizationName || abn}'`);
-						await sequelize.query(`
-							INSERT INTO api_data (rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at)
-							VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-						`, {
-							bind: [
-								'land-title-organisation',
-								abn, // uuid = abn
-								organizationName || abn, // search_word = company name
-								abn, // abn field = abn (ensure this is properly stored)
-								null, // ACN
-								JSON.stringify(summaryData),
-								false
-							]
-						});
-						console.log(`✅ Stored new summary record for ABN ${abn} with rtype 'land-title-organisation'`);
-					}
-				} catch (summaryError) {
-					console.error('Error storing summary record:', summaryError);
-					// Continue even if summary storage fails
 				}
 			}
 
