@@ -1512,6 +1512,20 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 			console.log(reportData.data);
 			// Ensure reportData has the correct structure
 			if (!existingReport && reportData) {
+				// Extract search word dynamically from business object
+				// console.log("business");
+				// console.log(business);
+				// let searchWord = null;
+				// if (business?.isCompany == "ORGANISATION") {
+				// 	// For organizations, use company name
+				// 	searchWord = business?.Name || business?.name || business?.companyName || business?.CompanyName || null;
+				// } else {
+				// 	// For individuals, combine first and last name
+				// 	const firstName = business?.fname || business?.firstName || '';
+				// 	const lastName = business?.lname || business?.lastName || '';
+				// 	searchWord = `${firstName} ${lastName}`.trim() || null;
+				// }
+
 				if (business?.isCompany == "ORGANISATION") {
 					[iresult] = await sequelize.query(`
                         INSERT INTO api_data ( rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW()) RETURNING id`,

@@ -7,11 +7,8 @@ const Footer = () => {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-16 mb-12">
           {/* Brand */}
           <div className="pr-10">
-            <div className="flex items-center space-x-2.5 mb-5">
-              <div className="w-9 h-9">
-                <img src="/CREDION-FileLOGO.svg" alt="Credion Logo" className="w-full h-full" />
-              </div>
-              <span className="text-2xl font-bold tracking-tight">credion</span>
+            <div className="mb-5">
+              <img src="/Asset 2@4x-8.png" alt="Credion Logo" className="h-9 w-auto brightness-0 invert" />
             </div>
             <p className="text-gray-300 text-sm leading-relaxed mb-8">
               Rectify the commercial credit reporting with the Predict™ Score, predicting repayment likelihood, not just credit history.

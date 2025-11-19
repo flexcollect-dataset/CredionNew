@@ -47,11 +47,8 @@ const Header = () => {
   return (
     <header className="bg-white border-b border-gray-200 px-16 py-6 flex justify-between items-center shadow-sm sticky top-0 z-50">
             {/* Logo */}
-            <Link to={user ? "/matter-selection" : "/"} className="flex items-center space-x-3">
-        <div className="w-10 h-10">
-          <img src="/CREDION-FileLOGO.svg" alt="Credion Logo" className="w-full h-full" />
-        </div>
-        <span className="text-2xl font-bold text-gray-900 tracking-tight">credion</span>
+            <Link to={user ? "/matter-selection" : "/"} className="flex items-center">
+        <img src="/Asset 2@4x-8.png" alt="Credion Logo" className="h-10 w-auto" />
       </Link>
 
       {/* Desktop Navigation */}

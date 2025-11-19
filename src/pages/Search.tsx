@@ -433,14 +433,6 @@ const Search: React.FC = () => {
     ALL: landTitleCategoryOptionConfig.TITLE_REFERENCE.price
   };
 
-  const titleReferenceDetailOptions: Array<{
-    key: Exclude<LandTitleDetailSelection, 'SUMMARY'>;
-  }> = [
-      { key: 'CURRENT' },
-      { key: 'PAST' },
-      { key: 'ALL' }
-    ];
-
   const LAND_TITLE_ADD_ON_LABEL = 'Property Value + Sales History + More';
   const LAND_TITLE_ADD_ON_PRICE = 40;
 
@@ -1102,10 +1094,6 @@ const Search: React.FC = () => {
 
   const handleTitleReferenceAddOnSelect = useCallback((addOn: boolean) => {
     setPendingTitleReferenceSelection(prev => ({ ...prev, addOn }));
-  }, []);
-
-  const handleTitleReferenceAddOnBack = useCallback(() => {
-    setTitleReferenceModalStep('SUMMARY_PROMPT');
   }, []);
 
   const handleLandTitleIndividualSearchClick = useCallback(async () => {
@@ -2061,10 +2049,6 @@ const Search: React.FC = () => {
     landTitleCounts
   ]);
 
-  const handleLandTitleIndividualDetailBack = useCallback(() => {
-    setIsLandTitleIndividualDetailModalOpen(false);
-    setIsLandTitleIndividualSummaryModalOpen(true);
-  }, []);
 
   const handleLandTitleIndividualDetailContinue = useCallback(() => {
     // Ensure titleReferences are set if user selected CURRENT/PAST/ALL but they're missing
@@ -2089,10 +2073,6 @@ const Search: React.FC = () => {
     setIsLandTitleIndividualAddOnModalOpen(true);
   }, [finalizeLandTitleIndividualSelection, isLandTitleAddOnSelected, pendingLandTitleSelection.addOn, pendingLandTitleSelection.detail, pendingLandTitleSelection.titleReferences, landTitleCounts]);
 
-  const handleLandTitleIndividualAddOnBack = useCallback(() => {
-    setIsLandTitleIndividualAddOnModalOpen(false);
-    setIsLandTitleIndividualDetailModalOpen(true);
-  }, []);
 
   const handleLandTitleIndividualDetailSelect = useCallback((detail: LandTitleDetailSelection) => {
     // Determine which titleReferences to include based on selection
@@ -2930,7 +2910,7 @@ setLandTitleOrganisationSearchTerm(displayText);
         matterId: currentMatter?.matterId,
         ispdfcreate: false
       };
-
+      console.log('logdata1',reportData);
       await apiService.createReport(reportData);
 
       // Mark as confirmed and show additional searches section
@@ -3529,16 +3509,8 @@ setLandTitleOrganisationSearchTerm(displayText);
     setLandTitleModalStep('ADD_ON');
   };
 
-  const handleLandTitleDetailBack = () => {
-    setLandTitleModalStep('SUMMARY_PROMPT');
-  };
-
   const handleLandTitleAddOnSelect = (addOn: boolean) => {
     setPendingLandTitleSelection(prev => ({ ...prev, addOn }));
-  };
-
-  const handleLandTitleAddOnBack = () => {
-    setLandTitleModalStep('DETAIL');
   };
 
   const getLandTitleLabel = useCallback(

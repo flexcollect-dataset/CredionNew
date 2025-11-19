@@ -1,11 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, ArrowRight } from 'lucide-react';
+import { apiService } from '../services/api';
 
 const MatterSelection: React.FC = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [totalMatters, setTotalMatters] = useState(0);
+  const [totalReports, setTotalReports] = useState(0);
+  const [totalSpent, setTotalSpent] = useState(0);
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -16,6 +21,49 @@ const MatterSelection: React.FC = () => {
     }
     setIsLoading(false);
   }, [navigate]);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      if (!user) return;
+
+      try {
+        setIsLoadingStats(true);
+        
+        // Fetch all matters for the user
+        const mattersResponse = await apiService.getMatters();
+        const matters = mattersResponse.matters || [];
+        setTotalMatters(matters.length);
+
+        // Fetch reports for all matters in parallel
+        const reportPromises = matters.map(matter => 
+          apiService.getMatterReports(matter.matterId).catch(() => ({ success: true, reports: [] }))
+        );
+        
+        const reportResponses = await Promise.all(reportPromises);
+        const allReports = reportResponses.flatMap(response => response.reports || []);
+        
+        setTotalReports(allReports.length);
+        
+        // Calculate total spent: $19 per paid report (based on pricing page)
+        const paidReports = allReports.filter(report => report.isPaid);
+        const calculatedTotal = paidReports.length * 19;
+        setTotalSpent(calculatedTotal);
+        
+      } catch (error) {
+        console.error('Error fetching stats:', error);
+        // Set defaults on error
+        setTotalMatters(0);
+        setTotalReports(0);
+        setTotalSpent(0);
+      } finally {
+        setIsLoadingStats(false);
+      }
+    };
+
+    if (user) {
+      fetchStats();
+    }
+  }, [user]);
 
   const handleNewMatter = () => {
     navigate('/new-matter');
@@ -90,17 +138,23 @@ const MatterSelection: React.FC = () => {
         <div className="mt-16 text-center">
           <div className="inline-flex items-center space-x-8 bg-white rounded-2xl px-8 py-6 shadow-lg">
             <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900">0</div>
+              <div className="text-2xl font-bold text-gray-900">
+                {isLoadingStats ? '...' : totalMatters}
+              </div>
               <div className="text-sm text-gray-600">Total Matters</div>
             </div>
             <div className="w-px h-8 bg-gray-200"></div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900">0</div>
+              <div className="text-2xl font-bold text-gray-900">
+                {isLoadingStats ? '...' : totalReports}
+              </div>
               <div className="text-sm text-gray-600">Reports Generated</div>
             </div>
             <div className="w-px h-8 bg-gray-200"></div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900">$0.00</div>
+              <div className="text-2xl font-bold text-gray-900">
+                {isLoadingStats ? '...' : `A$${totalSpent.toFixed(2)}`}
+              </div>
               <div className="text-sm text-gray-600">Total Spent</div>
             </div>
           </div>
