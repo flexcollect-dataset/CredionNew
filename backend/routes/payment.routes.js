@@ -1884,7 +1884,7 @@ async function searchLandTitleByOrganization(abn, state, companyName) {
 				'Content-Type': 'application/json',
 				'Accept': 'application/json'
 			},
-			timeout: 10000 // optional
+			timeout: 30000 // optional
 		});
 
 		const orderIdentifier = response.data?.OrderResultBlock?.OrderIdentifier;

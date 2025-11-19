@@ -180,6 +180,7 @@ const Search: React.FC = () => {
   const [selectedLandTitleOption, setSelectedLandTitleOption] = useState<LandTitleCategoryOption | null>(null);
   const [isLandTitleAddOnSelected, setIsLandTitleAddOnSelected] = useState(false);
   const [landTitleReferenceId, setLandTitleReferenceId] = useState('');
+  const [landTitleReferenceStates, setLandTitleReferenceStates] = useState<Set<string>>(new Set());
   const [landTitleOrganisationStates, setLandTitleOrganisationStates] = useState<Set<string>>(new Set());
   const [landTitleOrganisationSearchTerm, setLandTitleOrganisationSearchTerm] = useState('');
   const [landTitleOrganisationSuggestions, setLandTitleOrganisationSuggestions] = useState<ABNSuggestion[]>([]);
@@ -719,6 +720,7 @@ const Search: React.FC = () => {
     setIsLandTitleAddOnSelected(false);
     updateLandTitleSearchSelection(null, false);
     setLandTitleReferenceId('');
+    setLandTitleReferenceStates(new Set());
     setLandTitleOrganisationStates(new Set());
     setLandTitleIndividualFirstName('');
     setLandTitleIndividualLastName('');
@@ -761,8 +763,9 @@ const Search: React.FC = () => {
         setSelectedLandTitleOption(null);
         setIsLandTitleAddOnSelected(false);
         updateLandTitleSearchSelection(null, false);
-        setLandTitleReferenceId('');
-        setLandTitleOrganisationStates(new Set());
+    setLandTitleReferenceId('');
+    setLandTitleReferenceStates(new Set());
+    setLandTitleOrganisationStates(new Set());
         setLandTitleIndividualFirstName('');
         setLandTitleIndividualLastName('');
         setLandTitleIndividualDobMode('EXACT');
@@ -795,8 +798,10 @@ const Search: React.FC = () => {
         setPendingLandTitleSelection(effectiveSelection);
         setIsLandTitleAddOnSelected(effectiveSelection.addOn);
         updateLandTitleSearchSelection(option, effectiveSelection.addOn);
-        setLandTitleReferenceId('');
-        setLandTitleOrganisationStates(new Set());
+    setLandTitleReferenceId('');
+    setLandTitleReferenceStates(new Set());
+    setLandTitleOrganisationStates(new Set());
+    setLandTitleOrganisationStates(new Set());
         setLandTitleIndividualFirstName('');
         setLandTitleIndividualLastName('');
         setLandTitleIndividualDobMode('EXACT');
@@ -848,8 +853,10 @@ const Search: React.FC = () => {
       setPendingLandTitleSelection(effectiveSelection);
       updateLandTitleSearchSelection(defaultOption, next);
 
-      setLandTitleReferenceId('');
-      setLandTitleOrganisationStates(new Set());
+    setLandTitleReferenceId('');
+    setLandTitleReferenceStates(new Set());
+    setLandTitleReferenceStates(new Set());
+    setLandTitleOrganisationStates(new Set());
       setLandTitleIndividualFirstName('');
       setLandTitleIndividualLastName('');
       setLandTitleIndividualDobMode('EXACT');
@@ -3380,13 +3387,10 @@ setLandTitleOrganisationSearchTerm(displayText);
 
       if (landTitleModalOpen === 'ABN/ACN LAND TITLE') {
         // Organization search
-        // For ORGANISATION category, use all states by default (no user selection required)
-        // For LAND TITLE category, use selected states
-        const states = selectedCategory === 'ORGANISATION' 
-          ? Array.from(landTitleStateOptions)
-          : Array.from(landTitleOrganisationStates);
+        // Use selected states for both ORGANISATION and LAND TITLE categories
+        const states = Array.from(landTitleOrganisationStates);
         
-        if (selectedCategory !== 'ORGANISATION' && states.length === 0) {
+        if (states.length === 0) {
           alert('Please select at least one state');
           setIsLoadingLandTitleCounts(false);
           return;
@@ -3899,10 +3903,17 @@ setLandTitleOrganisationSearchTerm(displayText);
             return;
           }
         }
-        if (selectedLandTitleOption === 'TITLE_REFERENCE' && !landTitleReferenceId.trim()) {
-          alert('Please enter a reference ID');
-          setIsProcessingReports(false);
-          return;
+        if (selectedLandTitleOption === 'TITLE_REFERENCE') {
+          if (landTitleReferenceStates.size === 0) {
+            alert('Please select at least one state');
+            setIsProcessingReports(false);
+            return;
+          }
+          if (!landTitleReferenceId.trim()) {
+            alert('Please enter a reference ID');
+            setIsProcessingReports(false);
+            return;
+          }
         }
         if (selectedLandTitleOption === 'LAND_INDIVIDUAL') {
           // Check if person name is confirmed from search, otherwise validate form inputs
@@ -3957,6 +3968,7 @@ setLandTitleOrganisationSearchTerm(displayText);
         switch (selectedLandTitleOption) {
           case 'TITLE_REFERENCE':
             landTitleMeta.referenceId = landTitleReferenceId.trim();
+            landTitleMeta.states = Array.from(landTitleReferenceStates);
             break;
           case 'LAND_ORGANISATION':
             landTitleMeta.states = Array.from(landTitleOrganisationStates);
@@ -4500,6 +4512,65 @@ setLandTitleOrganisationSearchTerm(displayText);
                         return (
                           <div className="max-w-2xl mx-auto space-y-6">
                             <div>
+                              <span className="block text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
+                                Select States<span className="text-red-500">*</span>
+                              </span>
+                              <div className="flex flex-wrap gap-3">
+                                {landTitleStateOptions.map(state => {
+                                  const isSelected = landTitleReferenceStates.has(state);
+                                  return (
+                                    <button
+                                      key={state}
+                                      type="button"
+                                      onClick={() => {
+                                        setLandTitleReferenceStates(prev => {
+                                          const next = new Set(prev);
+                                          if (next.has(state)) {
+                                            next.delete(state);
+                                          } else {
+                                            next.add(state);
+                                          }
+                                          return next;
+                                        });
+                                      }}
+                                      className={`
+                                        px-5 py-3 rounded-xl border-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200
+                                        ${isSelected
+                                          ? 'border-red-600 bg-red-600 text-white shadow-red-600/30'
+                                          : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'}
+                                      `}
+                                    >
+                                      {state}
+                                    </button>
+                                  );
+                                })}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setLandTitleReferenceStates(prev => {
+                                      if (prev.size === landTitleStateOptions.length) {
+                                        return new Set();
+                                      }
+                                      return new Set(landTitleStateOptions);
+                                    });
+                                  }}
+                                  className={`
+                                    px-5 py-3 rounded-xl border-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200
+                                    ${landTitleReferenceStates.size === landTitleStateOptions.length
+                                      ? 'border-red-600 bg-red-600 text-white shadow-red-600/30'
+                                      : 'border-gray-200 bg-white text-red-600 hover:border-red-600'}
+                                  `}
+                                >
+                                  Select All
+                                </button>
+                              </div>
+                              {landTitleReferenceStates.size === 0 && (
+                                <p className="mt-2 text-xs text-red-600 font-medium">
+                                  Please select at least one state
+                                </p>
+                              )}
+                            </div>
+                            <div>
                               <label className="block text-sm font-semibold text-gray-700 mb-2">
                                 Reference ID<span className="text-red-500">*</span>
                               </label>
@@ -4519,9 +4590,9 @@ setLandTitleOrganisationSearchTerm(displayText);
                             <button
                               type="button"
                               onClick={handleTitleReferenceSearchClick}
-                              disabled={isTitleReferenceModalOpen || isTitleReferenceSelectionConfirmed || !landTitleReferenceId.trim()}
+                              disabled={isTitleReferenceModalOpen || isTitleReferenceSelectionConfirmed || !landTitleReferenceId.trim() || landTitleReferenceStates.size === 0}
                               className={`w-full rounded-xl py-4 font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 ${
-                                isTitleReferenceModalOpen || isTitleReferenceSelectionConfirmed || !landTitleReferenceId.trim()
+                                isTitleReferenceModalOpen || isTitleReferenceSelectionConfirmed || !landTitleReferenceId.trim() || landTitleReferenceStates.size === 0
                                   ? 'bg-gray-400 cursor-not-allowed'
                                   : 'bg-red-600 hover:bg-red-700'
                               }`}
@@ -4550,7 +4621,7 @@ setLandTitleOrganisationSearchTerm(displayText);
   type="button"
   onClick={() => handleLandTitleOrganisationStateToggle(state)}
   className={`
-    px-6 py-4 rounded-2xl border-2 text-base font-semibold uppercase tracking-wide transition-all duration-200
+    px-5 py-3 rounded-xl border-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200
     ${isSelected
       ? 'border-red-600 bg-red-600 text-white shadow-red-600/30'
       : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'}
@@ -6376,9 +6447,8 @@ setLandTitleOrganisationSearchTerm(displayText);
                   {landTitleModalCopy[landTitleModalOpen].summaryDescription}
                 </p>
                 
-                {/* State Selection for ABN/ACN LAND TITLE - only show for LAND TITLE category, not ORGANISATION, and only if states haven't been selected yet */}
+                {/* State Selection for ABN/ACN LAND TITLE - show for both ORGANISATION and LAND TITLE categories */}
                 {landTitleModalOpen === 'ABN/ACN LAND TITLE' && 
-                 selectedCategory !== 'ORGANISATION' && 
                  !(selectedCategory === 'LAND TITLE' && selectedLandTitleOption === 'LAND_ORGANISATION' && landTitleOrganisationStates.size > 0) && (
                   <div className="mt-6">
                     <span className="block text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
@@ -6428,7 +6498,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                   <button
                     type="button"
                     onClick={handleLandTitleSummaryContinue}
-                    disabled={isLoadingLandTitleCounts || (landTitleModalOpen === 'ABN/ACN LAND TITLE' && selectedCategory !== 'ORGANISATION' && !(selectedCategory === 'LAND TITLE' && selectedLandTitleOption === 'LAND_ORGANISATION' && landTitleOrganisationStates.size > 0) && landTitleOrganisationStates.size === 0)}
+                    disabled={isLoadingLandTitleCounts || (landTitleModalOpen === 'ABN/ACN LAND TITLE' && !(selectedCategory === 'LAND TITLE' && selectedLandTitleOption === 'LAND_ORGANISATION' && landTitleOrganisationStates.size > 0) && landTitleOrganisationStates.size === 0)}
                     className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isLoadingLandTitleCounts ? 'Processing...' : `Retrive – ${formatCurrency(landTitlePricingConfig.base[landTitleModalOpen])}`}
@@ -6889,7 +6959,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                 let options: Array<{
                   key: string;
                   displayLabel: string;
-                  source: 'bankruptcy' | 'related' | 'court' | 'mock';
+                  source: 'bankruptcy' | 'related' | 'court' | 'mock' | 'landtitle';
                   bankruptcyMatch?: BankruptcyMatch | null;
                   relatedMatch?: DirectorRelatedMatch | null;
                 }> = [];
