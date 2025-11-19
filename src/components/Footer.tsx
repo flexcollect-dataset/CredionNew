@@ -9,12 +9,7 @@ const Footer = () => {
           <div className="pr-10">
             <div className="flex items-center space-x-2.5 mb-5">
               <div className="w-9 h-9">
-                <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-                  <polygon points="50,5 90,27.5 90,72.5 50,95 10,72.5 10,27.5" fill="#e53935"></polygon>
-                  <polygon points="35,35 50,27 50,73 35,65" fill="#ffffff"></polygon>
-                  <path d="M 65,35 L 80,43 L 80,57 L 65,65 Z" fill="#ffffff"></path>
-                  <path d="M 58,40 Q 68,50 58,60 L 58,50 Z" fill="#e53935"></path>
-                </svg>
+                <img src="/CREDION-FileLOGO.svg" alt="Credion Logo" className="w-full h-full" />
               </div>
               <span className="text-2xl font-bold tracking-tight">credion</span>
             </div>

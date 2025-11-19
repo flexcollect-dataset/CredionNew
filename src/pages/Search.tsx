@@ -211,7 +211,7 @@ const Search: React.FC = () => {
   const [titleReferenceSelection, setTitleReferenceSelection] = useState<LandTitleSelection>({ ...initialLandTitleSelection });
   const [pendingTitleReferenceSelection, setPendingTitleReferenceSelection] = useState<LandTitleSelection>({ ...initialLandTitleSelection });
   const [isTitleReferenceModalOpen, setIsTitleReferenceModalOpen] = useState(false);
-  const [titleReferenceModalStep, setTitleReferenceModalStep] = useState<'SUMMARY_PROMPT' | 'DETAIL' | 'ADD_ON'>('SUMMARY_PROMPT');
+  const [titleReferenceModalStep, setTitleReferenceModalStep] = useState<'SUMMARY_PROMPT' | 'ADD_ON'>('SUMMARY_PROMPT');
   const [titleReferenceAvailability, setTitleReferenceAvailability] = useState<TitleReferenceAvailability>({
     ...INITIAL_TITLE_REFERENCE_AVAILABILITY
   });
@@ -252,10 +252,10 @@ const Search: React.FC = () => {
   const [selectedCourtMatch, setSelectedCourtMatch] = useState<any | null>(null);
   // Modal states for individual name search results
   const [isIndividualNameSearchModalOpen, setIsIndividualNameSearchModalOpen] = useState(false);
-  const [individualNameSearchModalType, setIndividualNameSearchModalType] = useState<'bankruptcy' | 'related' | 'court' | null>(null);
+  const [individualNameSearchModalType, setIndividualNameSearchModalType] = useState<'bankruptcy' | 'related' | 'court' | 'landtitle' | null>(null);
   const [pendingIndividualNameSelection, setPendingIndividualNameSelection] = useState<{
     displayLabel: string;
-    source: 'bankruptcy' | 'related' | 'court' | 'mock';
+    source: 'bankruptcy' | 'related' | 'court' | 'mock' | 'landtitle';
     bankruptcyMatch?: BankruptcyMatch | null;
     relatedMatch?: DirectorRelatedMatch | null;
     courtMatch?: any | null;
@@ -377,7 +377,7 @@ const Search: React.FC = () => {
       summaryTitle: 'Land Title - Locate Title Reference',
       summaryDescription:
         'A summary report will outline land title references located for the organisation search. Select continue to choose detailed options.',
-      detailTitle: 'Land Title Report Options',
+      detailTitle: 'Land Title Deed Search',
       detailDescription: 'Select the detailed land title reports you require before processing.',
       addOnTitle: 'Additional Selections',
       addOnDescription:
@@ -1062,20 +1062,9 @@ const Search: React.FC = () => {
       summary: true,
       detail: 'SUMMARY'
     }));
-    setTitleReferenceModalStep('DETAIL');
-  }, []);
-
-  const handleTitleReferenceDetailSelect = useCallback((detail: LandTitleDetailSelection) => {
-    setPendingTitleReferenceSelection(prev => ({ ...prev, detail }));
-  }, []);
-
-  const handleTitleReferenceDetailBack = useCallback(() => {
-    setTitleReferenceModalStep('SUMMARY_PROMPT');
-  }, []);
-
-  const handleTitleReferenceDetailContinue = useCallback(() => {
     setTitleReferenceModalStep('ADD_ON');
   }, []);
+
 
   const handleTitleReferenceModalConfirm = useCallback(() => {
     setTitleReferenceSelection(pendingTitleReferenceSelection);
@@ -1109,7 +1098,7 @@ const Search: React.FC = () => {
   }, []);
 
   const handleTitleReferenceAddOnBack = useCallback(() => {
-    setTitleReferenceModalStep('DETAIL');
+    setTitleReferenceModalStep('SUMMARY_PROMPT');
   }, []);
 
   const handleLandTitleIndividualSearchClick = useCallback(async () => {
@@ -1122,6 +1111,18 @@ const Search: React.FC = () => {
     if ((isBankruptcySearch || isRelatedEntitiesSearch) && !landTitleIndividualLastName.trim()) {
       alert('Please enter a last name to search records');
       return;
+    }
+
+    // For individual land title search, validate required fields
+    if (isIndividualLandTitleSearch && !isBankruptcySearch && !isRelatedEntitiesSearch) {
+      if (!landTitleIndividualLastName.trim()) {
+        alert('Please enter a last name to search records');
+        return;
+      }
+      if (landTitleIndividualStates.size === 0) {
+        alert('Please select at least one state');
+        return;
+      }
     }
 
     // For land title search, validate required fields
@@ -1351,6 +1352,65 @@ const Search: React.FC = () => {
       );
     }
 
+    // For individual land title search (from INDIVIDUAL tab), perform dynamic search
+    if (isIndividualLandTitleSearch && !isBankruptcySearch && !isRelatedEntitiesSearch) {
+      setIsLoadingLandTitlePersonNames(true);
+      
+      // Search for each selected state and aggregate results
+      const allPersonNamesSet = new Set<string>();
+      const statesArray = Array.from(landTitleIndividualStates);
+      
+      fetchTasks.push(
+        (async () => {
+          try {
+            // Search all states in parallel
+            const searchPromises = statesArray.map(state => 
+              apiService.searchLandTitlePersonNames({
+                firstName: landTitleIndividualFirstName.trim() || undefined,
+                lastName: landTitleIndividualLastName.trim(),
+                state: state
+              }).catch(error => {
+                console.error(`Error searching state ${state}:`, error);
+                return { success: false, personNames: [], error: error.message };
+              })
+            );
+            
+            const results = await Promise.all(searchPromises);
+            
+            // Aggregate unique person names from all states
+            results.forEach(result => {
+              if (result.success && result.personNames) {
+                result.personNames.forEach(name => {
+                  if (name && name.trim()) {
+                    allPersonNamesSet.add(name.trim());
+                  }
+                });
+              }
+            });
+            
+            const allPersonNames = Array.from(allPersonNamesSet).sort();
+            
+            if (allPersonNames.length === 0) {
+              setLandTitlePersonNamesError('No person names found for the provided details.');
+            } else {
+              setLandTitleIndividualMatches(allPersonNames);
+              // Select first name by default
+              if (allPersonNames.length > 0) {
+                setSelectedLandTitleIndividualMatch(allPersonNames[0]);
+              }
+            }
+          } catch (error: any) {
+            console.error('Error fetching land title person names:', error);
+            setLandTitlePersonNamesError(
+              error?.message || 'Failed to fetch person names. Please try again.'
+            );
+          } finally {
+            setIsLoadingLandTitlePersonNames(false);
+          }
+        })()
+      );
+    }
+
     if (isLandTitleSearch && !isBankruptcySearch && !isRelatedEntitiesSearch) {
       setIsLoadingLandTitlePersonNames(true);
       
@@ -1409,7 +1469,7 @@ const Search: React.FC = () => {
           }
         })()
       );
-    } else {
+    } else if (!isIndividualLandTitleSearch) {
       setIsLoadingLandTitlePersonNames(false);
     }
 
@@ -1433,8 +1493,8 @@ const Search: React.FC = () => {
       setIndividualNameSearchModalType('court');
       setIsIndividualNameSearchModalOpen(true);
     } else if (isIndividualLandTitleSearch) {
-      // Only INDIVIDUAL LAND TITLE - show mock results in modal
-      setIndividualNameSearchModalType(null);
+      // Only INDIVIDUAL LAND TITLE - show dynamic results in modal
+      setIndividualNameSearchModalType('landtitle');
       setIsIndividualNameSearchModalOpen(true);
     }
   }, [
@@ -1442,12 +1502,14 @@ const Search: React.FC = () => {
     formatDobForAlares,
     isIndividualBankruptcySelected,
     isIndividualRelatedEntitiesSelected,
+    selectedCategory,
     landTitleIndividualDob,
     landTitleIndividualDobMode,
     landTitleIndividualEndYear,
     landTitleIndividualFirstName,
     landTitleIndividualLastName,
-    landTitleIndividualStartYear
+    landTitleIndividualStartYear,
+    landTitleIndividualStates
   ]);
 
   const handleConfirmIndividualName = useCallback(() => {
@@ -1466,19 +1528,28 @@ const Search: React.FC = () => {
       return;
     }
 
-    // If INDIVIDUAL LAND TITLE is selected, open the summary modal instead
-    const isIndividualLandTitleSelected = selectedCategory === 'INDIVIDUAL' && selectedSearches.has('INDIVIDUAL LAND TITLE');
-    if (isIndividualLandTitleSelected) {
-      setPendingLandTitleSelection({
-        summary: true,
-        detail: 'SUMMARY',
-        addOn: false
+    // For land title individual search, store the confirmed person details
+    if (selectedCategory === 'LAND TITLE' && selectedLandTitleOption === 'LAND_INDIVIDUAL' && selectedLandTitleIndividualMatch) {
+      // Extract first name and last name from the full name
+      // The full name format might be like "JONATHAN ALAN SMITH" or similar
+      const fullName = selectedLandTitleIndividualMatch;
+      const nameParts = fullName.trim().split(/\s+/);
+      const lastName = nameParts[nameParts.length - 1] || '';
+      const firstName = nameParts.slice(0, -1).join(' ') || '';
+      
+      // Get the selected state (use first state if multiple selected)
+      const selectedState = Array.from(landTitleIndividualStates)[0] || '';
+      
+      setConfirmedLandTitlePersonDetails({
+        fullName: fullName,
+        firstName: firstName,
+        lastName: lastName,
+        state: selectedState
       });
-      setIsLandTitleIndividualSummaryModalOpen(true);
-      return;
+      setIsIndividualNameConfirmed(true);
+    } else {
+      setIsIndividualNameConfirmed(true);
     }
-
-    setIsIndividualNameConfirmed(true);
   }, [
     isIndividualBankruptcySelected,
     isIndividualRelatedEntitiesSelected,
@@ -1486,7 +1557,8 @@ const Search: React.FC = () => {
     selectedRelatedMatch,
     selectedLandTitleIndividualMatch,
     selectedCategory,
-    selectedSearches
+    selectedLandTitleOption,
+    landTitleIndividualStates
   ]);
 
   const closeLandTitleIndividualModals = useCallback((options?: { removeSelection?: boolean }) => {
@@ -1514,7 +1586,7 @@ const Search: React.FC = () => {
   // Handler for individual name search modal selection
   const handleIndividualNameSearchSelect = useCallback((option: {
     displayLabel: string;
-    source: 'bankruptcy' | 'related' | 'court' | 'mock';
+    source: 'bankruptcy' | 'related' | 'court' | 'mock' | 'landtitle';
     bankruptcyMatch?: BankruptcyMatch | null;
     relatedMatch?: DirectorRelatedMatch | null;
     courtMatch?: any | null;
@@ -1567,8 +1639,8 @@ const Search: React.FC = () => {
         setIndividualNameSearchModalType('court');
         setIsIndividualNameSearchModalOpen(true);
       } else if (isIndividualLandTitleSearch) {
-        // Show name selection modal for land title first (with mock results)
-        setIndividualNameSearchModalType(null);
+        // Show name selection modal for land title with dynamic results
+        setIndividualNameSearchModalType('landtitle');
         setIsIndividualNameSearchModalOpen(true);
       } else {
         // No more modals - all name search popups are done, confirm the name
@@ -1582,8 +1654,8 @@ const Search: React.FC = () => {
         setIndividualNameSearchModalType('court');
         setIsIndividualNameSearchModalOpen(true);
       } else if (isIndividualLandTitleSearch) {
-        // Show name selection modal for land title first (with mock results)
-        setIndividualNameSearchModalType(null);
+        // Show name selection modal for land title with dynamic results
+        setIndividualNameSearchModalType('landtitle');
         setIsIndividualNameSearchModalOpen(true);
       } else {
         // No more modals - all name search popups are done, confirm the name
@@ -1593,14 +1665,46 @@ const Search: React.FC = () => {
     } else if (individualNameSearchModalType === 'court') {
       // Just confirmed court - check if land title is next
       if (isIndividualLandTitleSearch) {
-        // Show name selection modal for land title first (with mock results)
-        setIndividualNameSearchModalType(null);
+        // Show name selection modal for land title with dynamic results
+        setIndividualNameSearchModalType('landtitle');
         setIsIndividualNameSearchModalOpen(true);
       } else {
         // No more modals - all name search popups are done, confirm the name
         setIsIndividualNameConfirmed(true);
         setIndividualNameSearchModalType(null);
       }
+    } else if (individualNameSearchModalType === 'landtitle') {
+      // Land title name selection modal - after confirming, open land title summary modal
+      // Extract name from displayLabel (format: "FirstName MiddleName LastName")
+      const fullName = displayLabel.trim();
+      const nameComponents = fullName.split(/\s+/);
+      const firstName = nameComponents.length > 1 ? nameComponents.slice(0, -1).join(' ') : '';
+      const lastName = nameComponents.length > 0 ? nameComponents[nameComponents.length - 1] : fullName;
+      
+      // Set confirmed person details for land title flow
+      setConfirmedLandTitlePersonDetails({
+        firstName: firstName || landTitleIndividualFirstName.trim() || '',
+        lastName: lastName || landTitleIndividualLastName.trim(),
+        fullName: fullName,
+        state: Array.from(landTitleIndividualStates)[0] || '' // Use first selected state
+      });
+      
+      // Set selected match
+      setSelectedLandTitleIndividualMatch(displayLabel);
+      
+      // Open land title summary modal after confirming name selection
+      setPendingLandTitleSelection({
+        summary: true,
+        detail: 'SUMMARY',
+        addOn: false,
+        titleReferences: [],
+        currentCount: 0,
+        historicalCount: 0
+      });
+      setIsLandTitleIndividualSummaryModalOpen(true);
+      setIsIndividualNameSearchModalOpen(false);
+      setPendingIndividualNameSelection(null);
+      setIndividualNameSearchModalType(null);
     } else {
       // Land title name selection modal (mock) - after confirming, open land title summary modal
       if (isIndividualLandTitleSearch) {
@@ -1670,14 +1774,16 @@ const Search: React.FC = () => {
         updated.delete('COURT');
         return updated;
       });
-    } else if (!individualNameSearchModalType) {
-      // Land title mock modal - remove INDIVIDUAL LAND TITLE
+    } else if (individualNameSearchModalType === 'landtitle' || !individualNameSearchModalType) {
+      // Land title modal - remove INDIVIDUAL LAND TITLE
       setSelectedSearches(prev => {
         const updated = new Set(prev);
         updated.delete('INDIVIDUAL LAND TITLE');
         return updated;
       });
       setSelectedLandTitleIndividualMatch(null);
+      setLandTitleIndividualMatches([]);
+      setLandTitlePersonNamesError(null);
     }
     
     // Close current modal
@@ -1701,8 +1807,8 @@ const Search: React.FC = () => {
         setIndividualNameSearchModalType('court');
         setIsIndividualNameSearchModalOpen(true);
       } else if (isIndividualLandTitleSearch) {
-        // Show name selection modal for land title first (with mock results)
-        setIndividualNameSearchModalType(null);
+        // Show name selection modal for land title with dynamic results
+        setIndividualNameSearchModalType('landtitle');
         setIsIndividualNameSearchModalOpen(true);
       } else {
         setIndividualNameSearchModalType(null);
@@ -1714,8 +1820,8 @@ const Search: React.FC = () => {
         setIndividualNameSearchModalType('court');
         setIsIndividualNameSearchModalOpen(true);
       } else if (isIndividualLandTitleSearch) {
-        // Show name selection modal for land title first (with mock results)
-        setIndividualNameSearchModalType(null);
+        // Show name selection modal for land title with dynamic results
+        setIndividualNameSearchModalType('landtitle');
         setIsIndividualNameSearchModalOpen(true);
       } else {
         setIndividualNameSearchModalType(null);
@@ -1723,8 +1829,8 @@ const Search: React.FC = () => {
     } else if (individualNameSearchModalType === 'court') {
       // Just cancelled court - check if land title is next
       if (isIndividualLandTitleSearch) {
-        // Show name selection modal for land title first (with mock results)
-        setIndividualNameSearchModalType(null);
+        // Show name selection modal for land title with dynamic results
+        setIndividualNameSearchModalType('landtitle');
         setIsIndividualNameSearchModalOpen(true);
       } else {
         setIndividualNameSearchModalType(null);
@@ -1805,46 +1911,16 @@ const Search: React.FC = () => {
     const isIndividualLandTitleSelected = selectedCategory === 'INDIVIDUAL' && selectedSearches.has('INDIVIDUAL LAND TITLE');
     const isIndividualLandTitleInAdditional = selectedCategory === 'INDIVIDUAL' && selectedIndividualAdditionalSearches.has('INDIVIDUAL LAND TITLE');
     
-    // For INDIVIDUAL category with INDIVIDUAL LAND TITLE in main searches, check if we have selectedLandTitleIndividualMatch or confirmedLandTitlePersonDetails
-    if (isIndividualLandTitleSelected) {
+    // For INDIVIDUAL category with INDIVIDUAL LAND TITLE, require selectedLandTitleIndividualMatch or confirmedLandTitlePersonDetails
+    if (isIndividualLandTitleSelected || isIndividualLandTitleInAdditional) {
       if (!selectedLandTitleIndividualMatch && !confirmedLandTitlePersonDetails) {
         alert('Please confirm a person name first');
         return;
       }
-      
-      // For INDIVIDUAL category with INDIVIDUAL LAND TITLE, skip counts API call and proceed directly
-      // The actual counts will be determined when processing reports with the confirmed name
-      setPendingLandTitleSelection(prev => ({ ...prev, summary: true }));
-      setLandTitleModalStep('DETAIL');
-      // Set default counts (will be determined when processing reports)
-      setLandTitleCounts({
-        current: 0,
-        historical: 0,
-        titleReferences: []
-      });
-    setIsLandTitleIndividualSummaryModalOpen(false);
-    setIsLandTitleIndividualDetailModalOpen(true);
-      return;
-    }
-    
-    // For INDIVIDUAL category with INDIVIDUAL LAND TITLE in enrichment options, no name validation needed
-    if (isIndividualLandTitleInAdditional) {
-      // Skip counts API call and proceed directly - no name validation needed for enrichment options
-      setPendingLandTitleSelection(prev => ({ ...prev, summary: true }));
-      setLandTitleModalStep('DETAIL');
-      // Set default counts (will be determined when processing reports)
-      setLandTitleCounts({
-        current: 0,
-        historical: 0,
-        titleReferences: []
-      });
-      setIsLandTitleIndividualSummaryModalOpen(false);
-      setIsLandTitleIndividualDetailModalOpen(true);
-      return;
     }
     
     // For LAND TITLE category, require confirmedLandTitlePersonDetails
-    if (!confirmedLandTitlePersonDetails) {
+    if (selectedCategory === 'LAND TITLE' && !confirmedLandTitlePersonDetails) {
       alert('Please confirm a person name first');
       return;
     }
@@ -1871,11 +1947,10 @@ const Search: React.FC = () => {
       let firstName: string | undefined = undefined;
       let lastName: string = '';
       
-      if (isIndividualLandTitleSelected && !confirmedLandTitlePersonDetails && selectedLandTitleIndividualMatch) {
-        // Extract from selectedLandTitleIndividualMatch (format: "FirstName LastName • DOB: ... • State • Suburb")
-        const nameParts = selectedLandTitleIndividualMatch.split(' • ');
-        const fullName = nameParts[0] || selectedLandTitleIndividualMatch;
-        const nameComponents = fullName.trim().split(/\s+/);
+      if ((isIndividualLandTitleSelected || isIndividualLandTitleInAdditional) && !confirmedLandTitlePersonDetails && selectedLandTitleIndividualMatch) {
+        // Extract from selectedLandTitleIndividualMatch (format: "FirstName MiddleName LastName")
+        const fullName = selectedLandTitleIndividualMatch.trim();
+        const nameComponents = fullName.split(/\s+/);
         firstName = nameComponents.length > 1 ? nameComponents.slice(0, -1).join(' ') : undefined;
         lastName = nameComponents.length > 0 ? nameComponents[nameComponents.length - 1] : fullName;
       } else if (confirmedLandTitlePersonDetails) {
@@ -1896,8 +1971,8 @@ const Search: React.FC = () => {
         states: string[];
       } = {
         type: 'individual',
-        firstName,
-        lastName,
+        firstName: firstName,
+        lastName: lastName,
         states
       };
 
@@ -4050,6 +4125,9 @@ setLandTitleOrganisationSearchTerm(displayText);
                 landTitleSelection: reportItem.meta.landTitleSelection
               };
             }
+
+            console.log(reportData);
+
             // Call backend to create report
             const reportResponse = await apiService.createReport(reportData);
 
@@ -5054,7 +5132,7 @@ setLandTitleOrganisationSearchTerm(displayText);
 
                   <div className="space-y-4">
                     <span className="block text-sm font-semibold text-gray-700">
-                      Date of Birth Options<span className="text-red-500">*</span>
+                      Date of Birth Options{(!isIndividualBankruptcySelected && !isIndividualRelatedEntitiesSelected) ? '' : <span className="text-red-500">*</span>}
                     </span>
                     <div className="flex flex-wrap gap-3">
                       {[
@@ -5101,7 +5179,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Start Year<span className="text-red-500">*</span>
+                            Start Year{(!isIndividualBankruptcySelected && !isIndividualRelatedEntitiesSelected) ? '' : <span className="text-red-500">*</span>}
                           </label>
                           <select
                             value={landTitleIndividualStartYear}
@@ -5123,7 +5201,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                         </div>
                         <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            End Year<span className="text-red-500">*</span>
+                            End Year{(!isIndividualBankruptcySelected && !isIndividualRelatedEntitiesSelected) ? '' : <span className="text-red-500">*</span>}
                           </label>
                           <select
                             value={landTitleIndividualEndYear}
@@ -5146,6 +5224,57 @@ setLandTitleOrganisationSearchTerm(displayText);
                       </div>
                     )}
                   </div>
+
+                  {/* State Selection - Show only when INDIVIDUAL LAND TITLE is selected */}
+                  {(selectedSearches.has('INDIVIDUAL LAND TITLE') || selectedIndividualAdditionalSearches.has('INDIVIDUAL LAND TITLE')) && (
+                    <div>
+                      <span className="block text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
+                        Select States<span className="text-red-500">*</span>
+                      </span>
+                      <div className="flex flex-wrap gap-3">
+                        {landTitleStateOptions.map(state => {
+                          const isSelected = landTitleIndividualStates.has(state);
+                          return (
+                            <button
+                              key={state}
+                              type="button"
+                              onClick={() => {
+                                handleLandTitleIndividualStateToggle(state);
+                                setIsIndividualNameConfirmed(false);
+                                setIsLandTitleIndividualSearchPerformed(false);
+                                setSelectedLandTitleIndividualMatch(null);
+                              }}
+                              className={`
+                                px-5 py-3 rounded-xl border-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200
+                                ${isSelected
+                                    ? 'border-red-600 bg-red-600 text-white shadow-red-600/30'
+                                    : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'}
+                              `}
+                            >
+                              {state}
+                            </button>
+                          );
+                        })}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleLandTitleIndividualStateSelectAll();
+                            setIsIndividualNameConfirmed(false);
+                            setIsLandTitleIndividualSearchPerformed(false);
+                            setSelectedLandTitleIndividualMatch(null);
+                          }}
+                          className={`
+                            px-5 py-3 rounded-xl border-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200
+                            ${landTitleIndividualStates.size === landTitleStateOptions.length
+                                ? 'border-red-600 bg-red-600 text-white shadow-red-600/30'
+                                : 'border-gray-200 bg-white text-red-600 hover:border-red-600'}
+                          `}
+                        >
+                          Select All
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   <button
                     type="button"
@@ -5903,17 +6032,6 @@ setLandTitleOrganisationSearchTerm(displayText);
             className="relative w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <button
-              type="button"
-              onClick={closeTitleReferenceModal}
-              className="absolute top-4 right-4 text-gray-400 transition-colors duration-200 hover:text-red-600"
-              aria-label="Close modal"
-            >
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-
             {titleReferenceModalStep === 'SUMMARY_PROMPT' && (
               <div>
                 <h3 className="text-2xl font-bold text-gray-900 mb-4">Land Title Search - Locate Title Reference</h3>
@@ -5927,7 +6045,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                     onClick={handleTitleReferenceSummaryContinue}
                     className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
                   >
-                    Process – {formatCurrency(titleReferenceDetailPricing.SUMMARY)}
+                    Retrive – {formatCurrency(titleReferenceDetailPricing.SUMMARY)}
                   </button>
                   <button
                     type="button"
@@ -5935,75 +6053,6 @@ setLandTitleOrganisationSearchTerm(displayText);
                     className="w-full rounded-xl border-2 border-gray-200 bg-white py-3 text-sm font-semibold uppercase tracking-wide text-gray-600 transition-all duration-200 hover:border-gray-300 hover:text-gray-800"
                   >
                     Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {titleReferenceModalStep === 'DETAIL' && (
-              <div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">Land Title Search</h3>
-                <p className="text-sm text-gray-600 leading-relaxed mb-4">
-                  Select detailed property reports
-                </p>
-                <div className="space-y-4">
-                  {titleReferenceDetailOptions.map(option => {
-                    const detail = option.key;
-                    const isSelected = pendingTitleReferenceSelection.detail === detail;
-                    const availableCount = titleReferenceAvailability[detail];
-                    return (
-                      <button
-                        key={detail}
-                        type="button"
-                        onClick={() => handleTitleReferenceDetailSelect(detail)}
-                        className={`w-full rounded-xl border-2 px-4 py-5 text-left text-sm font-semibold uppercase tracking-wide transition-all duration-200 ${isSelected
-                          ? 'border-red-600 bg-red-50 text-red-600'
-                          : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'
-                          }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span>
-                            {option.key}
-                            {typeof availableCount === 'number' ? ` (${availableCount} available)` : ''}
-                          </span>
-                          <span className="text-xs font-bold">{formatCurrency(titleReferenceDetailPricing[detail])}</span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    onClick={() => handleTitleReferenceDetailSelect('SUMMARY')}
-                    className={`w-full rounded-xl border-2 px-4 py-3 text-left text-sm font-semibold uppercase tracking-wide transition-all duration-200 ${pendingTitleReferenceSelection.detail === 'SUMMARY'
-                      ? 'border-red-600 bg-red-50 text-red-600'
-                      : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'
-                      }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span>
-                        Summary Report Only
-                        {typeof titleReferenceAvailability.SUMMARY === 'number'
-                          ? ` (${titleReferenceAvailability.SUMMARY} available)`
-                          : ''}
-                      </span>
-                      <span className="text-xs font-bold">—</span>
-                    </div>
-                  </button>
-                </div>
-                <div className="mt-6 flex justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={handleTitleReferenceDetailBack}
-                    className="flex-1 rounded-xl border-2 border-gray-200 bg-white py-3 text-sm font-semibold uppercase tracking-wide text-gray-600 transition-all duration-200 hover:border-gray-300 hover:text-gray-800"
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleTitleReferenceDetailContinue}
-                    className="flex-1 rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
-                  >
-                    Continue
                   </button>
                 </div>
               </div>
@@ -6040,18 +6089,11 @@ setLandTitleOrganisationSearchTerm(displayText);
                     No, continue with selected options
                   </button>
                 </div>
-                <div className="mt-6 flex justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={handleTitleReferenceAddOnBack}
-                    className="flex-1 rounded-xl border-2 border-gray-200 bg-white py-3 text-sm font-semibold uppercase tracking-wide text-gray-600 transition-all duration-200 hover:border-gray-300 hover:text-gray-800"
-                  >
-                    Back
-                  </button>
+                <div className="mt-6">
                   <button
                     type="button"
                     onClick={handleTitleReferenceModalConfirm}
-                    className="flex-1 rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
+                    className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
                   >
                     Continue
                   </button>
@@ -6073,17 +6115,6 @@ setLandTitleOrganisationSearchTerm(displayText);
                 className="relative w-full max-w-2xl rounded-3xl bg-white p-8 shadow-2xl max-h-[90vh] overflow-hidden flex flex-col"
                 onClick={(event) => event.stopPropagation()}
               >
-                <button
-                  type="button"
-                  onClick={() => setIsConfirmPersonNameModalOpen(false)}
-                  className="absolute top-4 right-4 text-gray-400 transition-colors duration-200 hover:text-red-600 z-10"
-                  aria-label="Close modal"
-                >
-                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-
                 <h3 className="text-2xl font-bold text-gray-900 mb-4">Select Person Name</h3>
                 <p className="text-sm text-gray-600 leading-relaxed mb-6">
                   Please select a person name from the search results and confirm to proceed.
@@ -6171,17 +6202,6 @@ setLandTitleOrganisationSearchTerm(displayText);
                 className="relative w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl"
                 onClick={(event) => event.stopPropagation()}
               >
-                <button
-                  type="button"
-                  onClick={() => closeLandTitleIndividualModals({ removeSelection: true })}
-                  className="absolute top-4 right-4 text-gray-400 transition-colors duration-200 hover:text-red-600"
-                  aria-label="Close modal"
-                >
-                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-
                 <h3 className="text-2xl font-bold text-gray-900 mb-4">Land Title Search - Locate Title Reference</h3>
                 <p className="text-sm text-gray-600 leading-relaxed">
                   A summary report will display any recorded title references from your search. For full details on current or past titles, select after processing or continue with the summary only.
@@ -6194,7 +6214,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                     disabled={isLoadingLandTitleCounts}
                     className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    {isLoadingLandTitleCounts ? 'Processing...' : `Process – ${formatCurrency(landTitleIndividualDetailPricing.SUMMARY)}`}
+                    {isLoadingLandTitleCounts ? 'Processing...' : `Retrive – ${formatCurrency(landTitleIndividualDetailPricing.SUMMARY)}`}
                   </button>
                   <button
                     type="button"
@@ -6218,18 +6238,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                 className="relative w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl"
                 onClick={(event) => event.stopPropagation()}
               >
-                <button
-                  type="button"
-                  onClick={() => closeLandTitleIndividualModals({ removeSelection: true })}
-                  className="absolute top-4 right-4 text-gray-400 transition-colors duration-200 hover:text-red-600"
-                  aria-label="Close modal"
-                >
-                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">Land Title Search</h3>
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">Land Title Deed Search</h3>
                 <p className="text-sm text-gray-600 leading-relaxed mb-6">
                   Select the detailed property reports you require before processing.
                 </p>
@@ -6271,18 +6280,11 @@ setLandTitleOrganisationSearchTerm(displayText);
                   </button>
                 </div>
 
-                <div className="mt-6 flex justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={handleLandTitleIndividualDetailBack}
-                    className="flex-1 rounded-xl border-2 border-gray-200 bg-white py-3 text-sm font-semibold uppercase tracking-wide text-gray-600 transition-all duration-200 hover:border-gray-300 hover:text-gray-800"
-                  >
-                    Back
-                  </button>
+                <div className="mt-6">
                   <button
                     type="button"
                     onClick={handleLandTitleIndividualDetailContinue}
-                    className="flex-1 rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
+                    className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
                   >
                     Continue
                   </button>
@@ -6300,17 +6302,6 @@ setLandTitleOrganisationSearchTerm(displayText);
                 className="relative w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl"
                 onClick={(event) => event.stopPropagation()}
               >
-                <button
-                  type="button"
-                  onClick={() => closeLandTitleIndividualModals({ removeSelection: true })}
-                  className="absolute top-4 right-4 text-gray-400 transition-colors duration-200 hover:text-red-600"
-                  aria-label="Close modal"
-                >
-                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-
                 <h3 className="text-2xl font-bold text-gray-900 mb-2">Additional Selections</h3>
                 <p className="text-sm text-gray-600 leading-relaxed mb-6">
                   {LAND_TITLE_ADD_ON_LABEL} provides property value, sales history report, and extended property detail.
@@ -6352,18 +6343,11 @@ setLandTitleOrganisationSearchTerm(displayText);
                   </button>
                 </div>
 
-                <div className="mt-6 flex justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={handleLandTitleIndividualAddOnBack}
-                    className="flex-1 rounded-xl border-2 border-gray-200 bg-white py-3 text-sm font-semibold uppercase tracking-wide text-gray-600 transition-all duration-200 hover:border-gray-300 hover:text-gray-800"
-                  >
-                    Back
-                  </button>
+                <div className="mt-6">
                   <button
                     type="button"
                     onClick={finalizeLandTitleIndividualSelection}
-                    className="flex-1 rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
+                    className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
                   >
                     Continue
                   </button>
@@ -6383,17 +6367,6 @@ setLandTitleOrganisationSearchTerm(displayText);
             className="relative w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <button
-              type="button"
-              onClick={closeLandTitleModal}
-              className="absolute top-4 right-4 text-gray-400 transition-colors duration-200 hover:text-red-600"
-              aria-label="Close modal"
-            >
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-
             {landTitleModalStep === 'SUMMARY_PROMPT' && (
               <div>
                 <h3 className="text-2xl font-bold text-gray-900 mb-4">
@@ -6458,7 +6431,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                     disabled={isLoadingLandTitleCounts || (landTitleModalOpen === 'ABN/ACN LAND TITLE' && selectedCategory !== 'ORGANISATION' && !(selectedCategory === 'LAND TITLE' && selectedLandTitleOption === 'LAND_ORGANISATION' && landTitleOrganisationStates.size > 0) && landTitleOrganisationStates.size === 0)}
                     className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {isLoadingLandTitleCounts ? 'Processing...' : `Process – ${formatCurrency(landTitlePricingConfig.base[landTitleModalOpen])}`}
+                    {isLoadingLandTitleCounts ? 'Processing...' : `Retrive – ${formatCurrency(landTitlePricingConfig.base[landTitleModalOpen])}`}
                   </button>
                   <button
                     type="button"
@@ -6536,25 +6509,18 @@ setLandTitleOrganisationSearchTerm(displayText);
                         >
                           <div className="flex items-center justify-between">
                             <span>{option.label}</span>
-                            <span className="text-xs font-bold">{formatCurrency(pricePreview)}</span>
+                            <span className="text-xs font-bold">{detail === 'SUMMARY' ? '—' : formatCurrency(pricePreview)}</span>
                           </div>
                         </button>
                       );
                     });
                   })()}
                 </div>
-                <div className="mt-6 flex justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={handleLandTitleDetailBack}
-                    className="flex-1 rounded-xl border-2 border-gray-200 bg-white py-3 text-sm font-semibold uppercase tracking-wide text-gray-600 transition-all duration-200 hover:border-gray-300 hover:text-gray-800"
-                  >
-                    Back
-                  </button>
+                <div className="mt-6">
                   <button
                     type="button"
                     onClick={handleLandTitleDetailContinue}
-                    className="flex-1 rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
+                    className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
                   >
                     Continue
                   </button>
@@ -6595,18 +6561,11 @@ setLandTitleOrganisationSearchTerm(displayText);
                     No, continue with selected options
                   </button>
                 </div>
-                <div className="mt-6 flex justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={handleLandTitleAddOnBack}
-                    className="flex-1 rounded-xl border-2 border-gray-200 bg-white py-3 text-sm font-semibold uppercase tracking-wide text-gray-600 transition-all duration-200 hover:border-gray-300 hover:text-gray-800"
-                  >
-                    Back
-                  </button>
+                <div className="mt-6">
                   <button
                     type="button"
                     onClick={handleLandTitleModalConfirm}
-                    className="flex-1 rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
+                    className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
                   >
                     Continue
                   </button>
@@ -6846,6 +6805,8 @@ setLandTitleOrganisationSearchTerm(displayText);
                 ? 'Select Related Entity Record'
                 : individualNameSearchModalType === 'court'
                 ? 'Select Court Record'
+                : individualNameSearchModalType === 'landtitle'
+                ? 'Select land title Record'
                 : 'Select Name Match'}
             </h3>
             <p className="text-sm text-gray-600 mb-6">
@@ -6855,6 +6816,8 @@ setLandTitleOrganisationSearchTerm(displayText);
                 ? 'Please select the exact related entity record that matches the person you are searching for.'
                 : individualNameSearchModalType === 'court'
                 ? 'Please select the exact court record that matches the person you are searching for.'
+                : individualNameSearchModalType === 'landtitle'
+                ? 'Please select the exact land title record that matches the person you are searching for.'
                 : 'Please select the exact name match.'}
             </p>
 
@@ -6874,6 +6837,12 @@ setLandTitleOrganisationSearchTerm(displayText);
             {individualNameSearchModalType === 'court' && courtMatchesError && (
               <div className="mb-4 rounded-xl border-2 border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
                 {courtMatchesError}
+              </div>
+            )}
+
+            {individualNameSearchModalType === 'landtitle' && landTitlePersonNamesError && (
+              <div className="mb-4 rounded-xl border-2 border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                {landTitlePersonNamesError}
               </div>
             )}
 
@@ -6902,6 +6871,15 @@ setLandTitleOrganisationSearchTerm(displayText);
              !courtMatchesError && (
               <div className="mb-4 rounded-xl border-2 border-yellow-200 bg-yellow-50 px-4 py-3 text-sm font-semibold text-yellow-700">
                 No court records found for the provided details. Try adjusting the search.
+              </div>
+            )}
+
+            {individualNameSearchModalType === 'landtitle' && 
+             !isLoadingLandTitlePersonNames && 
+             landTitleIndividualMatches.length === 0 && 
+             !landTitlePersonNamesError && (
+              <div className="mb-4 rounded-xl border-2 border-yellow-200 bg-yellow-50 px-4 py-3 text-sm font-semibold text-yellow-700">
+                No land title records found for the provided details. Try adjusting the search.
               </div>
             )}
 
@@ -6938,11 +6916,17 @@ setLandTitleOrganisationSearchTerm(displayText);
                     source: 'court' as const,
                     courtMatch: option.match
                   }));
+                } else if (individualNameSearchModalType === 'landtitle' && !isLoadingLandTitlePersonNames && landTitleIndividualMatches.length > 0) {
+                  // Show dynamic results for INDIVIDUAL LAND TITLE
+                  options = landTitleIndividualMatches.map(label => ({
+                    key: `landtitle-${label}`,
+                    displayLabel: label,
+                    source: 'landtitle' as const
+                  }));
                 } else if (!individualNameSearchModalType) {
-                  // Show mock results for INDIVIDUAL LAND TITLE or when no other search types are selected
-                  const isIndividualLandTitleSearch = selectedCategory === 'INDIVIDUAL' && selectedSearches.has('INDIVIDUAL LAND TITLE');
+                  // Show mock results when no other search types are selected
                   const isIndividualCourtSearch = selectedCategory === 'INDIVIDUAL' && selectedSearches.has('COURT');
-                  if (isIndividualLandTitleSearch || (!isIndividualBankruptcySelected && !isIndividualRelatedEntitiesSelected && !isIndividualCourtSearch)) {
+                  if (!isIndividualBankruptcySelected && !isIndividualRelatedEntitiesSelected && !isIndividualCourtSearch) {
                     options = mockLandTitleIndividualMatches.map(label => ({
                       key: `mock-${label}`,
                       displayLabel: label,
@@ -6972,7 +6956,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                   })
                 ) : (
                   <div className="text-center text-gray-500 py-8">
-                    {isLoadingBankruptcyMatches || isLoadingRelatedMatches 
+                    {isLoadingBankruptcyMatches || isLoadingRelatedMatches || isLoadingCourtMatches || isLoadingLandTitlePersonNames
                       ? 'Loading results...' 
                       : 'No results found'}
                   </div>

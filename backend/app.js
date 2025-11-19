@@ -462,27 +462,6 @@ app.post('/api/create-report', async (req, res) => {
 app.use('/api', paymentRoutes.router);
 app.use('/api/payment', paymentRoutes.router);
 
-// Log registered routes for debugging
-console.log('📋 Registered payment routes:');
-paymentRoutes.router.stack.forEach((middleware) => {
-  if (middleware.route) {
-    const methods = Object.keys(middleware.route.methods).map(m => m.toUpperCase()).join(', ');
-    console.log(`   ${methods} /api${middleware.route.path}`);
-  }
-});
-
-// Verify critical routes are registered
-const criticalRoutes = ['/bankruptcy/matches', '/director-related/matches', '/land-title/counts'];
-const registeredPaths = paymentRoutes.router.stack
-  .filter(m => m.route)
-  .map(m => m.route.path);
-const missingRoutes = criticalRoutes.filter(route => !registeredPaths.includes(route));
-if (missingRoutes.length > 0) {
-  console.error('⚠️  WARNING: Missing critical routes:', missingRoutes);
-} else {
-  console.log('✅ All critical routes registered:', criticalRoutes);
-}
-
 // Email Service
 const emailService = require('./services/email.service');
 

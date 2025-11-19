@@ -11,17 +11,17 @@ const refreshingPromises = {};
 -------------------------------- */
 const SERVICES = {
   ppsr: {
-    baseURL: "https://uat-gateway.ppsrcloud.com/",
-    authURL: "https://uat-gateway.ppsrcloud.com/connect/token",
+    baseURL: "https://gateway.ppsrcloud.com/",
+    authURL: "https://gateway.ppsrcloud.com/connect/token",
     getToken: async () => {
       // PPSR uses form-urlencoded body
       const params = new URLSearchParams();
       params.append('grant_type', 'client_credentials');
       params.append('scope', 'integrationaccess');
-      params.append('client_id', process.env.PPSR_CLIENT_ID || 'flexcollect-api-integration');
-      params.append('client_secret', process.env.PPSR_CLIENT_SECRET || 'uwbEpma9DnOS8pgl_n4Wcp91E7');
+      params.append('client_id', process.env.PPSR_CLIENT_ID || 'flexcollect-api-integration-prod');
+      params.append('client_secret', process.env.PPSR_CLIENT_SECRET || 'xAbcfxu7~Zcu*J_h5cyA7rF#n');
       
-      const { data } = await axios.post("https://uat-gateway.ppsrcloud.com/connect/token", params.toString(), {
+      const { data } = await axios.post("https://gateway.ppsrcloud.com/connect/token", params.toString(), {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded'
         }

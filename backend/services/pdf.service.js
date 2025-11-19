@@ -2770,74 +2770,36 @@ function extractpropertyData(data) {
   };
 }
 
-// Extract data for Land Title Organisation/Individual Report
-function extractLandTitleData(data, reportType) {
+// Extract data for Land Title Organisation Report
+function extractLandTitleOrganisationData(data) {
+  console.log('🔍 [extractLandTitleOrganisationData] Data:', data);  
+  const reportType = 'land-title-organisation';
   // Handle different data structures (could be rdata or data)
   const rdata = data.rdata || data;
   
-  // Check if this is a "no data available" report (NEAR_MATCHES)
-  if (rdata.noDataAvailable === true || rdata.isNearMatch === true) {
-    // Try to get company name from multiple sources, prioritizing the business object (searched company)
-    let companyName = 'N/A';
-    
-    // Debug logging
-    console.log('🔍 [extractLandTitleData] No data available - searching for company name');
-    console.log('📋 data keys:', Object.keys(data));
-    console.log('📋 rdata keys:', Object.keys(rdata));
-    if (data.business) {
-      console.log('📋 data.business:', { Name: data.business.Name, name: data.business.name });
-    }
-    console.log('📋 rdata.companyName:', rdata.companyName);
-    console.log('📋 data.companyName:', data.companyName);
-    
-    // First, try to get from business object (the searched company) - check multiple possible locations
-    if (data.business) {
-      companyName = data.business.Name || data.business.name || companyName;
-      console.log('✅ Found company name from data.business:', companyName);
-    }
-    
-    // Also check if business is nested in rdata
-    if (companyName === 'N/A' && rdata.business) {
-      companyName = rdata.business.Name || rdata.business.name || companyName;
-      console.log('✅ Found company name from rdata.business:', companyName);
-    }
-    
-    // If not found, try from rdata.companyName (set in land_title_organisation)
-    if (companyName === 'N/A' && rdata.companyName) {
-      companyName = rdata.companyName;
-      console.log('✅ Found company name from rdata.companyName:', companyName);
-    }
-    
-    // If still not found, try from data.companyName
-    if (companyName === 'N/A' && data.companyName) {
-      companyName = data.companyName;
-      console.log('✅ Found company name from data.companyName:', companyName);
-    }
-    
-    // Final fallback: check if data itself has Name or name property
-    if (companyName === 'N/A' && (data.Name || data.name)) {
-      companyName = data.Name || data.name;
-      console.log('✅ Found company name from data.Name/name:', companyName);
-    }
-    
-    console.log('🎯 Final company name:', companyName);
-    
-    const reportDate = moment().format('DD MMMM YYYY');
-    const reportDateTime = moment().format('DD MMMM YYYY, h:mma');
-    
-    return {
-      property_owner_name: companyName,
-      report_date: reportDate,
-      report_date_time: reportDateTime,
-      current_properties_count: '0 properties currently owned',
-      past_properties_count: '0 properties previously owned',
-      title_search_information_sections: [],
-      complete_property_portfolio_page: '',
-      no_data_available: true,
-      company_name: companyName
-    };
+  // Check if "Title References Only" (summary) is selected
+  // Check for summary flag in business.landTitleSelection or data structure
+  const businessObj = data.business || rdata.business || {};
+  let landTitleSelection = businessObj.landTitleSelection || {};
+  
+  // Also check if landTitleSelection is directly in data or rdata
+  if (!landTitleSelection || Object.keys(landTitleSelection).length === 0) {
+    landTitleSelection = data.landTitleSelection || rdata.landTitleSelection || {};
   }
   
+  // Check if summary is true OR detail is 'SUMMARY'
+  const isTitleReferencesOnly = landTitleSelection.summary === true || 
+                                 landTitleSelection.detail === 'SUMMARY' ||
+                                 rdata.summary === true || 
+                                 rdata.detail === 'SUMMARY' ||
+                                 data.summary === true || 
+                                 data.detail === 'SUMMARY';
+  
+  if (isTitleReferencesOnly) {
+    console.log('🔍 [extractLandTitleOrganisationData] Title References Only mode detected - will show only title reference list');
+  }
+  
+
   // Get titleOrders array
   const titleOrders = Array.isArray(rdata.titleOrders) ? rdata.titleOrders : [];
   
@@ -2865,42 +2827,23 @@ function extractLandTitleData(data, reportType) {
       }
     }
   }
-  
-  // If no property owner name found and no titleOrders, try to get from business object (searched company)
-  if (propertyOwnerName === 'N/A' && titleOrders.length === 0) {
-    console.log('🔍 [extractLandTitleData] No titleOrders - searching for company name');
+    // Check if this is a "no data available" report (NEAR_MATCHES)
+  if (rdata.noDataAvailable === true || rdata.isNearMatch === true) {
     
-    // First, try from business object (the searched company) - check multiple possible locations
-    if (data.business) {
-      propertyOwnerName = data.business.Name || data.business.name || propertyOwnerName;
-      console.log('✅ Found company name from data.business:', propertyOwnerName);
-    }
+    const reportDate = moment().format('DD MMMM YYYY');
+    const reportDateTime = moment().format('DD MMMM YYYY, h:mma');
     
-    // Also check if business is nested in rdata
-    if (propertyOwnerName === 'N/A' && rdata.business) {
-      propertyOwnerName = rdata.business.Name || rdata.business.name || propertyOwnerName;
-      console.log('✅ Found company name from rdata.business:', propertyOwnerName);
-    }
-    
-    // Also try from rdata.companyName
-    if (propertyOwnerName === 'N/A' && rdata.companyName) {
-      propertyOwnerName = rdata.companyName;
-      console.log('✅ Found company name from rdata.companyName:', propertyOwnerName);
-    }
-    
-    // Also try from data.companyName
-    if (propertyOwnerName === 'N/A' && data.companyName) {
-      propertyOwnerName = data.companyName;
-      console.log('✅ Found company name from data.companyName:', propertyOwnerName);
-    }
-    
-    // Final fallback: check if data itself has Name or name property
-    if (propertyOwnerName === 'N/A' && (data.Name || data.name)) {
-      propertyOwnerName = data.Name || data.name;
-      console.log('✅ Found company name from data.Name/name:', propertyOwnerName);
-    }
-    
-    console.log('🎯 Final property owner name (no titleOrders):', propertyOwnerName);
+    return {
+      property_owner_name: propertyOwnerName,
+      report_date: reportDate,
+      report_date_time: reportDateTime,
+      current_properties_count: '0 properties currently owned',
+      past_properties_count: '0 properties previously owned',
+      title_search_information_sections: [],
+      complete_property_portfolio_page: '',
+      no_data_available: true,
+      company_name: companyName
+    };
   }
   
   // Report date
@@ -2963,12 +2906,15 @@ function extractLandTitleData(data, reportType) {
   }
   
   // Generate Title Search Information pages for each titleOrder
+  // Skip this section if isTitleReferencesOnly is true
   let titleSearchInformationSections = '';
   const logoHtml = `<div class="logo"><img src="data:image/webp;base64,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" alt="Credion"></div>`;
   
   // Search date format: DD-MMM-YYYY HH:MM AM/PM
   const searchDateFormatted = moment().format('DD-MMM-YYYY hh:mm A');
   
+  // Only generate title search information sections if NOT in title references only mode
+  if (!isTitleReferencesOnly) {
   titleOrders.forEach((titleOrder, index) => {
     // Extract data from this titleOrder
     const realPropertySegment = Array.isArray(titleOrder.RealPropertySegment) 
@@ -3045,6 +2991,7 @@ function extractLandTitleData(data, reportType) {
   </div>
 `;
   });
+  }
   
   // Generate Current Ownership table rows from titleOrders
   let currentOwnershipRows = '';
@@ -3111,7 +3058,9 @@ function extractLandTitleData(data, reportType) {
   }
   
   // Generate Complete Property Portfolio page HTML
-  const portfolioPageNumber = 3 + titleOrders.length; // After title search pages
+  // If title references only, portfolio page is page 3 (after cover and executive summary)
+  // Otherwise, it's after title search pages (3 + titleOrders.length)
+  const portfolioPageNumber = isTitleReferencesOnly ? 3 : (3 + titleOrders.length);
   const completePropertyPortfolioPage = `
   <!-- PAGE ${portfolioPageNumber}: COMPLETE PROPERTY PORTFOLIO -->
   <div class="page">
@@ -3146,10 +3095,10 @@ ${pastOwnershipRows || '          <tr><td colspan="5">No past properties found</
   
   // Calculate total pages
   // Base pages: 1 (Cover), 2 (Executive Summary), 6 (Document Information)
-  // Dynamic pages: titleOrders.length (Title Search Information pages)
+  // Dynamic pages: titleOrders.length (Title Search Information pages) - skip if title references only
   // Optional: 1 (Property Valuation) if cotality data exists
   const basePages = 3; // Cover, Executive Summary, Document Information
-  const titleSearchPages = titleOrders.length;
+  const titleSearchPages = isTitleReferencesOnly ? 0 : titleOrders.length;
   const hasValuation = rdata.cotality != null; // Check if cotality data exists
   const valuationPage = hasValuation ? 1 : 0;
   const portfolioPage = 1; // Complete Property Portfolio page
@@ -3168,17 +3117,606 @@ ${pastOwnershipRows || '          <tr><td colspan="5">No past properties found</
     complete_property_portfolio_page: completePropertyPortfolioPage,
     portfolio_page_number: portfolioPageNumber,
     total_pages: totalPages,
+    title_references_only: isTitleReferencesOnly,
     
     // Legacy/placeholder fields (required for replaceVariables function)
-    company_type: reportType || 'land-title',
+    company_type: reportType || 'land-title-organisation',
     acn: 'N/A',
     abn: 'N/A',
     companyName: propertyOwnerName
   };
 }
 
+// Extract data for Land Title Individual Report
+function extractLandTitleIndividualData(data, bussiness) {
+  console.log('🔍 [extractLandTitleIndividualData] Data:', data);  
+  const reportType = 'land-title-individual';
+  // Handle different data structures (could be rdata or data)
+  const rdata = data.rdata || data;
+  
+  // Check if "Title References Only" (summary) is selected
+  // Check for summary flag in business.landTitleSelection or data structure
+  const businessObj = data.business || rdata.business || bussiness || {};
+  let landTitleSelection = businessObj.landTitleSelection || {};
+  
+  // Also check if landTitleSelection is directly in data or rdata
+  if (!landTitleSelection || Object.keys(landTitleSelection).length === 0) {
+    landTitleSelection = data.landTitleSelection || rdata.landTitleSelection || {};
+  }
+  
+  // Check if summary is true OR detail is 'SUMMARY'
+  const isTitleReferencesOnly = landTitleSelection.summary === true || 
+                                 landTitleSelection.summary === 'on' ||
+                                 landTitleSelection.detail === 'SUMMARY' ||
+                                 rdata.summary === true || 
+                                 rdata.detail === 'SUMMARY' ||
+                                 data.summary === true || 
+                                 data.detail === 'SUMMARY';
+  
+  // Check if addOn is enabled (for showing valuation and sales history)
+  const hasAddOn = landTitleSelection.addOn === true || 
+                   landTitleSelection.addOn === 'true' ||
+                   rdata.addOn === true ||
+                   data.addOn === true;
+  
+  if (isTitleReferencesOnly) {
+    console.log('🔍 [extractLandTitleIndividualData] Title References Only mode detected - will show only title reference list');
+  }
+  
+  if (hasAddOn) {
+    console.log('🔍 [extractLandTitleIndividualData] AddOn enabled - will show valuation and sales history');
+  }
+
+  // Get titleOrders array
+  const titleOrders = Array.isArray(rdata.titleOrders) ? rdata.titleOrders : [];
+  
+  // Extract person name from various possible locations
+  let personName = 'N/A';
+  
+  // Try to get from business/ldata (firstName + lastName)
+  if (businessObj?.firstName || businessObj?.lastName) {
+    const firstName = businessObj.firstName || '';
+    const lastName = businessObj.lastName || '';
+    personName = [firstName, lastName].filter(Boolean).join(' ').toUpperCase() || 'N/A';
+  } else if (rdata?.firstName || rdata?.lastName) {
+    const firstName = rdata.firstName || '';
+    const lastName = rdata.lastName || '';
+    personName = [firstName, lastName].filter(Boolean).join(' ').toUpperCase() || 'N/A';
+  } else if (data?.firstName || data?.lastName) {
+    const firstName = data.firstName || '';
+    const lastName = data.lastName || '';
+    personName = [firstName, lastName].filter(Boolean).join(' ').toUpperCase() || 'N/A';
+  } else if (rdata?.companyName) {
+    // Fallback to companyName field (which stores the search term for individuals)
+    personName = rdata.companyName.toUpperCase() || 'N/A';
+  } else if (rdata?.search_word) {
+    // Fallback to search_word field
+    personName = rdata.search_word.toUpperCase() || 'N/A';
+  } else if (titleOrders.length > 0) {
+    // Try to extract from first titleOrder
+    const firstOrder = titleOrders[0];
+    const realPropertySegment = Array.isArray(firstOrder.RealPropertySegment) 
+      ? firstOrder.RealPropertySegment[0] 
+      : null;
+    
+    if (realPropertySegment && realPropertySegment.RegistryBlock) {
+      const ownership = realPropertySegment.RegistryBlock.Ownership || {};
+      const owners = Array.isArray(ownership.Owners) ? ownership.Owners : [];
+      
+      if (owners.length > 0) {
+        const firstOwner = owners[0];
+        if (firstOwner.Name) {
+          personName = firstOwner.Name.toUpperCase();
+        } else if (firstOwner.Individual) {
+          const firstName = firstOwner.Individual.FirstName || '';
+          const lastName = firstOwner.Individual.LastName || '';
+          personName = [firstName, lastName].filter(Boolean).join(' ').toUpperCase() || 'N/A';
+        }
+      }
+    }
+  }
+  
+  // Check if this is a "no data available" report (NEAR_MATCHES)
+  if (rdata.noDataAvailable === true || rdata.isNearMatch === true) {
+    const reportDate = moment().format('DD MMMM YYYY');
+    const reportDateTime = moment().format('DD MMMM YYYY, h:mma');
+    
+    return {
+      person_name: personName,
+      property_owner_name: personName,
+      report_date: reportDate,
+      report_date_time: reportDateTime,
+      current_properties_count: '0 properties currently owned',
+      past_properties_count: '0 properties previously owned',
+      title_search_information_sections: '',
+      complete_property_portfolio_page: '',
+      current_property_overview_section: '',
+      property_valuation_page: '',
+      sales_history_section: '',
+      no_data_available: true,
+      title_references_only: isTitleReferencesOnly,
+      has_addon: hasAddOn,
+      companyName: personName
+    };
+  }
+  
+  // Report date
+  const reportDate = moment().format('DD MMMM YYYY');
+  const reportDateTime = moment().format('DD MMMM YYYY, h:mma');
+  
+  // Get counts
+  const currentCount = rdata.currentCount || titleOrders.length || 0;
+  const historicalCount = rdata.historicalCount || 0;
+  
+  // Extract primary property address from first titleOrder
+  let primaryPropertyAddress = 'N/A';
+  let primaryPropertyValue = '$0.00';
+  
+  if (titleOrders.length > 0) {
+    const firstOrder = titleOrders[0];
+    const locationSegment = Array.isArray(firstOrder.LocationSegment) 
+      ? firstOrder.LocationSegment[0] 
+      : null;
+    
+    if (locationSegment && locationSegment.Address) {
+      const address = locationSegment.Address;
+      const addressParts = [];
+      
+      // Add unit if present
+      if (address.Unit) {
+        addressParts.push(`UNIT ${address.Unit}`);
+      }
+      
+      // Add street number and name
+      if (address.StreetNumber && address.StreetName) {
+        addressParts.push(`${address.StreetNumber} ${address.StreetName}`);
+      } else if (address.StreetName) {
+        addressParts.push(address.StreetName);
+      }
+      
+      // Add street type
+      if (address.StreetType) {
+        addressParts[addressParts.length - 1] += ` ${address.StreetType}`;
+      }
+      
+      // Add city/suburb, state, and postcode
+      const localityParts = [];
+      if (address.City) {
+        localityParts.push(address.City);
+      }
+      if (address.State) {
+        localityParts.push(address.State);
+      }
+      if (address.PostCode) {
+        localityParts.push(address.PostCode);
+      }
+      
+      if (localityParts.length > 0) {
+        addressParts.push(localityParts.join(' '));
+      }
+      
+      if (addressParts.length > 0) {
+        primaryPropertyAddress = addressParts.join(', ');
+      }
+    }
+    
+    // Get primary property value from cotality data if available
+    if (hasAddOn && Array.isArray(rdata.cotality) && rdata.cotality.length > 0) {
+      const firstCotality = rdata.cotality[0];
+      if (firstCotality?.valuation?.estimatedValue) {
+        primaryPropertyValue = new Intl.NumberFormat('en-AU', { 
+          style: 'currency', 
+          currency: 'AUD',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0
+        }).format(firstCotality.valuation.estimatedValue);
+      }
+    }
+  }
+  
+  // Generate Title Search Information pages for each titleOrder
+  // Skip this section if isTitleReferencesOnly is true
+  let titleSearchInformationSections = '';
+  const logoHtml = `<div class="logo"><img src="data:image/webp;base64,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" alt="Credion"></div>`;
+  
+  // Search date format: DD-MMM-YYYY HH:MM AM/PM
+  const searchDateFormatted = moment().format('DD-MMM-YYYY hh:mm A');
+  
+  // Only generate title search information sections if NOT in title references only mode
+  if (!isTitleReferencesOnly) {
+    titleOrders.forEach((titleOrder, index) => {
+      // Extract data from this titleOrder
+      const realPropertySegment = Array.isArray(titleOrder.RealPropertySegment) 
+        ? titleOrder.RealPropertySegment[0] 
+        : null;
+      
+      const registryBlock = realPropertySegment?.RegistryBlock || {};
+      const identityBlock = realPropertySegment?.IdentityBlock || {};
+      const locationSegment = Array.isArray(titleOrder.LocationSegment) 
+        ? titleOrder.LocationSegment[0] 
+        : null;
+      const orderResultBlock = titleOrder.OrderResultBlock || {};
+      const dataSources = Array.isArray(orderResultBlock.DataSources) ? orderResultBlock.DataSources : [];
+      const primaryDataSource = dataSources[0] || {};
+      
+      // Extract values
+      const folio = registryBlock.Folio || 'N/A';
+      const titleReference = identityBlock.TitleReference || 'N/A';
+      const editionIssuedDateTime = primaryDataSource.EditionIssuedDateTime;
+      const editionDate = editionIssuedDateTime 
+        ? moment(editionIssuedDateTime).format('DD-MM-YYYY') 
+        : 'N/A';
+      const parish = locationSegment?.Address?.City || 'N/A';
+      const country = 'AUSTRALIA'; // Static as requested
+      const transferNumber = 'N/A'; // Static for now as requested
+      
+      // Calculate page number (Page 3 + index, but will be adjusted based on total pages)
+      // Base pages: 1 (Cover), 2 (Executive Summary), then title search pages start at 3
+      const pageNumber = 3 + index;
+      
+      // Generate HTML for this title search information page
+      titleSearchInformationSections += `
+  <!-- PAGE ${pageNumber}: TITLE SEARCH INFORMATION #${index + 1} -->
+  <div class="page">
+    <div class="brand-header">
+      ${logoHtml}
+      <div class="doc-id">Report Date: ${reportDate}</div>
+    </div>
+    <div class="page-title">Title Search Information</div>
+    <div class="card">
+      <div class="card-header">Property Title Details</div>
+      <div class="data-grid" style="grid-template-columns: repeat(3, 1fr);">
+        <div class="data-item"><div class="data-label">Folio</div><div class="data-value">${folio}</div></div>
+        <div class="data-item"><div class="data-label">Title Reference</div><div class="data-value">${titleReference}</div></div>
+        <div class="data-item"><div class="data-label">Search Date</div><div class="data-value">${searchDateFormatted}</div></div>
+        <div class="data-item"><div class="data-label">Edition Date</div><div class="data-value">${editionDate}</div></div>
+        <div class="data-item"><div class="data-label">Parish</div><div class="data-value">${parish}</div></div>
+        <div class="data-item"><div class="data-label">County</div><div class="data-value">${country}</div></div>
+        <div class="data-item"><div class="data-label">Transfer Number</div><div class="data-value">${transferNumber}</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">Schedule of Parcels</div>
+      <table>
+        <thead><tr><th>Lot Description</th><th>Title Diagram</th></tr></thead>
+        <tbody>
+          <tr><td colspan="2">N/A</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">Encumbrances and Notifications</div>
+      <ol class="text-sm" style="margin-left:18px; line-height:1.8;">
+        <li>N/A</li>
+      </ol>
+    </div>
+    <div class="page-number">Page ${pageNumber} of {{total_pages}}</div>
+  </div>
+`;
+    });
+  }
+  
+  // Generate Current Ownership table rows from titleOrders
+  let currentOwnershipRows = '';
+  titleOrders.forEach((titleOrder) => {
+    const realPropertySegment = Array.isArray(titleOrder.RealPropertySegment) 
+      ? titleOrder.RealPropertySegment[0] 
+      : null;
+    const locationSegment = Array.isArray(titleOrder.LocationSegment) 
+      ? titleOrder.LocationSegment[0] 
+      : null;
+    
+    const titleReference = realPropertySegment?.IdentityBlock?.TitleReference || 'N/A';
+    const locality = locationSegment?.Address?.City || 'N/A';
+    const ownershipType = 'Owner';
+    
+    // Extract transfer number from Ownership.Dealings
+    let transferNumber = 'N/A';
+    if (realPropertySegment?.RegistryBlock?.Ownership?.Dealings) {
+      const dealings = Array.isArray(realPropertySegment.RegistryBlock.Ownership.Dealings) 
+        ? realPropertySegment.RegistryBlock.Ownership.Dealings 
+        : [];
+      if (dealings.length > 0 && dealings[0].Reference) {
+        transferNumber = `T ${dealings[0].Reference}`;
+      }
+    }
+    
+    const status = 'Current';
+    
+    currentOwnershipRows += `          <tr><td>${titleReference}</td><td>${locality}</td><td>${ownershipType}</td><td>${transferNumber}</td><td>${status}</td></tr>\n`;
+  });
+  
+  // Generate Past Ownership table rows from historicalTitleOrders (if exists)
+  let pastOwnershipRows = '';
+  const historicalTitleOrders = Array.isArray(rdata.historicalTitleOrders) ? rdata.historicalTitleOrders : [];
+  
+  if (historicalTitleOrders.length > 0) {
+    historicalTitleOrders.forEach((titleOrder) => {
+      const realPropertySegment = Array.isArray(titleOrder.RealPropertySegment) 
+        ? titleOrder.RealPropertySegment[0] 
+        : null;
+      const locationSegment = Array.isArray(titleOrder.LocationSegment) 
+        ? titleOrder.LocationSegment[0] 
+        : null;
+      
+      const titleReference = realPropertySegment?.IdentityBlock?.TitleReference || 'N/A';
+      const locality = locationSegment?.Address?.City || 'N/A';
+      const ownershipType = 'Owner (Past)';
+      
+      // Extract transfer number from Ownership.Dealings
+      let transferNumber = 'N/A';
+      if (realPropertySegment?.RegistryBlock?.Ownership?.Dealings) {
+        const dealings = Array.isArray(realPropertySegment.RegistryBlock.Ownership.Dealings) 
+          ? realPropertySegment.RegistryBlock.Ownership.Dealings 
+          : [];
+        if (dealings.length > 0 && dealings[0].Reference) {
+          transferNumber = `T ${dealings[0].Reference}`;
+        }
+      }
+      
+      const status = 'PAST';
+      
+      pastOwnershipRows += `          <tr><td>${titleReference}</td><td>${locality}</td><td>${ownershipType}</td><td>${transferNumber}</td><td>${status}</td></tr>\n`;
+    });
+  }
+  
+  // Generate Complete Property Portfolio page HTML
+  // If title references only, portfolio page is page 3 (after cover and executive summary)
+  // Otherwise, it's after title search pages (3 + titleOrders.length)
+  const portfolioPageNumber = isTitleReferencesOnly ? 3 : (3 + titleOrders.length);
+  const completePropertyPortfolioPage = `
+  <!-- PAGE ${portfolioPageNumber}: COMPLETE PROPERTY PORTFOLIO -->
+  <div class="page">
+    <div class="brand-header">
+      ${logoHtml}
+      <div class="doc-id">Report Date: ${reportDate}</div>
+    </div>
+    <div class="page-title">Complete Property Portfolio</div>
+
+    <div class="card">
+      <div class="card-header">Current Ownership</div>
+      <table>
+        <thead><tr><th style="width:140px;">Title Reference</th><th style="width:140px;">Locality</th><th style="width:160px;">Type</th><th style="width:140px;">Transfer</th><th>Status</th></tr></thead>
+        <tbody>
+${currentOwnershipRows || '          <tr><td colspan="5">No current properties found</td></tr>\n'}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">Past Ownership (${historicalCount} ${historicalCount === 1 ? 'Property' : 'Properties'})</div>
+      <table>
+        <thead><tr><th style="width:140px;">Title Reference</th><th style="width:160px;">Locality</th><th style="width:160px;">Type</th><th style="width:160px;">Transfer</th><th>Status</th></tr></thead>
+        <tbody>
+${pastOwnershipRows || '          <tr><td colspan="5">No past properties found</td></tr>\n'}
+        </tbody>
+      </table>
+    </div>
+    <div class="page-number">Page ${portfolioPageNumber} of {{total_pages}}</div>
+  </div>
+`;
+  
+  // Generate Current Property Overview section (only if addOn is enabled and not summary mode)
+  let currentPropertyOverviewSection = '';
+  if (hasAddOn && !isTitleReferencesOnly && titleOrders.length > 0) {
+    const firstOrder = titleOrders[0];
+    const locationSegment = Array.isArray(firstOrder.LocationSegment) 
+      ? firstOrder.LocationSegment[0] 
+      : null;
+    
+    if (locationSegment && locationSegment.Address) {
+      const address = locationSegment.Address;
+      const addressParts = [];
+      
+      if (address.StreetNumber && address.StreetName) {
+        addressParts.push(`${address.StreetNumber} ${address.StreetName}`);
+      }
+      if (address.StreetType) {
+        if (addressParts.length > 0) {
+          addressParts[addressParts.length - 1] += ` ${address.StreetType}`;
+        } else {
+          addressParts.push(address.StreetType);
+        }
+      }
+      
+      const localityParts = [];
+      if (address.City) localityParts.push(address.City);
+      if (address.State) localityParts.push(address.State);
+      if (address.PostCode) localityParts.push(address.PostCode);
+      if (localityParts.length > 0) {
+        addressParts.push(localityParts.join(' '));
+      }
+      
+      const propertyAddress = addressParts.join(', ');
+      
+      // Get property details from cotality if available
+      let bedrooms = 'N/A';
+      let bathrooms = 'N/A';
+      let carSpaces = 'N/A';
+      let landArea = 'N/A';
+      let propertyType = 'N/A';
+      let yearBuilt = 'N/A';
+      let zoning = 'N/A';
+      let localGovernment = 'N/A';
+      
+      if (Array.isArray(rdata.cotality) && rdata.cotality.length > 0) {
+        const firstCotality = rdata.cotality[0];
+        if (firstCotality?.property) {
+          bedrooms = firstCotality.property.bedrooms || 'N/A';
+          bathrooms = firstCotality.property.bathrooms || 'N/A';
+          carSpaces = firstCotality.property.carSpaces || 'N/A';
+          landArea = firstCotality.property.landArea ? `${firstCotality.property.landArea}m²` : 'N/A';
+          propertyType = firstCotality.property.propertyType || 'N/A';
+          yearBuilt = firstCotality.property.yearBuilt || 'N/A';
+          zoning = firstCotality.property.zoning || 'N/A';
+          localGovernment = firstCotality.property.localGovernment || 'N/A';
+        }
+      }
+      
+      currentPropertyOverviewSection = `
+    <div class="section-title">Current Property Overview</div>
+    <div class="card">
+      <div class="section-subtitle">${propertyAddress}</div>
+      <div class="data-grid" style="grid-template-columns: repeat(4, 1fr);">
+        <div class="data-item"><div class="data-label">Bedrooms</div><div class="data-value">${bedrooms}</div></div>
+        <div class="data-item"><div class="data-label">Bathrooms</div><div class="data-value">${bathrooms}</div></div>
+        <div class="data-item"><div class="data-label">Car Spaces</div><div class="data-value">${carSpaces}</div></div>
+        <div class="data-item"><div class="data-label">Land Area</div><div class="data-value">${landArea}</div></div>
+        <div class="data-item"><div class="data-label">Property Type</div><div class="data-value">${propertyType}</div></div>
+        <div class="data-item"><div class="data-label">Year Built</div><div class="data-value">${yearBuilt}</div></div>
+        <div class="data-item"><div class="data-label">Zoning</div><div class="data-value">${zoning}</div></div>
+        <div class="data-item"><div class="data-label">Local Government</div><div class="data-value">${localGovernment}</div></div>
+      </div>
+    </div>`;
+    }
+  }
+  
+  // Generate Property Valuation and Sales History page (only if addOn is enabled)
+  let propertyValuationPage = '';
+  let salesHistorySection = '';
+  
+  if (hasAddOn && Array.isArray(rdata.cotality) && rdata.cotality.length > 0) {
+    const firstCotality = rdata.cotality[0];
+    
+    // Valuation data
+    let avmEstimate = '$0.00';
+    let estimatedRange = 'N/A';
+    let valuationDate = moment().format('DD MMMM YYYY');
+    let confidenceLevel = 'N/A';
+    
+    if (firstCotality?.valuation) {
+      const val = firstCotality.valuation;
+      if (val.estimatedValue) {
+        avmEstimate = new Intl.NumberFormat('en-AU', { 
+          style: 'currency', 
+          currency: 'AUD',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0
+        }).format(val.estimatedValue);
+      }
+      if (val.priceRangeLow && val.priceRangeHigh) {
+        estimatedRange = `${new Intl.NumberFormat('en-AU', { 
+          style: 'currency', 
+          currency: 'AUD',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0
+        }).format(val.priceRangeLow)} – ${new Intl.NumberFormat('en-AU', { 
+          style: 'currency', 
+          currency: 'AUD',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0
+        }).format(val.priceRangeHigh)}`;
+      }
+      if (val.valuationDate) {
+        valuationDate = moment(val.valuationDate).format('DD MMMM YYYY');
+      }
+      if (val.confidenceLevel) {
+        confidenceLevel = val.confidenceLevel;
+      }
+    }
+    
+    // Sales history
+    let salesHistoryRows = '';
+    if (firstCotality?.salesHistory && Array.isArray(firstCotality.salesHistory) && firstCotality.salesHistory.length > 0) {
+      firstCotality.salesHistory.forEach((sale) => {
+        const saleDate = sale.saleDate ? moment(sale.saleDate).format('DD MMMM YYYY') : 'N/A';
+        const salePrice = sale.salePrice 
+          ? new Intl.NumberFormat('en-AU', { 
+              style: 'currency', 
+              currency: 'AUD',
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0
+            }).format(sale.salePrice)
+          : 'N/A';
+        const saleType = sale.saleType || 'Unknown';
+        salesHistoryRows += `          <tr><td>${saleDate}</td><td>${salePrice}</td><td>${saleType}</td></tr>\n`;
+      });
+    } else {
+      salesHistoryRows = '          <tr><td colspan="3">No sales history available</td></tr>\n';
+    }
+    
+    salesHistorySection = `
+    <div class="section-title">Sales History</div>
+    <div class="card">
+      <table>
+        <thead><tr><th style="width:160px;">Sale Date</th><th style="width:160px;">Sale Price</th><th>Sale Type</th></tr></thead>
+        <tbody>
+${salesHistoryRows}
+        </tbody>
+      </table>
+    </div>`;
+    
+    const valuationPageNumber = portfolioPageNumber + 1;
+    propertyValuationPage = `
+  <!-- PAGE ${valuationPageNumber}: PROPERTY VALUATION & SALES HISTORY -->
+  <div class="page">
+    <div class="brand-header">
+      ${logoHtml}
+      <div class="doc-id">Report Date: ${reportDate}</div>
+    </div>
+    <div class="page-title">Property Valuation</div>
+    <div class="card">
+      <div class="data-grid" style="grid-template-columns: repeat(3, 1fr);">
+        <div class="data-item"><div class="data-label">Automated Valuation Estimate</div><div class="data-value">${avmEstimate}</div></div>
+        <div class="data-item"><div class="data-label">Estimated Price Range</div><div class="data-value">${estimatedRange}</div></div>
+        <div class="data-item"><div class="data-label">Valuation Date</div><div class="data-value">${valuationDate}</div></div>
+      </div>
+      <div class="data-item" style="margin-top:10px;"><div class="data-label">Confidence Level</div><div class="data-value"><span class="pill">${confidenceLevel}</span></div></div>
+      <div class="section-subtitle" style="margin-top:12px;">Important</div>
+      <div class="text-sm">
+        An automated valuation model estimate is statistically derived and should not be relied upon as a professional valuation or an accurate representation of market value.
+      </div>
+    </div>
+${salesHistorySection}
+    <div class="page-number">Page ${valuationPageNumber} of {{total_pages}}</div>
+  </div>
+`;
+  }
+  
+  // Calculate total pages
+  // Base pages: 1 (Cover), 2 (Executive Summary), 6 (Document Information)
+  // Dynamic pages: titleOrders.length (Title Search Information pages) - skip if title references only
+  // Optional: 1 (Property Valuation) if addOn is enabled and cotality data exists
+  const basePages = 3; // Cover, Executive Summary, Document Information
+  const titleSearchPages = isTitleReferencesOnly ? 0 : titleOrders.length;
+  const hasValuation = hasAddOn && rdata.cotality != null && Array.isArray(rdata.cotality) && rdata.cotality.length > 0;
+  const valuationPage = hasValuation ? 1 : 0;
+  const portfolioPage = 1; // Complete Property Portfolio page
+  const totalPages = basePages + titleSearchPages + portfolioPage + valuationPage;
+  
+  // Basic return structure - will be expanded with more fields
+  return {
+    person_name: personName,
+    property_owner_name: personName,
+    report_date: reportDate,
+    report_date_time: reportDateTime,
+    current_properties_count: currentCount > 0 ? `${currentCount} propert${currentCount === 1 ? 'y' : 'ies'} currently owned` : '0 properties currently owned',
+    past_properties_count: historicalCount > 0 ? `${historicalCount} propert${historicalCount === 1 ? 'y' : 'ies'} previously owned` : '0 properties previously owned',
+    primary_property_address: primaryPropertyAddress,
+    primary_property_value: primaryPropertyValue,
+    title_search_information_sections: titleSearchInformationSections,
+    complete_property_portfolio_page: completePropertyPortfolioPage,
+    current_property_overview_section: currentPropertyOverviewSection,
+    property_valuation_page: propertyValuationPage,
+    sales_history_section: salesHistorySection,
+    portfolio_page_number: portfolioPageNumber,
+    total_pages: totalPages,
+    title_references_only: isTitleReferencesOnly,
+    has_addon: hasAddOn,
+    has_valuation: hasValuation,
+    
+    // Legacy/placeholder fields (required for replaceVariables function)
+    company_type: reportType || 'land-title-individual',
+    acn: 'N/A',
+    abn: 'N/A',
+    companyName: personName
+  };
+}
+
 // Function to replace variables in HTML
-function replaceVariables(htmlContent, data, reportype) {
+function replaceVariables(htmlContent, data, reportype, bussiness) {
   // Extract report-specific data based on report type
   let extractedData;
   
@@ -3211,9 +3749,9 @@ function replaceVariables(htmlContent, data, reportype) {
   } else if (reportype === 'land-title-address' ) {
     extractedData = extractpropertyData(data);
   } else if (reportype === 'land-title-organisation' ) {
-    extractedData = extractLandTitleData(data, 'land-title-organisation');
+    extractedData = extractLandTitleOrganisationData(data, bussiness);
   } else if (reportype === 'land-title-individual' ) {
-    extractedData = extractLandTitleData(data, 'land-title-individual');
+    extractedData = extractLandTitleIndividualData(data, bussiness);
   } else {
     // Default fallback - try to extract common fields
     const entity = data.entity || {};
@@ -3530,11 +4068,49 @@ function replaceVariables(htmlContent, data, reportype) {
   // Land Title Organisation/Individual specific variables
   if (reportype === 'land-title-organisation' || reportype === 'land-title-individual') {
     console.log('🔍 Processing land title report - extractedData keys:', Object.keys(extractedData));
-    console.log('🔍 Title search sections length:', extractedData.title_search_information_sections?.length || 0);
-    console.log('🔍 Portfolio page length:', extractedData.complete_property_portfolio_page?.length || 0);
     
-    // Handle "no data available" case (NEAR_MATCHES)
-    if (extractedData.no_data_available === true) {
+    // For land-title-individual, replace person name on cover page
+    if (reportype === 'land-title-individual') {
+      const personNameRegex = /INDRA BUDIMAN/gi;
+      updatedHtml = updatedHtml.replace(personNameRegex, extractedData.person_name || extractedData.property_owner_name || 'N/A');
+      
+      // Replace person name variable
+      replaceVar('person_name', extractedData.person_name || extractedData.property_owner_name || 'N/A');
+    }
+    
+    // Handle "Title References Only" mode (summary = on)
+    if (extractedData.title_references_only === true) {
+      console.log('🔍 Title References Only mode detected - replacing entire template');
+      
+      // Replace entire HTML with simple title references page
+      if (extractedData.title_references_only_page && extractedData.title_references_only_page.length > 0) {
+        // Find the page container and replace all content inside it
+        // Match from <div class="page-container"> to </div></body></html>
+        const pageContainerRegex = /<div class="page-container">[\s\S]*?<\/div>\s*<\/body>\s*<\/html>/i;
+        const replacement = `<div class="page-container">\n${extractedData.title_references_only_page}\n</div>\n</body>\n</html>`;
+        
+        const beforeLength = updatedHtml.length;
+        updatedHtml = updatedHtml.replace(pageContainerRegex, replacement);
+        const afterLength = updatedHtml.length;
+        
+        if (beforeLength !== afterLength) {
+          console.log('✅ Replaced entire template with Title References Only page (length changed:', beforeLength, '->', afterLength, ')');
+        } else {
+          console.log('⚠️ Page container regex did not match, trying alternative approach');
+          // Alternative: replace everything after <body> tag
+          const bodyRegex = /<body[^>]*>[\s\S]*/i;
+          updatedHtml = updatedHtml.replace(bodyRegex, `<body>\n<div class="page-container">\n${extractedData.title_references_only_page}\n</div>\n</body>\n</html>`);
+        }
+      } else {
+        console.log('⚠️ title_references_only_page not found in extractedData');
+      }
+      
+      // Replace variables in the title references page
+      replaceVar('property_owner_name', extractedData.property_owner_name || 'N/A');
+      replaceVar('report_date', extractedData.report_date || reportDate);
+      replaceVar('total_pages', '2');
+    } else if (extractedData.no_data_available === true) {
+      // Handle "no data available" case (NEAR_MATCHES)
       // Replace hardcoded owner name on cover page with company name
       const ownerNameRegex = /INDRA BUDIMAN/gi;
       updatedHtml = updatedHtml.replace(ownerNameRegex, extractedData.company_name || extractedData.property_owner_name || 'N/A');
@@ -3582,7 +4158,42 @@ function replaceVariables(htmlContent, data, reportype) {
       const pastCountRegex = /12 properties previously owned/gi;
       updatedHtml = updatedHtml.replace(pastCountRegex, extractedData.past_properties_count || '0 properties previously owned');
     
-      // Replace the static Title Search Information section with dynamic sections
+      // Handle Title References Only mode (summary = on) - show only Complete Property Portfolio
+      if (extractedData.title_references_only === true) {
+        console.log('🔍 Title References Only mode - removing title search information sections and Current Property Overview');
+        
+        // Remove the "Current Property Overview" section from page 2 (keep only Executive Summary card)
+        // Match from "Current Property Overview" section title to the end of the card, but keep the page number
+        const currentPropertyOverviewRegex = /<div class="section-title">Current Property Overview<\/div>[\s\S]*?<\/div>\s*<\/div>\s*(<div class="page-number">Page 2 of \d+<\/div>)/;
+        updatedHtml = updatedHtml.replace(currentPropertyOverviewRegex, '$1');
+        
+        // Update page 2 total pages to reflect correct count
+        const page2NumberRegex = /<div class="page-number">Page 2 of \d+<\/div>/;
+        updatedHtml = updatedHtml.replace(page2NumberRegex, `<div class="page-number">Page 2 of ${extractedData.total_pages || 3}</div>`);
+        
+        // Remove the Title Search Information section completely (page 3)
+        const titleSearchRegex = /<!-- PAGE 3: TITLE SEARCH INFORMATION -->[\s\S]*?<!-- PAGE 4: COMPLETE PROPERTY PORTFOLIO -->/;
+        updatedHtml = updatedHtml.replace(titleSearchRegex, '<!-- PAGE 3: COMPLETE PROPERTY PORTFOLIO -->');
+        
+        // Update page number in portfolio page from 4 to 3
+        const portfolioPageNumRegex = /<div class="page-number">Page \d+ of \{\{total_pages\}\}/;
+        updatedHtml = updatedHtml.replace(portfolioPageNumRegex, `<div class="page-number">Page 3 of ${extractedData.total_pages || 3}`);
+      } else {
+        // Not in summary mode - handle Current Property Overview based on addon flag
+        if (reportype === 'land-title-individual') {
+          if (extractedData.has_addon === true && extractedData.current_property_overview_section) {
+            // Insert Current Property Overview section after Executive Summary card, before page number
+            const executiveSummaryRegex = /(<div class="card">[\s\S]*?<\/div>\s*<\/div>\s*<\/div>)\s*(<div class="page-number">Page 2 of)/;
+            const replacement = `$1\n${extractedData.current_property_overview_section}\n    $2`;
+            updatedHtml = updatedHtml.replace(executiveSummaryRegex, replacement);
+          } else {
+            // Remove Current Property Overview section if addon is false
+            const currentPropertyOverviewRegex = /<div class="section-title">Current Property Overview<\/div>[\s\S]*?<\/div>\s*<\/div>\s*(<div class="page-number">Page 2 of \d+<\/div>)/;
+            updatedHtml = updatedHtml.replace(currentPropertyOverviewRegex, '$1');
+          }
+        }
+        
+        // Replace the static Title Search Information section with dynamic sections
       // Match from PAGE 3 comment to PAGE 4 comment (including any comment text in between)
       const titleSearchRegex = /<!-- PAGE 3: TITLE SEARCH INFORMATION -->[\s\S]*?<!-- PAGE 4: COMPLETE PROPERTY PORTFOLIO -->/;
       if (extractedData.title_search_information_sections && extractedData.title_search_information_sections.length > 0) {
@@ -3599,16 +4210,23 @@ function replaceVariables(htmlContent, data, reportype) {
         console.log('⚠️ No title_search_information_sections found in extractedData or it is empty');
         console.log('   title_search_information_sections type:', typeof extractedData.title_search_information_sections);
         console.log('   title_search_information_sections length:', extractedData.title_search_information_sections?.length || 0);
+        }
       }
     
       // Replace the static Complete Property Portfolio section with dynamic content
-      // Match from PAGE 4 comment to PAGE 5 comment or PAGE 6 comment
-      const portfolioRegex = /<!-- PAGE 4: COMPLETE PROPERTY PORTFOLIO -->[\s\S]*?(<!-- PAGE 5: PROPERTY VALUATION|<!-- PAGE 6: DOCUMENT INFORMATION)/;
+      // Match from PAGE 3 or PAGE 4 comment to PAGE 5 comment or PAGE 6 comment (PAGE 3 if title references only)
+      const portfolioRegex = /<!-- PAGE (3|4): COMPLETE PROPERTY PORTFOLIO -->[\s\S]*?(<!-- PAGE 5: PROPERTY VALUATION|<!-- PAGE 6: DOCUMENT INFORMATION)/;
       if (extractedData.complete_property_portfolio_page && extractedData.complete_property_portfolio_page.length > 0) {
         // Replace {{total_pages}} and {{portfolio_page_number}} in portfolio page
+        // Also update the PAGE comment to match the correct page number
         let portfolioPageHtml = extractedData.complete_property_portfolio_page
           .replace(/\{\{total_pages\}\}/g, String(extractedData.total_pages || 6))
           .replace(/\{\{portfolio_page_number\}\}/g, String(extractedData.portfolio_page_number || 4));
+        
+        // Update the PAGE comment in the portfolio page HTML to match the correct page number
+        if (extractedData.title_references_only === true) {
+          portfolioPageHtml = portfolioPageHtml.replace(/<!-- PAGE \d+: COMPLETE PROPERTY PORTFOLIO -->/, '<!-- PAGE 3: COMPLETE PROPERTY PORTFOLIO -->');
+        }
         
         const replacement = portfolioPageHtml + '\n\n  ' + (extractedData.has_valuation ? '<!-- PAGE 5: PROPERTY VALUATION' : '<!-- PAGE 6: DOCUMENT INFORMATION');
         const beforeLength = updatedHtml.length;
@@ -3625,8 +4243,13 @@ function replaceVariables(htmlContent, data, reportype) {
         console.log('   complete_property_portfolio_page length:', extractedData.complete_property_portfolio_page?.length || 0);
       }
     
-      // Replace the static Property Valuation section with dynamic content (if exists)
-      if (extractedData.property_valuation_page && extractedData.property_valuation_page.length > 0) {
+      // Replace the static Property Valuation section with dynamic content (if exists and addon is true)
+      // For land-title-individual, only show if addon is true
+      const shouldShowValuation = reportype === 'land-title-individual' 
+        ? (extractedData.has_addon === true && extractedData.property_valuation_page && extractedData.property_valuation_page.length > 0)
+        : (extractedData.property_valuation_page && extractedData.property_valuation_page.length > 0);
+        
+      if (shouldShowValuation) {
         // Replace {{total_pages}} and {{valuation_page_number}} in valuation page
         let valuationPageHtml = extractedData.property_valuation_page
           .replace(/\{\{total_pages\}\}/g, String(extractedData.total_pages || 6))
@@ -3643,10 +4266,14 @@ function replaceVariables(htmlContent, data, reportype) {
           console.log('⚠️ Property Valuation regex did not match');
         }
       } else {
-        // Remove the valuation section if it doesn't exist
+        // Remove the valuation section if it doesn't exist or addon is false
         const valuationRegex = /<!-- PAGE 5: PROPERTY VALUATION & SALES HISTORY -->[\s\S]*?<!-- PAGE 6: DOCUMENT INFORMATION/;
         updatedHtml = updatedHtml.replace(valuationRegex, '<!-- PAGE 6: DOCUMENT INFORMATION');
-        console.log('⚠️ No property_valuation_page found - removed valuation section');
+        if (reportype === 'land-title-individual' && extractedData.has_addon !== true) {
+          console.log('⚠️ Addon is false - removed valuation section');
+        } else {
+          console.log('⚠️ No property_valuation_page found - removed valuation section');
+        }
       }
     
       // Replace page numbers in title search sections
@@ -3935,7 +4562,7 @@ async function convertWithVariables(data, templateName = 'task1.html') {
 }
 
 // Function to add download report to DB
-async function addDownloadReportInDB(rdata, userId, matterId, reportId, reportName, reportype) {
+async function addDownloadReportInDB(rdata, userId, matterId, reportId, reportName, reportype, business) {
   console.log(reportype);
   let templateName;
   
@@ -3968,8 +4595,10 @@ async function addDownloadReportInDB(rdata, userId, matterId, reportId, reportNa
   } else if (reportype == "land-title-address" ) {
     templateName = 'landtitle-titleadd.html';
   } else if (reportype == "land-title-organisation" ) {
+    // Organization landtitle reports use landtitle-report.html
     templateName = 'landtitle-report.html';
   } else if (reportype == "land-title-individual" ) {
+    // Individual landtitle reports use landtitle-individual-report.html
     templateName = 'landtitle-individual-report.html';
   } else {
     throw new Error(`Unknown report type: ${reportype}`);
@@ -3991,29 +4620,6 @@ async function addDownloadReportInDB(rdata, userId, matterId, reportId, reportNa
   // But preserve the business object if it exists at the root level
   let dataForTemplate = rdata.data || rdata;
   
-  // For land title reports, ensure business object is included
-  // Check both rdata.business (root level) and dataForTemplate.business
-  if (reportype === 'land-title-organisation' || reportype === 'land-title-individual') {
-    if (rdata.business) {
-      // If business is at root level, add it to dataForTemplate
-      dataForTemplate = { ...dataForTemplate, business: rdata.business };
-      console.log('✅ Added business object from root level to dataForTemplate:', {
-        isCompany: rdata.business.isCompany,
-        name: rdata.business.Name || rdata.business.name,
-        abn: rdata.business.Abn || rdata.business.abn
-      });
-    } else if (dataForTemplate.business) {
-      console.log('✅ Business object already in dataForTemplate:', {
-        isCompany: dataForTemplate.business.isCompany,
-        name: dataForTemplate.business.Name || dataForTemplate.business.name,
-        abn: dataForTemplate.business.Abn || dataForTemplate.business.abn
-      });
-    } else {
-      console.log('⚠️ No business object found in rdata or dataForTemplate');
-      console.log('📋 rdata keys:', Object.keys(rdata));
-      console.log('📋 dataForTemplate keys:', Object.keys(dataForTemplate));
-    }
-  }
   
   console.log('📋 Final dataForTemplate structure for replaceVariables:', {
     hasData: !!dataForTemplate.data,
@@ -4022,7 +4628,7 @@ async function addDownloadReportInDB(rdata, userId, matterId, reportId, reportNa
     reportype
   });
   
-  const updatedHtml = replaceVariables(htmlContent, dataForTemplate, reportype);
+  const updatedHtml = replaceVariables(htmlContent, dataForTemplate, reportype, business);
 
   // Generate filename
   const timestamp = reportName || new Date().getTime();

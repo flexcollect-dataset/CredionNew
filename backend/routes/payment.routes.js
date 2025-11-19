@@ -457,6 +457,7 @@ router.post('/get-report-data', async (req, res) => {
 
 async function asic_report_data(uuid) {
 	//Now call GET API to fetch the report data
+	console.log(uuid);
 	const getApiUrl = `https://alares.com.au/api/reports/${uuid}/json`;
 	const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
 
@@ -478,7 +479,7 @@ async function fetchPpsrReportData(auSearchIdentifier) {
 	await delay(3000);
 
 	// Step 2: Fetch actual data using the auSearchIdentifier
-	const fetchUrl = 'https://uat-gateway.ppsrcloud.com/api/b2b/ausearch/result-details';
+	const fetchUrl = 'https://gateway.ppsrcloud.com/api/b2b/ausearch/result-details';
 	const fetchData = {
 		auSearchIdentifier: auSearchIdentifier,
 		pageNumber: 1,
@@ -541,7 +542,7 @@ async function director_ppsr_report(fname, lname, dob) {
 	}
 
 	// Step 1: Submit search request
-	const submitUrl = 'https://uat-gateway.ppsrcloud.com/api/b2b/ausearch/submit-grantor-session-cmd';
+	const submitUrl = 'https://gateway.ppsrcloud.com/api/b2b/ausearch/submit-grantor-session-cmd';
 	const requestData = {
 		customerRequestId: `flexcollect-001`,
 		clientReference: "Credion Company Search",
@@ -603,39 +604,79 @@ async function director_bankrupcty_report(fname, lname, dob) {
 
 async function director_related_report(fname, lname, dob) {
 	const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
-	// const bapiURL = 'https://alares.com.au/api/asic/search'
-	// const bparams = {
-	//     first_name: "jon",
-	//     last_name: "adgemis",
-	//     dob_from: '24-04-1978',
-	// };
-	// bcreateResponse = await axios.get(bapiURL, {
-	//     params: bparams,
-	//     headers: {
-	//         'Authorization': `Bearer ${bearerToken}`
-	//     },
-	//     timeout: 30000 // 30 second timeout
-	// });
+	
+	// Convert dob to DD-MM-YYYY format
+	let formattedDob = "01-03-1993"; // Default fallback
+	if (dob) {
+		try {
+			// Try to parse the date with explicit format (DD/MM/YYYY is common)
+			// Try multiple formats to handle different input formats
+			let parsedDate;
+			if (typeof dob === 'string') {
+				// Try DD/MM/YYYY format first (most common based on error)
+				if (dob.includes('/')) {
+					parsedDate = moment(dob, 'DD/MM/YYYY', true); // strict mode
+					if (!parsedDate.isValid()) {
+						// Try MM/DD/YYYY as fallback
+						parsedDate = moment(dob, 'MM/DD/YYYY', true);
+					}
+				} else if (dob.includes('-')) {
+					// Already in ISO format or similar
+					parsedDate = moment(dob, ['YYYY-MM-DD', 'DD-MM-YYYY'], true);
+				} else {
+					// Try moment's default parsing as last resort
+					parsedDate = moment(dob);
+				}
+			} else {
+				// If it's already a Date object or moment object
+				parsedDate = moment(dob);
+			}
 
-	// const apiUrl = 'https://alares.com.au/api/reports/create';
-	// const params = {
-	//     type: 'individual',
-	//     name: "jon adgemis",
-	//     dob: '24-04-1978',
-	//     asic_current: '1',
-	//     person_id: bcreateResponse.data[0].person_id,
-	//     acs_search_id: bcreateResponse.data[0].search_id
-	// };
-	// createResponse = await axios.post(apiUrl, null, {
-	//     params: params,
-	//     headers: {
-	//         'Authorization': `Bearer ${bearerToken}`,
-	//         'Content-Type': 'application/json'
-	//     },
-	//     timeout: 30000 // 30 second timeout
-	// });
-	//reportData = await asic_report_data(createResponse.data.uuid);
-	reportData = await asic_report_data('019a53e1-b608-723a-9398-6562a6c50303');
+			if (parsedDate && parsedDate.isValid()) {
+				formattedDob = parsedDate.format('DD-MM-YYYY');
+			} else {
+				console.warn('Invalid date format for dob:', dob);
+			}
+		} catch (error) {
+			console.error('Error formatting date of birth:', error, 'dob:', dob);
+			// If parsing fails, use default
+		}
+	}
+	
+	console.log('Original dob:', dob, 'Formatted dob:', formattedDob);
+	const bapiURL = 'https://alares.com.au/api/asic/search'
+	const bparams = {
+	    first_name: fname,
+	    last_name: lname,
+	    dob_from: formattedDob,
+	};
+	bcreateResponse = await axios.get(bapiURL, {
+	    params: bparams,
+	    headers: {
+	        'Authorization': `Bearer ${bearerToken}`
+	    },
+	    timeout: 30000 // 30 second timeout
+	});
+
+	const apiUrl = 'https://alares.com.au/api/reports/create';
+	const params = {
+	    type: 'individual',
+	    name: `${fname} ${lname}`,
+	    dob: formattedDob,
+	    asic_current: '1',
+	    person_id: bcreateResponse.data[0].person_id,
+	    acs_search_id: bcreateResponse.data[0].search_id
+	};
+	createResponse = await axios.post(apiUrl, null, {
+	    params: params,
+	    headers: {
+	        'Authorization': `Bearer ${bearerToken}`,
+	        'Content-Type': 'application/json'
+	    },
+	    timeout: 30000 // 30 second timeout
+	});
+	reportData = await asic_report_data(createResponse.data.uuid);
+	//reportData = await asic_report_data('019a99c0-b13d-720a-b789-d06a15533efc');
 	return reportData;
 }
 
@@ -643,8 +684,7 @@ async function director_court_report(fname, lname, dob) {
 	const bearerToken = '3eiXhUHT9G25QO9';
 	const criminalApiUrl = 'https://corp-api.courtdata.com.au/api/search/criminal/record';
 	const criminalParams = {
-		state: 'NSW',
-		fullname: 'ADGEMIS, Jon',
+		fullname: `${lname}, ${fname}`,
 	};
 
 	const criminalResponse = await axios.get(criminalApiUrl, {
@@ -660,8 +700,7 @@ async function director_court_report(fname, lname, dob) {
 	// Civil Court API (POST)
 	const civilApiUrl = 'https://corp-api.courtdata.com.au/api/search/civil/record';
 	const civilParams = {
-		state: 'NSW',
-		fullname: 'ADGEMIS, Jon',
+		fullname: `${lname}, ${fname}`,
 		//fullname: 'ADGEMIS, Jon Angelo George',
 	};
 
@@ -693,8 +732,7 @@ async function director_court_civil(fname, lname, dob) {
 	// Civil Court API (POST)
 	const civilApiUrl = 'https://corp-api.courtdata.com.au/api/search/civil/record';
 	const civilParams = {
-		state: 'NSW',
-		fullname: 'ADGEMIS, Jon',
+		fullname: `${lname}, ${fname}`,
 		//fullname: 'ADGEMIS, Jon Angelo George',
 	};
 
@@ -724,8 +762,7 @@ async function director_court_criminal(fname, lname, dob) {
 	const bearerToken = '3eiXhUHT9G25QO9';
 	const criminalApiUrl = 'https://corp-api.courtdata.com.au/api/search/criminal/record';
 	const criminalParams = {
-		state: 'NSW',
-		fullname: 'ADGEMIS, Jon',
+		fullname: `${lname}, ${fname}`,
 	};
 
 	const criminalResponse = await axios.get(criminalApiUrl, {
@@ -1350,72 +1387,72 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 
 		} else {
 			if (type == "asic-current" || type == "court" || type == "ato") {
-				// const apiUrl = 'https://alares.com.au/api/reports/create';
-				// const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
-				// const params = {
-				//     type: 'company',
-				//     abn: abn,
-				//     asic_current: '1'
-				// };
-				// createResponse = await axios.post(apiUrl, null, {
-				//     params: params,
-				//     headers: {
-				//         'Authorization': `Bearer ${bearerToken}`,
-				//         'Content-Type': 'application/json'
-				//     },
-				//     timeout: 30000 // 30 second timeout
-				// });
+				const apiUrl = 'https://alares.com.au/api/reports/create';
+				const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
+				const params = {
+				    type: 'company',
+				    abn: abn,
+				    asic_current: '1'
+				};
+				createResponse = await axios.post(apiUrl, null, {
+				    params: params,
+				    headers: {
+				        'Authorization': `Bearer ${bearerToken}`,
+				        'Content-Type': 'application/json'
+				    },
+				    timeout: 30000 // 30 second timeout
+				});
 
 				// Now call GET API to fetch the report data
-				reportData = await asic_report_data('019a5245-a55e-71e0-b61d-711411a81b5e');
+				reportData = await asic_report_data(createResponse.data.uuid);
 
 			} else if (type == "asic-historical") {
 
-				// const apiUrl = 'https://alares.com.au/api/reports/create';
-				// const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
-				// const params = {
-				//     type: 'company',
-				//     abn: abn,
-				//     asic_historical: '1'
-				// };
-				// createResponse = await axios.post(apiUrl, null, {
-				//     params: params,
-				//     headers: {
-				//         'Authorization': `Bearer ${bearerToken}`,
-				//         'Content-Type': 'application/json'
-				//     },
-				//     timeout: 30000 // 30 second timeout
-				// });
+				const apiUrl = 'https://alares.com.au/api/reports/create';
+				const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
+				const params = {
+				    type: 'company',
+				    abn: abn,
+				    asic_historical: '1'
+				};
+				createResponse = await axios.post(apiUrl, null, {
+				    params: params,
+				    headers: {
+				        'Authorization': `Bearer ${bearerToken}`,
+				        'Content-Type': 'application/json'
+				    },
+				    timeout: 30000 // 30 second timeout
+				});
 
 				// Now call GET API to fetch the report data
-				reportData = await asic_report_data('019a2349-f1c5-738a-b306-950e842370d3');
+				reportData = await asic_report_data(createResponse.data.uuid);
 
 			} else if (type == "asic-company") {
-				// const apiUrl = 'https://alares.com.au/api/reports/create';
-				// const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
-				// const params = {
-				//     type: 'company',
-				//     abn: abn,
-				//     asic_relational: '1'
-				// };
-				// createResponse = await axios.post(apiUrl, null, {
-				//     params: params,
-				//     headers: {
-				//         'Authorization': `Bearer ${bearerToken}`,
-				//         'Content-Type': 'application/json'
-				//     },
-				//     timeout: 30000 // 30 second timeout
-				// });
+				const apiUrl = 'https://alares.com.au/api/reports/create';
+				const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
+				const params = {
+				    type: 'company',
+				    abn: abn,
+				    asic_relational: '1'
+				};
+				createResponse = await axios.post(apiUrl, null, {
+				    params: params,
+				    headers: {
+				        'Authorization': `Bearer ${bearerToken}`,
+				        'Content-Type': 'application/json'
+				    },
+				    timeout: 30000 // 30 second timeout
+				});
 
-				// Now call GET API to fetch the report data
-				//reportData = await asic_report_data(createResponse.data.uuid);
-				reportData = await asic_report_data('019a375e-b08e-7181-96b7-8ff9880c2e07')
+				//Now call GET API to fetch the report data
+				reportData = await asic_report_data(createResponse.data.uuid);
+				
 			} else if (type == "ppsr") {
 				// Get dynamic token for PPSR
 				const ppsrToken = await getToken('ppsr');
 
 				// Step 1: Submit search request
-				const submitUrl = 'https://uat-gateway.ppsrcloud.com/api/b2b/ausearch/submit-grantor-session-cmd';
+				const submitUrl = 'https://gateway.ppsrcloud.com/api/b2b/ausearch/submit-grantor-session-cmd';
 				const requestData = {
 					customerRequestId: "flexcollect-001",
 					clientReference: "Credion Company Search",
@@ -1471,6 +1508,8 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 			} else if (type == 'land-title-individual') {
 				reportData = await land_title_individual(business);
 			}
+
+			console.log(reportData.data);
 			// Ensure reportData has the correct structure
 			if (!existingReport && reportData) {
 				if (business?.isCompany == "ORGANISATION") {
@@ -1525,7 +1564,7 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 		}
 
 		if (ispdfcreate) {
-			pdffilename = await addDownloadReportInDB(reportData, userId, matterId, reportId, `${uuidv4()}`, type);
+			pdffilename = await addDownloadReportInDB(reportData, userId, matterId, reportId, `${uuidv4()}`, type, business);
 			return pdffilename;
 		} else {
 			return {
