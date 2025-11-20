@@ -15,7 +15,7 @@ const FRONTEND_BASE_URL = sanitizeBaseUrl(process.env.FRONTEND_APP_URL || proces
 
 // Allow all origins in production if CORS_ORIGINS is not set, or allow specific origins
 const defaultOrigins = process.env.NODE_ENV === 'production' 
-  ? ['http://localhost:5173', 'https://credion.com.au', 'https://credion.netlify.app', 'https://*.netlify.app']
+  ? ['http://localhost:5173', 'https://credion.com.au', 'https://flexcollect.com.au', 'https://www.flexcollect.com.au', 'https://credion.netlify.app', 'https://credion-reports.netlify.app', 'https://*.netlify.app']
   : ['http://localhost:5173'];
 
 const allowedOrigins = (process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || defaultOrigins.join(','))
@@ -28,6 +28,7 @@ const isNetlifyOrigin = (origin) => {
   return origin && (
     origin.includes('netlify.app') || 
     origin.includes('credion.com.au') ||
+    origin.includes('flexcollect.com.au') ||
     allowedOrigins.includes(origin)
   );
 };
