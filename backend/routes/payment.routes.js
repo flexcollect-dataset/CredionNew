@@ -457,6 +457,7 @@ router.post('/get-report-data', async (req, res) => {
 
 async function asic_report_data(uuid) {
 	//Now call GET API to fetch the report data
+	await delay(5000);
 	console.log(uuid);
 	const getApiUrl = `https://alares.com.au/api/reports/${uuid}/json`;
 	const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
@@ -879,8 +880,9 @@ async function land_title_address(ldata) {
 				Accept: 'application/json',
 			},
 		});
-		
+		console.log(orderIdentifier);
 		titleRefData = await createTitleOrder(details.state, tdata.data.RealPropertySegment?.[0].IdentityBlock.TitleReference);
+		console.log(titleRefData);
 		if (ldata.landTitleSelection.addOn === true) {
 			cotalityData = await get_cotality_pid(ldata.address);
 		}
@@ -932,30 +934,14 @@ async function land_title_organisation(ldata) {
 	const cotalityDataArray = [];
 	const locatorDataArray = [];
 	
-	// Extract ABN and company name from business data
-	let abn = ldata?.Abn || ldata?.abn || null;
-	// Try multiple possible property names for company name
-	let companyName = ldata?.Name || ldata?.name || ldata?.companyName || ldata?.CompanyName || null;
+	let abn = ldata?.Abn;
+	let companyName = ldata?.Name;
 	
-	// Debug logging
-	console.log('🔍 [land_title_organisation] Extracting company info:', {
-		abn,
-		companyName,
-		hasName: !!ldata?.Name,
-		hasname: !!ldata?.name,
-		hasCompanyName: !!ldata?.companyName,
-		ldataKeys: ldata ? Object.keys(ldata) : []
-	});
 	
 	// Get titleReferences from landTitleSelection
 	const titleReferences = ldata.landTitleSelection?.titleReferences || [];
 	const detail = ldata.landTitleSelection?.detail || 'ALL';
 	
-	// Check if we have NEAR_MATCHES data (no titleReferences but data exists)
-	// In this case, we'll generate a "no data available" report
-	
-	// Check if we have stored data with NEAR_MATCHES
-	// Try to get the stored data to check for NEAR_MATCHES
 	let isNearMatch = false;
 	try {
 		const [storedData] = await sequelize.query(`
@@ -1014,6 +1000,8 @@ async function land_title_organisation(ldata) {
 	} else if (detail === 'PAST') {
 		// For PAST, historical count is always 0, so this would be empty
 		filteredTitleReferences = [];
+	} else if (detail === 'ALL') {
+		filteredTitleReferences = titleReferences;
 	}
 
 	// Process each titleReference
@@ -1079,11 +1067,11 @@ async function land_title_individual(ldata) {
 	// Filter titleReferences based on detail selection
 	let filteredTitleReferences = titleReferences;
 	if (detail === 'CURRENT') {
-		// For CURRENT, we need to determine which are current - this will be handled by the stored data
 		filteredTitleReferences = titleReferences;
 	} else if (detail === 'PAST') {
-		// For PAST, historical count is always 0, so this would be empty
 		filteredTitleReferences = [];
+	} else if (detail === 'ALL') {
+		filteredTitleReferences = titleReferences;
 	}
 
 	// Process each titleReference
@@ -1151,6 +1139,8 @@ async function land_title_individual(ldata) {
 }
 
 async function createTitleOrder(jurisdiction, titleReference, abn = null, companyName = null) {
+
+	console.log('Function Called');
 	// First, check if data already exists in api_data table for this titleReference
 	const [existingData] = await sequelize.query(`
 		SELECT rdata, id
@@ -1356,9 +1346,14 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 		let reportId = null;
 		let reportData = null;
 		let pdffilename = null;
+		let abn = null;
+		let acn = null;
+		
 		if (business?.isCompany == "ORGANISATION") {
 			abn = business?.Abn;
-			acn = abn.substring(2);
+			if (abn && abn.length >= 2) {
+				acn = abn.substring(2);
+			}
 			if (!abn) {
 				throw new Error('ABN not found in business data');
 			}
@@ -1488,7 +1483,7 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 			} else if (type == "director-bankruptcy") {
 				reportData = await director_bankrupcty_report(business.fname, business.lname, business.dob);
 			} else if (type == "director-related") {
-				reportData = await director_related_report(business.fname, business.lname, business.dob);
+				reportData = await director_related_report(business.director_related_report.name, bussiness.lname, bussiness.director_related_report.dob);
 			} else if (type == "director-court") {
 				reportData = await director_court_report(business.fname, business.lname, business.dob);
 			} else if (type == "director-court-civil") {
@@ -1513,29 +1508,45 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 			// Ensure reportData has the correct structure
 			if (!existingReport && reportData) {
 				// Extract search word dynamically from business object
-				// console.log("business");
-				// console.log(business);
-				// let searchWord = null;
-				// if (business?.isCompany == "ORGANISATION") {
-				// 	// For organizations, use company name
-				// 	searchWord = business?.Name || business?.name || business?.companyName || business?.CompanyName || null;
-				// } else {
-				// 	// For individuals, combine first and last name
-				// 	const firstName = business?.fname || business?.firstName || '';
-				// 	const lastName = business?.lname || business?.lastName || '';
-				// 	searchWord = `${firstName} ${lastName}`.trim() || null;
-				// }
+				// Check report type first, then fall back to business.isCompany
+				let searchWord = null;
+				
+				// Determine if this is an organization or individual based on report type
+				// For landtitle reports, use the type to determine organization vs individual
+				const isLandTitleOrg = type === 'land-title-organisation';
+				const isLandTitleIndividual = type === 'land-title-individual';
+				const isOrganization = isLandTitleOrg || 
+				                     (business?.isCompany == "ORGANISATION" && !isLandTitleIndividual);
+				const isIndividual = isLandTitleIndividual || 
+				                   (business?.isCompany == "INDIVIDUAL" && !isLandTitleOrg);
+				
+				if (isOrganization) {
+					// For organizations, use company name
+					searchWord = business?.Name || business?.name || business?.companyName || business?.CompanyName || null;
+					// For landtitle organization reports, extract ABN if not already extracted
+					if (isLandTitleOrg && !abn) {
+						abn = business?.Abn || business?.abn || null;
+						if (abn && abn.length >= 2) {
+							acn = abn.substring(2);
+						}
+					}
+				} else if (isIndividual) {
+					// For individuals, combine first and last name
+					const firstName = business?.fname || business?.firstName || '';
+					const lastName = business?.lname || business?.lastName || '';
+					searchWord = `${firstName} ${lastName}`.trim() || null;
+				}
 
-				if (business?.isCompany == "ORGANISATION") {
+				if (isOrganization) {
 					[iresult] = await sequelize.query(`
                         INSERT INTO api_data ( rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW()) RETURNING id`,
 						{
 							bind: [
 								type,
 								reportData.data.uuid,
-								null,
-								abn,
-								acn,
+								searchWord,
+								abn || null,
+								acn || null,
 								JSON.stringify(reportData.data) || null,
 								false,
 							]
@@ -1548,7 +1559,7 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 							bind: [
 								type,
 								reportData.data.uuid,
-								null,
+								searchWord,
 								null,
 								null,
 								JSON.stringify(reportData.data) || null,
@@ -1926,6 +1937,7 @@ async function searchLandTitleByOrganization(abn, state, companyName) {
 		
 		// If NEAR_MATCHES, set current to 0 and don't pass titleReferences
 		let currentCount = 0;
+		let historicalCount = 0; // Always 0 as per requirements
 		let titleReferences = [];
 		
 		if (!isNearMatch) {
@@ -1939,7 +1951,7 @@ async function searchLandTitleByOrganization(abn, state, companyName) {
 					jurisdiction: segment?.IdentityBlock?.Jurisdiction || state
 				}))
 				.filter(item => item.titleReference != null); // Filter out null/undefined values
-		const historicalCount = 0; // Always 0 as per requirements
+		
 
 		return {
 			current: currentCount,
@@ -2161,8 +2173,6 @@ router.post('/land-title/counts', async (req, res) => {
 							allTitleReferences.push(...searchResults.titleReferences);
 						}
 						
-						// Store API response once per state (not per titleReference)
-						// Store even if NEAR_MATCHES (no titleReferences) to keep the data
 						if (searchResults.fullApiResponse) {
 							try {
 								// Store the full API response once for this state search

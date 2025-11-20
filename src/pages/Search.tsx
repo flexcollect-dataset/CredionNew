@@ -433,6 +433,8 @@ const Search: React.FC = () => {
     ALL: landTitleCategoryOptionConfig.TITLE_REFERENCE.price
   };
 
+
+
   const LAND_TITLE_ADD_ON_LABEL = 'Property Value + Sales History + More';
   const LAND_TITLE_ADD_ON_PRICE = 40;
 
@@ -4131,7 +4133,19 @@ setLandTitleOrganisationSearchTerm(displayText);
         } else {
           let businessData = reportData.business ? { ...reportData.business } : undefined;
 
-          if (selectedCategory === 'ORGANISATION') {
+          // Handle land-title-organisation reports - get business data from meta or state
+          if (reportType === 'land-title-organisation') {
+            const organisationMeta = (reportItem.meta as any)?.organisation;
+            const organisationAbn = organisationMeta?.abn || landTitleOrganisationSelected?.Abn;
+            const organisationName = organisationMeta?.name || landTitleOrganisationSelected?.Name;
+            
+            businessData = {
+              ...(businessData || {}),
+              Abn: organisationAbn || '',
+              Name: organisationName || 'Unknown',
+              isCompany: 'ORGANISATION'
+            };
+          } else if (selectedCategory === 'ORGANISATION') {
             businessData = {
               ...(businessData || {}),
               Abn: abn,
@@ -5151,7 +5165,8 @@ setLandTitleOrganisationSearchTerm(displayText);
                           setSelectedLandTitleIndividualMatch(null);
                         }}
                         placeholder="Enter first name"
-                        className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
+                        disabled={isLandTitleIndividualSearchPerformed || isIndividualNameConfirmed}
+                        className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed"
                       />
                     </div>
                     <div>
@@ -5168,7 +5183,8 @@ setLandTitleOrganisationSearchTerm(displayText);
                           setSelectedLandTitleIndividualMatch(null);
                         }}
                         placeholder="Enter last name"
-                        className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
+                        disabled={isLandTitleIndividualSearchPerformed || isIndividualNameConfirmed}
+                        className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed"
                       />
                     </div>
                   </div>
@@ -5183,6 +5199,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                         { key: 'RANGE' as const, label: 'Birth Year Range' }
                       ].map(option => {
                         const isSelected = landTitleIndividualDobMode === option.key;
+                        const isDisabled = isLandTitleIndividualSearchPerformed || isIndividualNameConfirmed;
                         return (
                       <button
                         key={option.key}
@@ -5193,8 +5210,10 @@ setLandTitleOrganisationSearchTerm(displayText);
                           setIsLandTitleIndividualSearchPerformed(false);
                           setSelectedLandTitleIndividualMatch(null);
                         }}
+                        disabled={isDisabled}
                             className={`
                       px-5 py-3 rounded-xl border-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200
+                      ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}
                       ${isSelected
                                 ? 'border-red-600 bg-red-600 text-white shadow-red-600/30'
                                 : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'}
@@ -5216,7 +5235,8 @@ setLandTitleOrganisationSearchTerm(displayText);
                           setIsLandTitleIndividualSearchPerformed(false);
                           setSelectedLandTitleIndividualMatch(null);
                         }}
-                        className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
+                        disabled={isLandTitleIndividualSearchPerformed || isIndividualNameConfirmed}
+                        className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed"
                       />
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -5232,7 +5252,8 @@ setLandTitleOrganisationSearchTerm(displayText);
                               setIsLandTitleIndividualSearchPerformed(false);
                               setSelectedLandTitleIndividualMatch(null);
                             }}
-                            className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
+                            disabled={isLandTitleIndividualSearchPerformed || isIndividualNameConfirmed}
+                            className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed"
                           >
                             <option value="">Select start year</option>
                             {startYearOptions.map(year => (
@@ -5254,7 +5275,8 @@ setLandTitleOrganisationSearchTerm(displayText);
                               setIsLandTitleIndividualSearchPerformed(false);
                               setSelectedLandTitleIndividualMatch(null);
                             }}
-                            className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
+                            disabled={isLandTitleIndividualSearchPerformed || isIndividualNameConfirmed}
+                            className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed"
                           >
                             <option value="">Select end year</option>
                             {endYearOptions.map(year => (
@@ -5277,6 +5299,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                       <div className="flex flex-wrap gap-3">
                         {landTitleStateOptions.map(state => {
                           const isSelected = landTitleIndividualStates.has(state);
+                          const isDisabled = isLandTitleIndividualSearchPerformed || isIndividualNameConfirmed;
                           return (
                             <button
                               key={state}
@@ -5287,8 +5310,10 @@ setLandTitleOrganisationSearchTerm(displayText);
                                 setIsLandTitleIndividualSearchPerformed(false);
                                 setSelectedLandTitleIndividualMatch(null);
                               }}
+                              disabled={isDisabled}
                               className={`
                                 px-5 py-3 rounded-xl border-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200
+                                ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}
                                 ${isSelected
                                     ? 'border-red-600 bg-red-600 text-white shadow-red-600/30'
                                     : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'}
@@ -5306,8 +5331,10 @@ setLandTitleOrganisationSearchTerm(displayText);
                             setIsLandTitleIndividualSearchPerformed(false);
                             setSelectedLandTitleIndividualMatch(null);
                           }}
+                          disabled={isLandTitleIndividualSearchPerformed || isIndividualNameConfirmed}
                           className={`
                             px-5 py-3 rounded-xl border-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200
+                            ${(isLandTitleIndividualSearchPerformed || isIndividualNameConfirmed) ? 'opacity-50 cursor-not-allowed' : ''}
                             ${landTitleIndividualStates.size === landTitleStateOptions.length
                                 ? 'border-red-600 bg-red-600 text-white shadow-red-600/30'
                                 : 'border-gray-200 bg-white text-red-600 hover:border-red-600'}
@@ -5322,7 +5349,12 @@ setLandTitleOrganisationSearchTerm(displayText);
                   <button
                     type="button"
                     onClick={handleLandTitleIndividualSearchClick}
-                    className="mt-6 w-full rounded-xl bg-red-600 py-4 font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
+                    disabled={isIndividualNameConfirmed}
+                    className={`mt-6 w-full rounded-xl py-4 font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 ${
+                      isIndividualNameConfirmed 
+                        ? 'bg-gray-400 cursor-not-allowed' 
+                        : 'bg-red-600 hover:bg-red-700'
+                    }`}
                   >
                     Search
                   </button>
