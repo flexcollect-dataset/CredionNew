@@ -115,12 +115,6 @@ router.get('/search-company/:searchTerm', async (req, res) => {
 });
 
 router.get('/director-related/matches', async (req, res) => {
-	console.log('🔍 Director-related matches endpoint called:', {
-		query: req.query,
-		url: req.url,
-		method: req.method
-	});
-	
 	try {
 		const { firstName, lastName, dobFrom, dobTo } = req.query;
 
@@ -301,8 +295,17 @@ router.get('/court/name-search', async (req, res) => {
 				});
 
 				// Extract matches from criminal response
-				if (criminalResponse.data && Array.isArray(criminalResponse.data)) {
-					criminalResponse.data.forEach((item, index) => {
+				// Check for response.data.data.records structure first
+				if (criminalResponse.data?.data?.records && Array.isArray(criminalResponse.data.data.records)) {
+					criminalResponse.data.data.records.forEach((item) => {
+						matches.push({
+							...item,
+							courtType: 'CRIMINAL',
+							source: 'criminal'
+						});
+					});
+				} else if (criminalResponse.data && Array.isArray(criminalResponse.data)) {
+					criminalResponse.data.forEach((item) => {
 						matches.push({
 							...item,
 							courtType: 'CRIMINAL',
@@ -351,7 +354,16 @@ router.get('/court/name-search', async (req, res) => {
 				});
 
 				// Extract matches from civil response
-				if (civilResponse.data && Array.isArray(civilResponse.data)) {
+				// Check for response.data.data.records structure first
+				if (civilResponse.data?.data?.records && Array.isArray(civilResponse.data.data.records)) {
+					civilResponse.data.data.records.forEach((item) => {
+						matches.push({
+							...item,
+							courtType: 'CIVIL',
+							source: 'civil'
+						});
+					});
+				} else if (civilResponse.data && Array.isArray(civilResponse.data)) {
 					civilResponse.data.forEach((item) => {
 						matches.push({
 							...item,
@@ -500,7 +512,7 @@ async function fetchPpsrReportData(auSearchIdentifier) {
 	return response;
 }
 
-async function director_ppsr_report(fname, lname, dob) {
+async function director_ppsr_report(bussiness) {
 	// Get dynamic token for PPSR
 	const ppsrToken = await getToken('ppsr');
 
@@ -580,32 +592,41 @@ async function director_ppsr_report(fname, lname, dob) {
 	return await fetchPpsrReportData(auSearchIdentifier);
 }
 
-async function director_bankrupcty_report(fname, lname, dob) {
-	// Get dynamic token for Bankruptcy
-	const bearerToken = await getToken('bankruptcy');
-	console.log(bearerToken);
-	const apiUrl = 'https://services.afsa.gov.au/brs/api/v2/search-by-name';
-	const params = {
-		debtorSurname: lname,
-		debtorGivenName: fname,
+async function director_bankrupcty_report(bussiness) {
+	reportData = null;
+
+	if (!bussiness || !bussiness.bankruptcySelection) {
+		reportData = {
+			data: {
+				uuid: null
+			}
+		};
+		return reportData;
+	}
+
+	reportData = {
+		data: bussiness.bankruptcySelection
 	};
-	const response = await axios.get(apiUrl, {
-		params: params,
-		headers: {
-			'Authorization': `Bearer ${bearerToken}`
-		},
-		Accept: 'application/json',
-		responseType: 'json',
-		timeout: 30000 // 30 second timeout
-	});
-	// console.log('Report creation API response:', createResponse.data);
-	response.data.uuid = response.data.insolvencySearchId;
-	return response;
+	reportData.data.uuid = bussiness.bankruptcySelection.extractId;
+	return reportData;
 }
 
-async function director_related_report(fname, lname, dob) {
+async function director_related_report(bussiness) {
 	const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
-	
+	reportData = null;
+	// Check if directorRelatedSelection exists in business object
+	if (!bussiness || !bussiness.directorRelatedSelection) {
+		reportData.data.uuid = null;
+		return reportData;
+	}
+
+	// Extract values from directorRelatedSelection
+	const directorRelatedSelection = bussiness.directorRelatedSelection;
+	const dob = directorRelatedSelection.dob || '';
+	const name = directorRelatedSelection.name || '';
+	const person_id = directorRelatedSelection.person_id || '';
+	const acs_search_id = directorRelatedSelection.search_id || '';
+
 	// Convert dob to DD-MM-YYYY format
 	let formattedDob = "01-03-1993"; // Default fallback
 	if (dob) {
@@ -643,45 +664,41 @@ async function director_related_report(fname, lname, dob) {
 			// If parsing fails, use default
 		}
 	}
-	
-	console.log('Original dob:', dob, 'Formatted dob:', formattedDob);
-	const bapiURL = 'https://alares.com.au/api/asic/search'
-	const bparams = {
-	    first_name: fname,
-	    last_name: lname,
-	    dob_from: formattedDob,
-	};
-	bcreateResponse = await axios.get(bapiURL, {
-	    params: bparams,
-	    headers: {
-	        'Authorization': `Bearer ${bearerToken}`
-	    },
-	    timeout: 30000 // 30 second timeout
-	});
 
 	const apiUrl = 'https://alares.com.au/api/reports/create';
 	const params = {
 	    type: 'individual',
-	    name: `${fname} ${lname}`,
+	    name: name,
 	    dob: formattedDob,
 	    asic_current: '1',
-	    person_id: bcreateResponse.data[0].person_id,
-	    acs_search_id: bcreateResponse.data[0].search_id
+	    person_id: person_id,
+	    acs_search_id: acs_search_id
 	};
-	createResponse = await axios.post(apiUrl, null, {
-	    params: params,
-	    headers: {
-	        'Authorization': `Bearer ${bearerToken}`,
-	        'Content-Type': 'application/json'
-	    },
-	    timeout: 30000 // 30 second timeout
-	});
+	
+	let createResponse;
+	try {
+		createResponse = await axios.post(apiUrl, null, {
+		    params: params,
+		    headers: {
+		        'Authorization': `Bearer ${bearerToken}`,
+		        'Content-Type': 'application/json'
+		    },
+		    timeout: 30000 // 30 second timeout
+		});
+	} catch (error) {
+		console.error('Error calling director related report API:', error);
+		return {
+			status: false,
+			data: null,
+			message: error.message || 'Failed to create director related report'
+		};
+	}
+
 	reportData = await asic_report_data(createResponse.data.uuid);
-	//reportData = await asic_report_data('019a99c0-b13d-720a-b789-d06a15533efc');
 	return reportData;
 }
 
-async function director_court_report(fname, lname, dob) {
+async function director_court_report(bussiness) {
 	const bearerToken = '3eiXhUHT9G25QO9';
 	const criminalApiUrl = 'https://corp-api.courtdata.com.au/api/search/criminal/record';
 	const criminalParams = {
@@ -727,7 +744,7 @@ async function director_court_report(fname, lname, dob) {
 	return reportData;
 }
 
-async function director_court_civil(fname, lname, dob) {
+async function director_court_civil(bussiness) {
 	const bearerToken = '3eiXhUHT9G25QO9';
 
 	// Civil Court API (POST)
@@ -759,7 +776,7 @@ async function director_court_civil(fname, lname, dob) {
 	return reportData;
 }
 
-async function director_court_criminal(fname, lname, dob) {
+async function director_court_criminal(bussiness) {
 	const bearerToken = '3eiXhUHT9G25QO9';
 	const criminalApiUrl = 'https://corp-api.courtdata.com.au/api/search/criminal/record';
 	const criminalParams = {
@@ -811,7 +828,7 @@ async function property(abn, cname, ldata) {
 	return reportData;
 }
 
-async function director_property(fname, lname, dob, ldata) {
+async function director_property(bussiness) {
 	console.log(fname);
 	console.log(lname);
 	console.log(ldata.addOn);
@@ -1456,7 +1473,7 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 						{
 							grantorType: "organisation",
 							organisationNumberType: "acn",
-							organisationNumber: "146939013"
+							organisationNumber: acn
 						}
 					]
 				};
@@ -1478,22 +1495,22 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 				// Step 2: Fetch actual data using the auSearchIdentifier
 				reportData = await fetchPpsrReportData(auSearchIdentifier);
 				console.log(reportData);
-			} else if (type == "director-ppsr") {
-				reportData = await director_ppsr_report(business.fname, business.lname, business.dob);
-			} else if (type == "director-bankruptcy") {
-				reportData = await director_bankrupcty_report(business.fname, business.lname, business.dob);
-			} else if (type == "director-related") {
-				reportData = await director_related_report(business.director_related_report.name, bussiness.lname, bussiness.director_related_report.dob);
-			} else if (type == "director-court") {
-				reportData = await director_court_report(business.fname, business.lname, business.dob);
-			} else if (type == "director-court-civil") {
-				reportData = await director_court_civil(business.fname, business.lname, business.dob);
-			} else if (type == "director-court-criminal") {
-				reportData = await director_court_criminal(business.fname, business.lname, business.dob);
 			} else if (type == 'property') {
 				reportData = await property(business.Abn, business.Name, business);
-			} else if (type == 'director-property') {
-				reportData = await director_property(business.fname, business.lname, business.dob, business);
+			} else if (type == "director-ppsr") {
+				reportData = await director_ppsr_report(business);
+			} else if (type == "director-bankruptcy") {
+				reportData = await director_bankrupcty_report(business);
+			} else if (type == "director-related") {
+				reportData = await director_related_report(business);
+			} else if (type == "director-court") {
+				reportData = await director_court_report(business);
+			} else if (type == "director-court-civil") {
+				reportData = await director_court_civil(business);
+			} else if (type == "director-court-criminal") {
+				reportData = await director_court_criminal(business);
+			}  else if (type == 'director-property') {
+				reportData = await director_property(business);
 			} else if (type == 'land-title-reference') {
 				reportData = await land_title_reference(business);
 			} else if (type == 'land-title-address') {
@@ -1505,37 +1522,36 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 			}
 
 			console.log(reportData.data);
-			// Ensure reportData has the correct structure
 			if (!existingReport && reportData) {
-				// Extract search word dynamically from business object
-				// Check report type first, then fall back to business.isCompany
-				let searchWord = null;
+				// // Extract search word dynamically from business object
+				// // Check report type first, then fall back to business.isCompany
+				// let searchWord = null;
 				
-				// Determine if this is an organization or individual based on report type
-				// For landtitle reports, use the type to determine organization vs individual
-				const isLandTitleOrg = type === 'land-title-organisation';
-				const isLandTitleIndividual = type === 'land-title-individual';
-				const isOrganization = isLandTitleOrg || 
-				                     (business?.isCompany == "ORGANISATION" && !isLandTitleIndividual);
-				const isIndividual = isLandTitleIndividual || 
-				                   (business?.isCompany == "INDIVIDUAL" && !isLandTitleOrg);
+				// // Determine if this is an organization or individual based on report type
+				// // For landtitle reports, use the type to determine organization vs individual
+				// const isLandTitleOrg = type === 'land-title-organisation';
+				// const isLandTitleIndividual = type === 'land-title-individual';
+				// const isOrganization = isLandTitleOrg || 
+				//                      (business?.isCompany == "ORGANISATION" && !isLandTitleIndividual);
+				// const isIndividual = isLandTitleIndividual || 
+				//                    (business?.isCompany == "INDIVIDUAL" && !isLandTitleOrg);
 				
-				if (isOrganization) {
-					// For organizations, use company name
-					searchWord = business?.Name || business?.name || business?.companyName || business?.CompanyName || null;
-					// For landtitle organization reports, extract ABN if not already extracted
-					if (isLandTitleOrg && !abn) {
-						abn = business?.Abn || business?.abn || null;
-						if (abn && abn.length >= 2) {
-							acn = abn.substring(2);
-						}
-					}
-				} else if (isIndividual) {
-					// For individuals, combine first and last name
-					const firstName = business?.fname || business?.firstName || '';
-					const lastName = business?.lname || business?.lastName || '';
-					searchWord = `${firstName} ${lastName}`.trim() || null;
-				}
+				// if (isOrganization) {
+				// 	// For organizations, use company name
+				// 	searchWord = business?.Name || business?.name || business?.companyName || business?.CompanyName || null;
+				// 	// For landtitle organization reports, extract ABN if not already extracted
+				// 	if (isLandTitleOrg && !abn) {
+				// 		abn = business?.Abn || business?.abn || null;
+				// 		if (abn && abn.length >= 2) {
+				// 			acn = abn.substring(2);
+				// 		}
+				// 	}
+				// } else if (isIndividual) {
+				// 	// For individuals, combine first and last name
+				// 	const firstName = business?.fname || business?.firstName || '';
+				// 	const lastName = business?.lname || business?.lastName || '';
+				// 	searchWord = `${firstName} ${lastName}`.trim() || null;
+				// }
 
 				if (isOrganization) {
 					[iresult] = await sequelize.query(`
@@ -1544,7 +1560,7 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 							bind: [
 								type,
 								reportData.data.uuid,
-								searchWord,
+								null,
 								abn || null,
 								acn || null,
 								JSON.stringify(reportData.data) || null,
@@ -1559,7 +1575,7 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 							bind: [
 								type,
 								reportData.data.uuid,
-								searchWord,
+								null,
 								null,
 								null,
 								JSON.stringify(reportData.data) || null,
@@ -1572,20 +1588,8 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 			}
 		}
 
-		// Validate reportData before proceeding
-		if (!reportData) {
-			throw new Error('Report data is missing. Failed to fetch or retrieve report data.');
-		}
-
-		// Ensure reportData has the correct structure for addDownloadReportInDB
-		// It expects either { data: ... } or the data object directly
 		if (!reportData.data && typeof reportData === 'object') {
 			reportData = { data: reportData };
-		}
-
-		// For land title reports, include business object in reportData for PDF generation
-		if ((type === 'land-title-organisation' || type === 'land-title-individual') && business) {
-			reportData.business = business;
 		}
 
 		if (ispdfcreate) {

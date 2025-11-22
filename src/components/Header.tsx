@@ -38,7 +38,6 @@ const Header = () => {
 
   const navigation = [
     { name: 'Product', href: '/product' },
-    { name: 'Matters', href: '/search' },
     { name: 'Why Credion', href: '/why-credion' },
     { name: 'Government', href: '/government' },
     { name: 'Pricing', href: '/pricing' },
