@@ -271,6 +271,13 @@ const Search = () => {
   } | null>(null);
   const isIndividualRelatedEntitiesSelected =
     selectedCategory === 'INDIVIDUAL' && selectedSearches.has('INDIVIDUAL RELATED ENTITIES');
+  
+
+  const [currentDirectorIndex, setCurrentDirectorIndex] = useState<number>(-1);
+  const [directorRelatedMatches, setDirectorRelatedMatches] = useState<Map<number, DirectorRelatedMatch | null>>(new Map());
+  const [directorPpsrMatches, setDirectorPpsrMatches] = useState<Map<number, DirectorRelatedMatch | null>>(new Map());
+  const [directorBankruptcyMatches, setDirectorBankruptcyMatches] = useState<Map<number, DirectorRelatedMatch | null>>(new Map());
+  const [currentDirectorSearchType, setCurrentDirectorSearchType] = useState<'related' | 'ppsr' | 'bankruptcy' | null>(null);
 
   const formatDisplayDate = useCallback((value?: string | null) => {
     if (!value) {
@@ -335,6 +342,11 @@ const Search = () => {
     setCivilMatchOptions([]);
     setCivilMatchesError(null);
     setIsLoadingCivilMatches(false);
+    setCurrentDirectorIndex(-1);
+    setDirectorRelatedMatches(new Map());
+    setDirectorPpsrMatches(new Map());
+    setDirectorBankruptcyMatches(new Map());
+    setCurrentDirectorSearchType(null);
   }, []);
   const [isLandTitleIndividualSummaryModalOpen, setIsLandTitleIndividualSummaryModalOpen] = useState(false);
   const [isLandTitleIndividualDetailModalOpen, setIsLandTitleIndividualDetailModalOpen] = useState(false);
@@ -1119,6 +1131,288 @@ const Search = () => {
     setPendingTitleReferenceSelection(prev => ({ ...prev, addOn }));
   }, []);
 
+
+  const handleDirectorRelatedEntitySearch = useCallback(async (directorIndex: number) => {
+    if (directorIndex < 0 || directorIndex >= directorsList.length) {
+      // All directors processed
+      setCurrentDirectorIndex(-1);
+      setIsIndividualNameSearchModalOpen(false);
+      setIndividualNameSearchModalType(null);
+      return;
+    }
+
+    const director = directorsList[directorIndex];
+    if (!director) {
+
+      handleDirectorRelatedEntitySearch(directorIndex + 1);
+      return;
+    }
+
+    // Print director name to console
+    const directorName = director.fullName || `${director.firstName} ${director.lastName}`.trim();
+    console.log(`Processing Director ${directorIndex + 1}/${directorsList.length}: ${directorName}`);
+
+    // Reset state for this director
+    setSelectedRelatedMatch(null);
+    setRelatedEntityMatchOptions([]);
+    setRelatedMatchesError(null);
+    setIsLoadingRelatedMatches(true);
+
+    try {
+
+      let dobFromParam: string | undefined;
+      let dobToParam: string | undefined;
+      
+      if (director.dob) {
+        
+        const dobParts = director.dob.split('/');
+        if (dobParts.length === 3) {
+          const [day, month, year] = dobParts;
+          dobFromParam = `${day}-${month}-${year}`;
+          dobToParam = `${day}-${month}-${year}`;
+        }
+      }
+
+
+      const lastName = director.lastName?.trim() || '';
+      if (!lastName) {
+        console.warn(`Director ${directorIndex + 1} has no last name, skipping...`);
+      
+        handleDirectorRelatedEntitySearch(directorIndex + 1);
+        return;
+      }
+
+      const response = await apiService.searchIndividualRelatedEntityMatches({
+        firstName: director.firstName?.trim() || undefined,
+        lastName: lastName,
+        dobFrom: dobFromParam,
+        dobTo: dobToParam
+      });
+
+      const matches = response?.matches || [];
+      const labelCounts = new Map<string, number>();
+      const formattedOptions = matches.map((match) => {
+        const parts: string[] = [];
+        parts.push(match.name || 'Unknown');
+        if (match.dob) {
+          parts.push(`DOB: ${match.dob}`);
+        }
+        if (match.state) {
+          parts.push(match.state);
+        }
+        if (match.suburb) {
+          parts.push(match.suburb);
+        }
+
+        const baseLabel = parts.join(' • ');
+        const currentCount = labelCounts.get(baseLabel) ?? 0;
+        labelCounts.set(baseLabel, currentCount + 1);
+
+        const label = currentCount > 0 ? `${baseLabel} (${currentCount + 1})` : baseLabel;
+
+        return { label, match };
+      });
+
+      setRelatedEntityMatchOptions(formattedOptions);
+      
+     
+      setIndividualNameSearchModalType('related');
+      setIsIndividualNameSearchModalOpen(true);
+    } catch (error: any) {
+      console.error('Error fetching related entity matches for director:', error);
+      setRelatedMatchesError(
+        error?.message || 'Failed to fetch related entity records. Please try again.'
+      );
+     
+      setIndividualNameSearchModalType('related');
+      setIsIndividualNameSearchModalOpen(true);
+    } finally {
+      setIsLoadingRelatedMatches(false);
+    }
+  }, [directorsList]);
+
+  // Handler for director PPSR search in ORGANISATION category
+  const handleDirectorPpsrSearch = useCallback(async (directorIndex: number) => {
+    if (directorIndex < 0 || directorIndex >= directorsList.length) {
+      setCurrentDirectorIndex(-1);
+      setIsIndividualNameSearchModalOpen(false);
+      setIndividualNameSearchModalType(null);
+      setCurrentDirectorSearchType(null);
+      return;
+    }
+
+    const director = directorsList[directorIndex];
+    if (!director) {
+      handleDirectorPpsrSearch(directorIndex + 1);
+      return;
+    }
+
+    const directorName = director.fullName || `${director.firstName} ${director.lastName}`.trim();
+    console.log(`Processing Director ${directorIndex + 1}/${directorsList.length} for PPSR: ${directorName}`);
+
+    setSelectedRelatedMatch(null);
+    setRelatedEntityMatchOptions([]);
+    setRelatedMatchesError(null);
+    setIsLoadingRelatedMatches(true);
+
+    try {
+      let dobFromParam: string | undefined;
+      let dobToParam: string | undefined;
+      
+      if (director.dob) {
+        const dobParts = director.dob.split('/');
+        if (dobParts.length === 3) {
+          const [day, month, year] = dobParts;
+          dobFromParam = `${day}-${month}-${year}`;
+          dobToParam = `${day}-${month}-${year}`;
+        }
+      }
+
+      const lastName = director.lastName?.trim() || '';
+      if (!lastName) {
+        console.warn(`Director ${directorIndex + 1} has no last name, skipping...`);
+        handleDirectorPpsrSearch(directorIndex + 1);
+        return;
+      }
+
+      const response = await apiService.searchIndividualRelatedEntityMatches({
+        firstName: director.firstName?.trim() || undefined,
+        lastName: lastName,
+        dobFrom: dobFromParam,
+        dobTo: dobToParam
+      });
+
+      const matches = response?.matches || [];
+      const labelCounts = new Map<string, number>();
+      const formattedOptions = matches.map((match) => {
+        const parts: string[] = [];
+        parts.push(match.name || 'Unknown');
+        if (match.dob) {
+          parts.push(`DOB: ${match.dob}`);
+        }
+        if (match.state) {
+          parts.push(match.state);
+        }
+        if (match.suburb) {
+          parts.push(match.suburb);
+        }
+
+        const baseLabel = parts.join(' • ');
+        const currentCount = labelCounts.get(baseLabel) ?? 0;
+        labelCounts.set(baseLabel, currentCount + 1);
+
+        const label = currentCount > 0 ? `${baseLabel} (${currentCount + 1})` : baseLabel;
+
+        return { label, match };
+      });
+
+      setRelatedEntityMatchOptions(formattedOptions);
+      
+      setIndividualNameSearchModalType('related');
+      setIsIndividualNameSearchModalOpen(true);
+    } catch (error: any) {
+      console.error('Error fetching PPSR matches for director:', error);
+      setRelatedMatchesError(
+        error?.message || 'Failed to fetch PPSR records. Please try again.'
+      );
+      setIndividualNameSearchModalType('related');
+      setIsIndividualNameSearchModalOpen(true);
+    } finally {
+      setIsLoadingRelatedMatches(false);
+    }
+  }, [directorsList]);
+
+  // Handler for director bankruptcy search in ORGANISATION category
+  const handleDirectorBankruptcySearch = useCallback(async (directorIndex: number) => {
+    if (directorIndex < 0 || directorIndex >= directorsList.length) {
+      setCurrentDirectorIndex(-1);
+      setIsIndividualNameSearchModalOpen(false);
+      setIndividualNameSearchModalType(null);
+      setCurrentDirectorSearchType(null);
+      return;
+    }
+
+    const director = directorsList[directorIndex];
+    if (!director) {
+      handleDirectorBankruptcySearch(directorIndex + 1);
+      return;
+    }
+
+    const directorName = director.fullName || `${director.firstName} ${director.lastName}`.trim();
+    console.log(`Processing Director ${directorIndex + 1}/${directorsList.length} for Bankruptcy: ${directorName}`);
+
+    setSelectedRelatedMatch(null);
+    setRelatedEntityMatchOptions([]);
+    setRelatedMatchesError(null);
+    setIsLoadingRelatedMatches(true);
+
+    try {
+      let dobFromParam: string | undefined;
+      let dobToParam: string | undefined;
+      
+      if (director.dob) {
+        const dobParts = director.dob.split('/');
+        if (dobParts.length === 3) {
+          const [day, month, year] = dobParts;
+          dobFromParam = `${day}-${month}-${year}`;
+          dobToParam = `${day}-${month}-${year}`;
+        }
+      }
+
+      const lastName = director.lastName?.trim() || '';
+      if (!lastName) {
+        console.warn(`Director ${directorIndex + 1} has no last name, skipping...`);
+        handleDirectorBankruptcySearch(directorIndex + 1);
+        return;
+      }
+
+      const response = await apiService.searchIndividualRelatedEntityMatches({
+        firstName: director.firstName?.trim() || undefined,
+        lastName: lastName,
+        dobFrom: dobFromParam,
+        dobTo: dobToParam
+      });
+
+      const matches = response?.matches || [];
+      const labelCounts = new Map<string, number>();
+      const formattedOptions = matches.map((match) => {
+        const parts: string[] = [];
+        parts.push(match.name || 'Unknown');
+        if (match.dob) {
+          parts.push(`DOB: ${match.dob}`);
+        }
+        if (match.state) {
+          parts.push(match.state);
+        }
+        if (match.suburb) {
+          parts.push(match.suburb);
+        }
+
+        const baseLabel = parts.join(' • ');
+        const currentCount = labelCounts.get(baseLabel) ?? 0;
+        labelCounts.set(baseLabel, currentCount + 1);
+
+        const label = currentCount > 0 ? `${baseLabel} (${currentCount + 1})` : baseLabel;
+
+        return { label, match };
+      });
+
+      setRelatedEntityMatchOptions(formattedOptions);
+      
+      setIndividualNameSearchModalType('related');
+      setIsIndividualNameSearchModalOpen(true);
+    } catch (error: any) {
+      console.error('Error fetching bankruptcy matches for director:', error);
+      setRelatedMatchesError(
+        error?.message || 'Failed to fetch bankruptcy records. Please try again.'
+      );
+      setIndividualNameSearchModalType('related');
+      setIsIndividualNameSearchModalOpen(true);
+    } finally {
+      setIsLoadingRelatedMatches(false);
+    }
+  }, [directorsList]);
+
   const handleLandTitleIndividualSearchClick = useCallback(async () => {
     const isBankruptcySearch = isIndividualBankruptcySelected;
     const isRelatedEntitiesSearch = isIndividualRelatedEntitiesSelected;
@@ -1716,8 +2010,76 @@ const Search = () => {
         setIsIndividualNameConfirmed(true);
         setIndividualNameSearchModalType(null);
       }
-    } else if (individualNameSearchModalType === 'related') {
-      // Just confirmed related entities - check what's next
+     } else if (individualNameSearchModalType === 'related') {
+      
+       if (selectedCategory === 'ORGANISATION' && currentDirectorIndex >= 0) {
+         if (currentDirectorSearchType === 'related') {
+           const updatedMatches = new Map(directorRelatedMatches);
+           updatedMatches.set(currentDirectorIndex, selectedRelatedMatch);
+           setDirectorRelatedMatches(updatedMatches);
+
+           const nextIndex = currentDirectorIndex + 1;
+           if (nextIndex < directorsList.length) {
+             setCurrentDirectorIndex(nextIndex);
+             handleDirectorRelatedEntitySearch(nextIndex);
+           } else {
+             setCurrentDirectorIndex(-1);
+             setIsIndividualNameSearchModalOpen(false);
+             setIndividualNameSearchModalType(null);
+             setCurrentDirectorSearchType(null);
+             if (!selectedAdditionalSearches.has('DIRECTOR RELATED ENTITIES')) {
+               const updated = new Set(selectedAdditionalSearches);
+               updated.add('DIRECTOR RELATED ENTITIES');
+               setSelectedAdditionalSearches(updated);
+             }
+           }
+           return;
+         } else if (currentDirectorSearchType === 'ppsr') {
+           const updatedMatches = new Map(directorPpsrMatches);
+           updatedMatches.set(currentDirectorIndex, selectedRelatedMatch);
+           setDirectorPpsrMatches(updatedMatches);
+
+           const nextIndex = currentDirectorIndex + 1;
+           if (nextIndex < directorsList.length) {
+             setCurrentDirectorIndex(nextIndex);
+             handleDirectorPpsrSearch(nextIndex);
+           } else {
+             setCurrentDirectorIndex(-1);
+             setIsIndividualNameSearchModalOpen(false);
+             setIndividualNameSearchModalType(null);
+             setCurrentDirectorSearchType(null);
+             if (!selectedAdditionalSearches.has('DIRECTOR PPSR')) {
+               const updated = new Set(selectedAdditionalSearches);
+               updated.add('DIRECTOR PPSR');
+               setSelectedAdditionalSearches(updated);
+             }
+           }
+           return;
+         } else if (currentDirectorSearchType === 'bankruptcy') {
+           const updatedMatches = new Map(directorBankruptcyMatches);
+           updatedMatches.set(currentDirectorIndex, selectedRelatedMatch);
+           setDirectorBankruptcyMatches(updatedMatches);
+
+           const nextIndex = currentDirectorIndex + 1;
+           if (nextIndex < directorsList.length) {
+             setCurrentDirectorIndex(nextIndex);
+             handleDirectorBankruptcySearch(nextIndex);
+           } else {
+             setCurrentDirectorIndex(-1);
+             setIsIndividualNameSearchModalOpen(false);
+             setIndividualNameSearchModalType(null);
+             setCurrentDirectorSearchType(null);
+             if (!selectedAdditionalSearches.has('DIRECTOR BANKRUPTCY')) {
+               const updated = new Set(selectedAdditionalSearches);
+               updated.add('DIRECTOR BANKRUPTCY');
+               setSelectedAdditionalSearches(updated);
+             }
+           }
+           return;
+         }
+       }
+
+    
       if (isIndividualCourtSearch) {
         // Show court modal next based on selected court type
         if (selectedCourtType === 'CRIMINAL COURT') {
@@ -1834,7 +2196,7 @@ const Search = () => {
         setIndividualNameSearchModalType(null);
       }
     }
-  }, [pendingIndividualNameSelection, individualNameSearchModalType, isIndividualBankruptcySelected, isIndividualRelatedEntitiesSelected, isLoadingRelatedMatches, relatedEntityMatchOptions, selectedCategory, selectedSearches, selectedCourtType]);
+  }, [pendingIndividualNameSelection, individualNameSearchModalType, isIndividualBankruptcySelected, isIndividualRelatedEntitiesSelected, isLoadingRelatedMatches, relatedEntityMatchOptions, selectedCategory, selectedSearches, selectedCourtType, currentDirectorIndex, directorsList, directorRelatedMatches, selectedRelatedMatch, handleDirectorRelatedEntitySearch, selectedAdditionalSearches]);
 
   // Handler for closing individual name search modal (called when user clicks Cancel or X)
   // Note: This is NOT called when user confirms - handleIndividualNameSearchConfirm handles that
@@ -1850,8 +2212,49 @@ const Search = () => {
       // Also clear any previous bankruptcy match
       setSelectedBankruptcyMatch(null);
       setBankruptcyMatchOptions([]);
-    } else if (individualNameSearchModalType === 'related') {
-      // Remove INDIVIDUAL RELATED ENTITIES from selected searches
+      } else if (individualNameSearchModalType === 'related') {
+      
+        if (selectedCategory === 'ORGANISATION' && currentDirectorIndex >= 0) {
+          if (currentDirectorSearchType === 'related') {
+            const nextIndex = currentDirectorIndex + 1;
+            if (nextIndex < directorsList.length) {
+              setCurrentDirectorIndex(nextIndex);
+              handleDirectorRelatedEntitySearch(nextIndex);
+            } else {
+              setCurrentDirectorIndex(-1);
+              setIsIndividualNameSearchModalOpen(false);
+              setIndividualNameSearchModalType(null);
+              setCurrentDirectorSearchType(null);
+            }
+            return;
+          } else if (currentDirectorSearchType === 'ppsr') {
+            const nextIndex = currentDirectorIndex + 1;
+            if (nextIndex < directorsList.length) {
+              setCurrentDirectorIndex(nextIndex);
+              handleDirectorPpsrSearch(nextIndex);
+            } else {
+              setCurrentDirectorIndex(-1);
+              setIsIndividualNameSearchModalOpen(false);
+              setIndividualNameSearchModalType(null);
+              setCurrentDirectorSearchType(null);
+            }
+            return;
+          } else if (currentDirectorSearchType === 'bankruptcy') {
+            const nextIndex = currentDirectorIndex + 1;
+            if (nextIndex < directorsList.length) {
+              setCurrentDirectorIndex(nextIndex);
+              handleDirectorBankruptcySearch(nextIndex);
+            } else {
+              setCurrentDirectorIndex(-1);
+              setIsIndividualNameSearchModalOpen(false);
+              setIndividualNameSearchModalType(null);
+              setCurrentDirectorSearchType(null);
+            }
+            return;
+          }
+        }
+
+   
       setSelectedSearches(prev => {
         const updated = new Set(prev);
         updated.delete('INDIVIDUAL RELATED ENTITIES');
@@ -1961,7 +2364,7 @@ const Search = () => {
       // Cancelled land title or mock modal - no more modals
       setIndividualNameSearchModalType(null);
     }
-  }, [individualNameSearchModalType, selectedCategory, selectedSearches, isLoadingRelatedMatches, selectedCourtType]);
+  }, [individualNameSearchModalType, selectedCategory, selectedSearches, isLoadingRelatedMatches, selectedCourtType, currentDirectorIndex, directorsList, currentDirectorSearchType, handleDirectorRelatedEntitySearch, handleDirectorPpsrSearch, handleDirectorBankruptcySearch]);
 
   const finalizeLandTitleIndividualSelection = useCallback(() => {
     const isIndividualLandTitleSelected = selectedCategory === 'INDIVIDUAL' && selectedSearches.has('INDIVIDUAL LAND TITLE');
@@ -3251,6 +3654,51 @@ setLandTitleOrganisationSearchTerm(displayText);
 
   const handleAdditionalSearchToggle = (searchName: AdditionalSearchType) => {
     if (isAdditionalSearchesDisabled) {
+      return;
+    }
+
+    // Handle DIRECTOR RELATED ENTITIES for ORGANISATION category
+    if (searchName === 'DIRECTOR RELATED ENTITIES' && selectedCategory === 'ORGANISATION' && isCompanyConfirmed) {
+      if (directorsList.length === 0) {
+        alert('No directors available for this company');
+        return;
+      }
+
+      // Start processing directors sequentially
+      setCurrentDirectorIndex(0);
+      setDirectorRelatedMatches(new Map());
+      setCurrentDirectorSearchType('related');
+      handleDirectorRelatedEntitySearch(0);
+      return;
+    }
+
+    // Handle DIRECTOR PPSR for ORGANISATION category
+    if (searchName === 'DIRECTOR PPSR' && selectedCategory === 'ORGANISATION' && isCompanyConfirmed) {
+      if (directorsList.length === 0) {
+        alert('No directors available for this company');
+        return;
+      }
+
+      // Start processing directors sequentially
+      setCurrentDirectorIndex(0);
+      setDirectorPpsrMatches(new Map());
+      setCurrentDirectorSearchType('ppsr');
+      handleDirectorPpsrSearch(0);
+      return;
+    }
+
+    // Handle DIRECTOR BANKRUPTCY for ORGANISATION category
+    if (searchName === 'DIRECTOR BANKRUPTCY' && selectedCategory === 'ORGANISATION' && isCompanyConfirmed) {
+      if (directorsList.length === 0) {
+        alert('No directors available for this company');
+        return;
+      }
+
+      // Start processing directors sequentially
+      setCurrentDirectorIndex(0);
+      setDirectorBankruptcyMatches(new Map());
+      setCurrentDirectorSearchType('bankruptcy');
+      handleDirectorBankruptcySearch(0);
       return;
     }
 
@@ -7173,8 +7621,50 @@ setLandTitleOrganisationSearchTerm(displayText);
         </div>
       </div>
 
+   
+      {selectedCategory === 'ORGANISATION' && 
+       currentDirectorIndex >= 0 && 
+       isLoadingRelatedMatches && 
+       !isIndividualNameSearchModalOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-gray-900/60 px-4">
+          <div className="relative w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl">
+            <div className="flex flex-col items-center justify-center py-8">
+              <svg 
+                className="animate-spin h-8 w-8 text-red-600 mb-4" 
+                xmlns="http://www.w3.org/2000/svg" 
+                fill="none" 
+                viewBox="0 0 24 24"
+              >
+                <circle 
+                  className="opacity-25" 
+                  cx="12" 
+                  cy="12" 
+                  r="10" 
+                  stroke="currentColor" 
+                  strokeWidth="4"
+                ></circle>
+                <path 
+                  className="opacity-75" 
+                  fill="currentColor" 
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+              <span className="text-gray-600 font-semibold text-lg">Searching records...</span>
+              {currentDirectorIndex >= 0 && directorsList.length > 0 && (
+                <span className="text-gray-500 text-sm mt-2">
+                  Processing Director {currentDirectorIndex + 1} of {directorsList.length}
+                  {currentDirectorSearchType === 'related' && ' - Related Entities'}
+                  {currentDirectorSearchType === 'ppsr' && ' - PPSR'}
+                  {currentDirectorSearchType === 'bankruptcy' && ' - Bankruptcy'}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Individual Name Search Modal */}
-      {isIndividualNameSearchModalOpen && selectedCategory === 'INDIVIDUAL' && (
+      {(isIndividualNameSearchModalOpen && (selectedCategory === 'INDIVIDUAL' || selectedCategory === 'ORGANISATION')) && (
         <div
           className="fixed inset-0 z-[120] flex items-center justify-center bg-gray-900/60 px-4"
           onClick={handleIndividualNameSearchModalClose}
@@ -7198,7 +7688,13 @@ setLandTitleOrganisationSearchTerm(displayText);
               {individualNameSearchModalType === 'bankruptcy' 
                 ? 'Select Bankruptcy Record' 
                 : individualNameSearchModalType === 'related'
-                ? 'Select Related Entity Record'
+                ? selectedCategory === 'ORGANISATION' && currentDirectorIndex >= 0
+                  ? currentDirectorSearchType === 'ppsr'
+                    ? `Select Director PPSR Record ${currentDirectorIndex + 1} of ${directorsList.length}`
+                    : currentDirectorSearchType === 'bankruptcy'
+                    ? `Select Director Bankruptcy Record ${currentDirectorIndex + 1} of ${directorsList.length}`
+                    : `Select Director Related Entity Record ${currentDirectorIndex + 1} of ${directorsList.length}`
+                  : 'Select Related Entity Record'
                 : individualNameSearchModalType === 'criminal'
                 ? 'Select Criminal Court Record'
                 : individualNameSearchModalType === 'civil'
@@ -7211,7 +7707,13 @@ setLandTitleOrganisationSearchTerm(displayText);
               {individualNameSearchModalType === 'bankruptcy'
                 ? 'Please select the exact bankruptcy record that matches the person you are searching for.'
                 : individualNameSearchModalType === 'related'
-                ? 'Please select the exact related entity record that matches the person you are searching for.'
+                ? selectedCategory === 'ORGANISATION' && currentDirectorIndex >= 0 && directorsList[currentDirectorIndex]
+                  ? currentDirectorSearchType === 'ppsr'
+                    ? `Please select the exact director PPSR record that matches director`
+                    : currentDirectorSearchType === 'bankruptcy'
+                    ? `Please select the exact director bankruptcy record that matches director`
+                    : `Please select the exact director related entity record that matches director`
+                  : 'Please select the exact related entity record that matches the person you are searching for.'
                 : individualNameSearchModalType === 'criminal'
                 ? 'Please select the exact criminal court record that matches the person you are searching for.'
                 : individualNameSearchModalType === 'civil'
@@ -7343,24 +7845,50 @@ setLandTitleOrganisationSearchTerm(displayText);
                     })));
                   }
                 } else if (individualNameSearchModalType === 'related' && !isLoadingRelatedMatches) {
-                  // Always add actual search name as first option
-                  if (personLastName) {
-                    options.push({
-                      key: `related-actual-${personFullName}`,
-                      displayLabel: personFullName,
-                      source: 'related' as const,
-                      relatedMatch: null
-                    });
-                  }
+                 
+                  if (selectedCategory === 'ORGANISATION' && currentDirectorIndex >= 0 && directorsList[currentDirectorIndex]) {
+                    const director = directorsList[currentDirectorIndex];
+                    const directorFullName = director.fullName || `${director.firstName} ${director.lastName}`.trim().toUpperCase();
+                    
+                   
+                    if (directorFullName) {
+                      options.push({
+                        key: `related-actual-${directorFullName}`,
+                        displayLabel: directorFullName,
+                        source: 'related' as const,
+                        relatedMatch: null
+                      });
+                    }
+                    
                   
-                  // Add separator if there are API results
-                  if (relatedEntityMatchOptions.length > 0 && personLastName) {
-                    options.push({
-                      key: 'related-separator',
-                      displayLabel: '---or---',
-                      source: 'related' as const,
-                      relatedMatch: null
-                    });
+                    if (relatedEntityMatchOptions.length > 0 && directorFullName) {
+                      options.push({
+                        key: 'related-separator',
+                        displayLabel: '---or---',
+                        source: 'related' as const,
+                        relatedMatch: null
+                      });
+                    }
+                  } else {
+                
+                    if (personLastName) {
+                      options.push({
+                        key: `related-actual-${personFullName}`,
+                        displayLabel: personFullName,
+                        source: 'related' as const,
+                        relatedMatch: null
+                      });
+                    }
+                    
+                   
+                    if (relatedEntityMatchOptions.length > 0 && personLastName) {
+                      options.push({
+                        key: 'related-separator',
+                        displayLabel: '---or---',
+                        source: 'related' as const,
+                        relatedMatch: null
+                      });
+                    }
                   }
                   
                   // Add API response options
