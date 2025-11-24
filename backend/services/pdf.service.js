@@ -3289,9 +3289,9 @@ ${pastOwnershipRows || '          <tr><td colspan="5">No past properties found</
 
 // Extract data for Sole Trader Check Report
 function extractSoleTraderCheckData(data, bussiness) {
-  console.log('Extract Sole Trader Check Data:', data);
 
   const rdata = data.rdata || data || {};
+  console.log('rdata keys:', Object.keys(rdata || {}));
   
   const firstName = rdata.firstName || 
                     rdata.fname || 
@@ -3315,38 +3315,49 @@ function extractSoleTraderCheckData(data, bussiness) {
                      moment().format('DD MMMM YYYY');
   
   const abnSearchResults = rdata.abnSearchResults || {};
+
   
   // Extract searchResultsRecord from the ABN search results
   let searchResultsRecords = [];
   
+
+  
   if (abnSearchResults && abnSearchResults.ABRPayloadSearchResults) {
+   
     const response = abnSearchResults.ABRPayloadSearchResults.response || {};
+
     
 
     if (response.searchResultsList) {
-      const searchResultsList = response.searchResultsList;
-      
      
+      const searchResultsList = response.searchResultsList;
+    
+      
+      
       if (searchResultsList.searchResultsRecord) {
+        
         const records = searchResultsList.searchResultsRecord;
+        const isArray = Array.isArray(records);
+     
       
         searchResultsRecords = Array.isArray(records) ? records : [records];
        
+        
       } else if (Array.isArray(searchResultsList)) {
        
         searchResultsRecords = searchResultsList;
-
+       
       }
     } else if (response.searchResultsRecord) {
-    
+     
       const records = response.searchResultsRecord;
+      const isArray = Array.isArray(records);
+    
       searchResultsRecords = Array.isArray(records) ? records : [records];
-      
+     
     }
   }
-  
- 
-  
+   
 
   let soleTraderTableRows = '';
   
@@ -4177,10 +4188,24 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
   replaceVar('current_date_and_time', current_date_and_time);
   
   // Sole Trader Check specific variables
+  if (reportype === 'sole-trader-check') {
+    console.log('\n========== REPLACING SOLE TRADER VARIABLES ==========');
+    console.log('extractedData.totalRecords:', extractedData.totalRecords);
+    console.log('extractedData.soleTraderTableRows length:', (extractedData.soleTraderTableRows || '').length);
+    console.log('extractedData.soleTraderTableRows preview:', (extractedData.soleTraderTableRows || '').substring(0, 200));
+  }
+  
   replaceVar('firstName', extractedData.firstName || '');
   replaceVar('lastName', extractedData.lastName || '');
   replaceVar('fullName', extractedData.fullName || extractedData.searchName || 'N/A');
   replaceVar('searchName', extractedData.searchName || extractedData.fullName || 'N/A');
+  replaceVar('soleTraderTableRows', extractedData.soleTraderTableRows || '');
+  replaceVar('totalRecords', extractedData.totalRecords || 0);
+  
+  if (reportype === 'sole-trader-check') {
+    console.log('✅ Variables replaced');
+    console.log('========== REPLACING SOLE TRADER VARIABLES END ==========\n');
+  }
 
   // Replace entity variables
   replaceVar('abn_state', extractedData.abn_state || '');

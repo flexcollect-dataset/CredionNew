@@ -1073,11 +1073,12 @@ async function sole_trader_check_report(business) {
 
 		const ABN_GUID = process.env.ABN_GUID || '250e9f55-f46e-4104-b0df-774fa28cff97';
 		
-	
-		const searchName = `${firstName}+${lastName}`;
-		const apiUrl = `https://abr.business.gov.au/abrxmlsearch/AbrXmlSearch.asmx/ABRSearchByNameAdvancedSimpleProtocol2017?name=${encodeURIComponent(searchName)}&postcode=&legalName=&tradingName=&businessName=&activeABNsOnly=y&NSW=&SA=&ACT=&VIC=&WA=&NT=&QLD=&TAS=&authenticationGuid=${ABN_GUID}&searchWidth=&minimumScore=&maxSearchResults=`;
-
-
+		// Build search name with space, then encode it properly for URL query parameters
+		// encodeURIComponent will convert space to %20, but for query params we want + for spaces
+		const searchName = `${firstName} ${lastName}`.trim();
+		const encodedName = encodeURIComponent(searchName).replace(/%20/g, '+');
+		const apiUrl = `https://abr.business.gov.au/abrxmlsearch/AbrXmlSearch.asmx/ABRSearchByNameAdvancedSimpleProtocol2017?name=${encodedName}&postcode=&legalName=&tradingName=&businessName=&activeABNsOnly=y&NSW=&SA=&ACT=&VIC=&WA=&NT=&QLD=&TAS=&authenticationGuid=${ABN_GUID}&searchWidth=&minimumScore=&maxSearchResults=`;
+		
 
 		// Make the API call
 		const response = await axios.get(apiUrl, {
@@ -1089,8 +1090,10 @@ async function sole_trader_check_report(business) {
 
 		// Log raw XML response length to verify we got the full response
 		const xmlString = typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
-		console.log(`Raw XML Response Length: ${xmlString.length} characters`);
-		console.log(`Raw XML Response (first 500 chars): ${xmlString.substring(0, 500)}`);
+		
+		
+
+		
 
 		// Parse XML response to JSON with better configuration for nested structures and namespaces
 		const xmlParser = new XMLParser({
@@ -1128,40 +1131,7 @@ async function sole_trader_check_report(business) {
 			jsonData = response.data;
 		}
 
-		console.log('ABN search response received and parsed');
-		console.log('Converted JSON Response Keys:', Object.keys(jsonData || {}));
-		
-		// Log the full response structure to see nested elements
-		if (jsonData && jsonData.ABRPayloadSearchResults) {
-			console.log('ABRPayloadSearchResults Keys:', Object.keys(jsonData.ABRPayloadSearchResults || {}));
-			if (jsonData.ABRPayloadSearchResults.response) {
-				const responseData = jsonData.ABRPayloadSearchResults.response;
-				
-				// Check for searchResultsList
-				if (responseData.searchResultsList) {
-					const searchResultsList = responseData.searchResultsList;
-				
-					if (searchResultsList.searchResultsRecord) {
-						const records = searchResultsList.searchResultsRecord;
-						const isArray = Array.isArray(records);
-						
 
-					} 
-				} 
-				
-				// Check for direct searchResultsRecord (fallback)
-				if (responseData.searchResultsRecord) {
-					const records = responseData.searchResultsRecord;
-					const isArray = Array.isArray(records);
-					
-				}
-			}
-		}
-		
-
-		console.log('📋 Full Converted JSON Response (complete):', JSON.stringify(jsonData, null, 2));
-
-		// Generate a unique UUID for this report
 		const reportUuid = `sole-trader-${Date.now()}-${uuidv4().substring(0, 8)}`;
 
 		// Structure the report data similar to other report types
@@ -1177,12 +1147,11 @@ async function sole_trader_check_report(business) {
 			}
 		};
 
-		console.log(`Sole trader check report data created with UUID: ${reportUuid}`);
-		console.log('Final Report Data Structure:', JSON.stringify(reportData, null, 2));
+		
 		return reportData;
 
 	} catch (error) {
-		console.error('Error fetching sole trader check data:', error?.response?.data || error.message);
+		
 		
 		// Return error response in same format
 		return {
