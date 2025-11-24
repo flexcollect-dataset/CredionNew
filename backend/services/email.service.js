@@ -120,15 +120,50 @@ async function graphSendMail({ senderUpn, toEmail, subject, html, text, attachme
  * @param {Array<string>} pdfFilenames - S3 keys
  * @param {string} matterName - optional
  */
-async function sendReports(toEmail, pdfFilenames, matterName) {
+async function sendReports(toEmail, pdfFilenames, matterName, documentId) {
   try {
+    if (documentId) {
+      const subject = "Credion Document ID";
+      const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #dc2626;">Credion Document ID</h2>
+          <p>Dear User,</p>
+          <p>The document ID for your search is: <strong>${documentId}</strong></p>
+          <p>This document ID was generated from the Add Document Search option.</p>
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+          <p style="color: #6b7280; font-size: 12px;">
+            This is an automated email from Credion. Please do not reply to this email.
+          </p>
+        </div>
+      `;
+      const text = `Credion Document ID
+
+The document ID for your search is: ${documentId}
+This document ID was generated from the Add Document Search option.`;
+
+      const response = await graphSendMail({
+        senderUpn: SENDER_UPN,
+        toEmail,
+        subject,
+        html,
+        text,
+        attachments: []
+      });
+
+      console.log("✅ Document ID email sent via Microsoft Graph");
+      return {
+        success: true,
+        reportsSent: 0,
+        recipient: toEmail
+      };
+    }
+
     if (!toEmail || !pdfFilenames?.length) {
       throw new Error("Email and PDF filenames are required");
     }
 
     console.log(`📧 Preparing to send ${pdfFilenames.length} report(s) to ${toEmail}`);
 
-    // Download all PDFs from S3 (skip failures, but require at least one)
     const downloads = await Promise.all(pdfFilenames.map(downloadPDFFromS3));
     const attachments = downloads.filter(d => d.success).map(d => ({
       filename: d.filename,

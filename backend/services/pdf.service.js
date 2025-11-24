@@ -3287,6 +3287,134 @@ ${pastOwnershipRows || '          <tr><td colspan="5">No past properties found</
   };
 }
 
+// Extract data for Sole Trader Check Report
+function extractSoleTraderCheckData(data, bussiness) {
+  console.log('Extract Sole Trader Check Data:', data);
+
+  const rdata = data.rdata || data || {};
+  
+  const firstName = rdata.firstName || 
+                    rdata.fname || 
+                    bussiness?.fname || 
+                    bussiness?.firstName || 
+                    '';
+  
+  const lastName = rdata.lastName || 
+                   rdata.lname || 
+                   bussiness?.lname || 
+                   bussiness?.lastName || 
+                   '';
+  
+  const searchName = rdata.searchName || 
+                     `${firstName} ${lastName}`.trim() || 
+                     'N/A';
+  
+
+  const reportDate = rdata.searchDate ? 
+                     moment(rdata.searchDate).format('DD MMMM YYYY') : 
+                     moment().format('DD MMMM YYYY');
+  
+  const abnSearchResults = rdata.abnSearchResults || {};
+  
+  // Extract searchResultsRecord from the ABN search results
+  let searchResultsRecords = [];
+  
+  if (abnSearchResults && abnSearchResults.ABRPayloadSearchResults) {
+    const response = abnSearchResults.ABRPayloadSearchResults.response || {};
+    
+
+    if (response.searchResultsList) {
+      const searchResultsList = response.searchResultsList;
+      
+     
+      if (searchResultsList.searchResultsRecord) {
+        const records = searchResultsList.searchResultsRecord;
+      
+        searchResultsRecords = Array.isArray(records) ? records : [records];
+       
+      } else if (Array.isArray(searchResultsList)) {
+       
+        searchResultsRecords = searchResultsList;
+
+      }
+    } else if (response.searchResultsRecord) {
+    
+      const records = response.searchResultsRecord;
+      searchResultsRecords = Array.isArray(records) ? records : [records];
+      
+    }
+  }
+  
+ 
+  
+
+  let soleTraderTableRows = '';
+  
+  if (searchResultsRecords && searchResultsRecords.length > 0) {
+    searchResultsRecords.forEach((record, index) => {
+     
+      const abn = record.ABN || {};
+      const abnValue = abn.identifierValue || abn.ABN?.identifierValue || 'N/A';
+      const abnStatus = abn.identifierStatus || abn.ABN?.identifierStatus || 'N/A';
+      
+     
+      let businessName = record.businessName || record.legalName || record.mainName || record.mainTradingName || record.otherTradingName || {};
+      let orgName = businessName.organisationName || businessName.OrganisationName || businessName.fullName || businessName.FullName || 'N/A';
+      let score = businessName.score || businessName.Score || 'N/A';
+      let isCurrent = businessName.isCurrentIndicator || businessName.IsCurrentIndicator || 'N/A';
+      
+     
+      const address = record.mainBusinessPhysicalAddress || record.MainBusinessPhysicalAddress || {};
+      const stateCode = address.stateCode || address.StateCode || 'N/A';
+      const postcode = address.postcode || address.Postcode || 'N/A';
+      const addressIsCurrent = address.isCurrentIndicator || address.IsCurrentIndicator || 'N/A';
+      
+
+      let formattedAbn = abnValue;
+      if (abnValue && abnValue !== 'N/A' && typeof abnValue === 'string') {
+        const cleanAbn = abnValue.replace(/\s/g, '');
+        if (cleanAbn.length === 11 && /^\d+$/.test(cleanAbn)) {
+          formattedAbn = cleanAbn.replace(/(\d{2})(\d{3})(\d{3})(\d{3})/, '$1 $2 $3 $4');
+        }
+      }
+      
+      soleTraderTableRows += `
+        <tr>
+          <td><strong>${formattedAbn}</strong></td>
+          <td>${abnStatus}</td>
+          <td>${orgName}</td>
+          <td>${score}</td>
+          <td>${isCurrent}</td>
+          <td>${stateCode}</td>
+          <td>${postcode}</td>
+          <td>${addressIsCurrent}</td>
+        </tr>
+      `;
+    });
+  } else {
+    soleTraderTableRows = `
+      <tr>
+        <td colspan="8" style="text-align: center; font-style: italic;">No search results found</td>
+      </tr>
+    `;
+  }
+  
+  return {
+    firstName: firstName,
+    lastName: lastName,
+    searchName: searchName,
+    fullName: `${firstName} ${lastName}`.trim() || 'N/A',
+    reportDate: reportDate,
+    companyName: searchName,
+    company_type: 'Sole Trader Check',
+    acn: 'N/A',
+    abn: 'N/A',
+    abnSearchResults: abnSearchResults,
+    soleTraderTableRows: soleTraderTableRows,
+    totalRecords: searchResultsRecords.length
+  };
+}
+
 // Extract data for Land Title Individual Report
 function extractLandTitleIndividualData(data, bussiness) {
   console.log('🔍 [extractLandTitleIndividualData] Data:', data);  
@@ -3912,6 +4040,8 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
     extractedData = extractLandTitleOrganisationData(data, bussiness);
   } else if (reportype === 'land-title-individual' ) {
     extractedData = extractLandTitleIndividualData(data, bussiness);
+  } else if (reportype === 'sole-trader-check' ) {
+    extractedData = extractSoleTraderCheckData(data, bussiness);
   } else {
     // Default fallback - try to extract common fields
     const entity = data.entity || {};
@@ -4045,6 +4175,12 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
   replaceVar('company_type', extractedData.company_type || 'N/A');
   replaceVar('reportDate', reportDate);
   replaceVar('current_date_and_time', current_date_and_time);
+  
+  // Sole Trader Check specific variables
+  replaceVar('firstName', extractedData.firstName || '');
+  replaceVar('lastName', extractedData.lastName || '');
+  replaceVar('fullName', extractedData.fullName || extractedData.searchName || 'N/A');
+  replaceVar('searchName', extractedData.searchName || extractedData.fullName || 'N/A');
 
   // Replace entity variables
   replaceVar('abn_state', extractedData.abn_state || '');
@@ -4757,6 +4893,8 @@ async function addDownloadReportInDB(rdata, userId, matterId, reportId, reportNa
     templateName = 'landtitle-report.html';
   } else if (reportype == "land-title-individual" ) {
     templateName = 'landtitle-individual-report.html';
+  } else if (reportype == "sole-trader-check" ) {
+    templateName = 'sole-trader-check-report.html';
   } else {
     throw new Error(`Unknown report type: ${reportype}`);
   }

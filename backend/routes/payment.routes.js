@@ -7,6 +7,7 @@ const axios = require('axios');
 const path = require('path');
 const fs = require('fs').promises;
 const moment = require('moment');
+const { XMLParser } = require('fast-xml-parser');
 const { uploadToS3 } = require('../services/s3.service');
 const { replaceVariables, convertWithVariables, addDownloadReportInDB, ensureMediaDir, mediaDir } = require('../services/pdf.service');
 const UserReport = require('../models/UserReport');
@@ -473,6 +474,14 @@ function extractSearchWord(business, type) {
 			const lastName = business?.lname || business?.lastName || '';
 			
 			const nameParts = [firstName, middleName, lastName].filter(part => part && part.trim());
+			searchWord = nameParts.length > 0 ? nameParts.join(' ').trim() : null;
+		}
+
+		// Handle sole-trader-check type (uses fname and lname)
+		if (type === 'sole-trader-check' && !searchWord) {
+			const firstName = business?.fname || business?.firstName || '';
+			const lastName = business?.lname || business?.lastName || '';
+			const nameParts = [firstName, lastName].filter(part => part && part.trim());
 			searchWord = nameParts.length > 0 ? nameParts.join(' ').trim() : null;
 		}
 
@@ -1042,6 +1051,149 @@ async function director_court_criminal(bussiness) {
 	};
 	reportData.data.uuid = 'abcdef';
 	return reportData;
+}
+
+async function sole_trader_check_report(business) {
+	try {
+		// Get first name and last name from business object
+		const firstName = business?.fname || business?.firstName || '';
+		const lastName = business?.lname || business?.lastName || '';
+
+		if (!firstName || !lastName) {
+			console.error('Missing first name or last name for sole trader check');
+			return {
+				status: false,
+				data: {
+					uuid: null,
+					error: 'First name and last name are required for sole trader check'
+				}
+			};
+		}
+
+
+		const ABN_GUID = process.env.ABN_GUID || '250e9f55-f46e-4104-b0df-774fa28cff97';
+		
+	
+		const searchName = `${firstName}+${lastName}`;
+		const apiUrl = `https://abr.business.gov.au/abrxmlsearch/AbrXmlSearch.asmx/ABRSearchByNameAdvancedSimpleProtocol2017?name=${encodeURIComponent(searchName)}&postcode=&legalName=&tradingName=&businessName=&activeABNsOnly=y&NSW=&SA=&ACT=&VIC=&WA=&NT=&QLD=&TAS=&authenticationGuid=${ABN_GUID}&searchWidth=&minimumScore=&maxSearchResults=`;
+
+
+
+		// Make the API call
+		const response = await axios.get(apiUrl, {
+			headers: {
+				'Accept': 'application/xml, text/xml'
+			},
+			timeout: 30000
+		});
+
+		// Log raw XML response length to verify we got the full response
+		const xmlString = typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
+		console.log(`Raw XML Response Length: ${xmlString.length} characters`);
+		console.log(`Raw XML Response (first 500 chars): ${xmlString.substring(0, 500)}`);
+
+		// Parse XML response to JSON with better configuration for nested structures and namespaces
+		const xmlParser = new XMLParser({
+			ignoreAttributes: false,
+			attributeNamePrefix: '@_',
+			textNodeName: '#text',
+			parseAttributeValue: true,
+			trimValues: true,
+			parseTrueNumberOnly: false,
+			ignoreNameSpace: true,
+			removeNSPrefix: true,
+			parseNodeValue: true,
+			arrayMode: false,
+			alwaysCreateTextNode: false,
+			preserveOrder: false,
+			ignoreDeclaration: true,
+			ignorePiTags: true,
+			parseTagValue: true,
+			processEntities: true,
+			htmlEntities: false,
+
+			isArray: (name, jPath, isLeafNode, isAttribute) => {
+				
+				if (name === 'searchResultsRecord') {
+					return true;
+				}
+				return false;
+			}
+		});
+
+		let jsonData;
+		if (typeof response.data === 'string') {
+			jsonData = xmlParser.parse(response.data);
+		} else {
+			jsonData = response.data;
+		}
+
+		console.log('ABN search response received and parsed');
+		console.log('Converted JSON Response Keys:', Object.keys(jsonData || {}));
+		
+		// Log the full response structure to see nested elements
+		if (jsonData && jsonData.ABRPayloadSearchResults) {
+			console.log('ABRPayloadSearchResults Keys:', Object.keys(jsonData.ABRPayloadSearchResults || {}));
+			if (jsonData.ABRPayloadSearchResults.response) {
+				const responseData = jsonData.ABRPayloadSearchResults.response;
+				
+				// Check for searchResultsList
+				if (responseData.searchResultsList) {
+					const searchResultsList = responseData.searchResultsList;
+				
+					if (searchResultsList.searchResultsRecord) {
+						const records = searchResultsList.searchResultsRecord;
+						const isArray = Array.isArray(records);
+						
+
+					} 
+				} 
+				
+				// Check for direct searchResultsRecord (fallback)
+				if (responseData.searchResultsRecord) {
+					const records = responseData.searchResultsRecord;
+					const isArray = Array.isArray(records);
+					
+				}
+			}
+		}
+		
+
+		console.log('📋 Full Converted JSON Response (complete):', JSON.stringify(jsonData, null, 2));
+
+		// Generate a unique UUID for this report
+		const reportUuid = `sole-trader-${Date.now()}-${uuidv4().substring(0, 8)}`;
+
+		// Structure the report data similar to other report types
+		const reportData = {
+			status: true,
+			data: {
+				uuid: reportUuid,
+				searchName: `${firstName} ${lastName}`,
+				firstName: firstName,
+				lastName: lastName,
+				abnSearchResults: jsonData,
+				searchDate: new Date().toISOString()
+			}
+		};
+
+		console.log(`Sole trader check report data created with UUID: ${reportUuid}`);
+		console.log('Final Report Data Structure:', JSON.stringify(reportData, null, 2));
+		return reportData;
+
+	} catch (error) {
+		console.error('Error fetching sole trader check data:', error?.response?.data || error.message);
+		
+		// Return error response in same format
+		return {
+			status: false,
+			data: {
+				uuid: null,
+				error: error.message || 'Failed to fetch sole trader check data',
+				searchName: `${business?.fname || ''} ${business?.lname || ''}`.trim()
+			}
+		};
+	}
 }
 
 async function property(abn, cname, ldata) {
@@ -1617,6 +1769,39 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 			} else {
 				existingReport = await checkExistingReportData(abn, type);
 			}
+		} else if (business?.isCompany == "INDIVIDUAL" && type == "sole-trader-check") {
+			// For individual reports, check by search_word (person's name) instead of ABN
+			const searchWord = extractSearchWord(business, type);
+			if (searchWord) {
+				const [existingData] = await sequelize.query(`
+					SELECT id, rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at
+					FROM api_data
+					WHERE rtype = $1 AND search_word = $2 AND abn IS NULL
+					ORDER BY created_at DESC
+					LIMIT 1
+				`, {
+					bind: [type, searchWord]
+				});
+				
+				if (existingData && existingData.length > 0) {
+					existingReport = {
+						id: existingData[0].id,
+						rtype: existingData[0].rtype,
+						uuid: existingData[0].uuid,
+						search_word: existingData[0].search_word,
+						abn: existingData[0].abn,
+						acn: existingData[0].acn,
+						rdata: existingData[0].rdata,
+						alert: existingData[0].alert,
+						created_at: existingData[0].created_at,
+						updated_at: existingData[0].updated_at
+					};
+					console.log(`✅ Found existing sole-trader-check report in database for: ${searchWord}`);
+					console.log('📋 Existing Report Data:', JSON.stringify(existingReport.rdata, null, 2));
+				} else {
+					console.log(`🔄 No existing sole-trader-check report found in database for: ${searchWord}`);
+				}
+			}
 		}
 
 		if (existingReport) {
@@ -1754,10 +1939,12 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 				reportData = await land_title_organisation(business);
 			} else if (type == 'land-title-individual') {
 				reportData = await land_title_individual(business);
+			} else if (type == 'sole-trader-check') {
+				reportData = await sole_trader_check_report(business);
 			}
 
 			console.log(reportData.data);
-			if (!existingReport && reportData) {
+			if (!existingReport && reportData && reportData.status !== false && reportData.data) {
 				// Extract search word dynamically from business object
 				const searchWord = extractSearchWord(business, type);
 				
@@ -1774,6 +1961,18 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 					if (abn && abn.length >= 2) {
 						acn = abn.substring(2);
 					}
+				}
+
+				// Log data before insertion for debugging
+				if (type === 'sole-trader-check') {
+					console.log('💾 Preparing to store sole-trader-check data:');
+					console.log('  - Type:', type);
+					console.log('  - UUID:', reportData.data?.uuid);
+					console.log('  - Search Word:', searchWord);
+					console.log('  - Is Organization:', isOrganization);
+					console.log('  - ReportData.data keys:', Object.keys(reportData.data || {}));
+					console.log('  - Has abnSearchResults:', !!reportData.data?.abnSearchResults);
+					console.log('  - Data to store:', JSON.stringify(reportData.data, null, 2).substring(0, 500) + '...');
 				}
 
 				if (isOrganization) {
@@ -1807,6 +2006,28 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 						}
 					);
 				}
+				
+				if (type === 'sole-trader-check') {
+					console.log('✅ Data inserted successfully. Report ID:', iresult[0]?.id);
+					console.log('📊 Verifying stored data...');
+					const [verify] = await sequelize.query(`
+						SELECT id, rtype, uuid, search_word, LENGTH(rdata::text) as data_length 
+						FROM api_data 
+						WHERE id = $1
+					`, {
+						bind: [iresult[0].id]
+					});
+					if (verify && verify.length > 0) {
+						console.log('✅ Verification - Stored record:', {
+							id: verify[0].id,
+							rtype: verify[0].rtype,
+							uuid: verify[0].uuid,
+							search_word: verify[0].search_word,
+							data_length: verify[0].data_length
+						});
+					}
+				}
+				
 				reportId = iresult[0].id;
 			}
 		}

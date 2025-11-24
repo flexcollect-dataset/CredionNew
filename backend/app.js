@@ -469,17 +469,16 @@ const emailService = require('./services/email.service');
 // Send Reports via Email endpoint
 app.post('/api/send-reports', async (req, res) => {
   try {
-    const { email, pdfFilenames, matterName } = req.body;
+    const { email, pdfFilenames, matterName, documentId } = req.body;
 
-    if (!email || !pdfFilenames || !Array.isArray(pdfFilenames) || pdfFilenames.length === 0) {
+    if (!email) {
       return res.status(400).json({
         success: false,
         error: 'MISSING_PARAMETERS',
-        message: 'Email and PDF filenames array are required'
+        message: 'Email is required'
       });
     }
 
-    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({
@@ -489,9 +488,28 @@ app.post('/api/send-reports', async (req, res) => {
       });
     }
 
+    if (documentId) {
+      console.log(`📧 Document ID email request received: ${email}, Document ID: ${documentId}`);
+      const result = await emailService.sendReports(email, [], matterName || 'Matter', documentId);
+      res.json({
+        success: true,
+        message: `Document ID sent successfully to ${email}`,
+        reportsSent: result.reportsSent,
+        recipient: result.recipient
+      });
+      return;
+    }
+
+    if (!pdfFilenames || !Array.isArray(pdfFilenames) || pdfFilenames.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'MISSING_PARAMETERS',
+        message: 'PDF filenames array is required'
+      });
+    }
+
     console.log(`📧 Email request received: ${email}, ${pdfFilenames.length} report(s)`);
 
-    // Send reports via email
     const result = await emailService.sendReports(email, pdfFilenames, matterName || 'Matter');
 
     res.json({

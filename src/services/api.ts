@@ -406,8 +406,7 @@ class ApiService {
 		});
 	}
 
-	// Send reports via email
-	async sendReports(email: string, pdfFilenames: string[], matterName?: string) {
+	async sendReports(email: string, pdfFilenames: string[], matterName?: string, documentId?: string) {
 		return this.request<{
 			success: boolean;
 			message: string;
@@ -419,7 +418,8 @@ class ApiService {
 			body: JSON.stringify({
 				email,
 				pdfFilenames,
-				matterName
+				matterName,
+				documentId
 			})
 		});
 	}

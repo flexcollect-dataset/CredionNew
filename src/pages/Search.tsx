@@ -4396,13 +4396,13 @@ setLandTitleOrganisationSearchTerm(displayText);
   }
   // Process reports handler
   const handleProcessReports = async () => {
-    // Validation checks
-    if (selectedCategory === 'ORGANISATION' && !isCompanyConfirmed) {
+    const isAddDocumentSearch = selectedSearches.has('ADD DOCUMENT SEARCH');
+    
+    if (selectedCategory === 'ORGANISATION' && !isCompanyConfirmed && !isAddDocumentSearch) {
       alert('Please select and confirm a company first');
       return;
     }
     
-    // Hide cross icons for all additional searches when processing reports
     setShowCrossIcons(false);
 
     if (selectedCategory === 'INDIVIDUAL') {
@@ -4458,7 +4458,6 @@ setLandTitleOrganisationSearchTerm(displayText);
     }
 
     setIsProcessingReports(true);
-    // Reset PDF filenames array for new batch
     setPdfFilenames([]);
 
     try {
@@ -4468,12 +4467,36 @@ setLandTitleOrganisationSearchTerm(displayText);
         return;
       }
 
-      // Get ABN and Name from the selected organization
+      const isOnlyAddDocumentSearch = selectedCategory === 'ORGANISATION' && 
+        selectedSearches.has('ADD DOCUMENT SEARCH') && 
+        Array.from(selectedSearches).filter(s => s !== 'SELECT ALL').length === 1 &&
+        Array.from(selectedAdditionalSearches).filter(s => s !== 'SELECT ALL').length === 0 &&
+        selectedAsicTypeList.length === 0;
+
+      if (isOnlyAddDocumentSearch) {
+        if (!documentSearchId) {
+          alert('Please enter a document ID for the Add Document Search option');
+          setIsProcessingReports(false);
+          return;
+        }
+        try {
+          await apiService.sendReports('korat.rutvik2511@gmail.com', [], 'Matter', documentSearchId);
+          setProccessReportStatus(true);
+          setTotalDownloadReports(0);
+          setIsProcessingReports(false);
+          return;
+        } catch (emailError: any) {
+          console.error('Error sending document ID email:', emailError);
+          alert(`Error sending document ID email: ${emailError?.message || 'Unknown error'}`);
+          setIsProcessingReports(false);
+          return;
+        }
+      }
+
       let abn = '';
       let companyName = '';
 
       if (selectedCategory === 'ORGANISATION' && organisationSearchTerm) {
-        // Extract ABN from the format: "Company Name ABN: X" or "ABN: X"
         const abnMatch = organisationSearchTerm.match(/ABN:\s*(\d+)/i);
         if (abnMatch) {
           abn = abnMatch[1];
@@ -4951,15 +4974,21 @@ setLandTitleOrganisationSearchTerm(displayText);
       setProccessReportStatus(true);
       setTotalDownloadReports(createdReports.length);
 
-      // Ensure PDF filenames are set (they should already be set in the loop)
       const collectedFilenames = createdReports
         .map(r => r.pdfFilename)
-        .filter(f => f); // Filter out undefined/null values
+        .filter(f => f);
 
       if (collectedFilenames.length > 0) {
         setPdfFilenames(collectedFilenames);
       }
 
+      if (selectedCategory === 'ORGANISATION' && selectedSearches.has('ADD DOCUMENT SEARCH') && documentSearchId && !isOnlyAddDocumentSearch) {
+        try {
+          await apiService.sendReports('korat.rutvik2511@gmail.com', [], 'Matter', documentSearchId);
+        } catch (emailError: any) {
+          console.error('Error sending document ID email:', emailError);
+        }
+      }
 
     } catch (error: any) {
       console.error('Error processing reports:', error);
