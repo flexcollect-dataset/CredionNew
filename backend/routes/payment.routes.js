@@ -419,6 +419,69 @@ async function checkExistingReportData(abn, type) {
 	return existingReport;
 }
 
+/**
+ * Extract search word from business object based on report type
+ * For ORGANISATION: returns company name
+ * For INDIVIDUAL: returns name from selection object if available, otherwise fname + lname
+ * @param {Object} business - Business object containing report data
+ * @param {String} type - Report type
+ * @returns {String|null} - Search word or null if not found
+ */
+function extractSearchWord(business, type) {
+	if (!business) {
+		return null;
+	}
+
+	// Determine if this is an organization or individual based on report type
+	const isLandTitleOrg = type === 'land-title-organisation';
+	const isLandTitleIndividual = type === 'land-title-individual';
+	const isOrganization = isLandTitleOrg || 
+	                     (business?.isCompany === "ORGANISATION" && !isLandTitleIndividual);
+	const isIndividual = isLandTitleIndividual || 
+	                    (business?.isCompany === "INDIVIDUAL" && !isLandTitleOrg);
+
+	if (isOrganization) {
+		// For organizations, use company name
+		return business?.Name || business?.name || business?.companyName || business?.CompanyName || null;
+	} else if (isIndividual) {
+		// For individuals, check for selection objects first based on report type
+		let searchWord = null;
+
+		// Check report-specific selection objects
+		if (type === 'director-bankruptcy' && business?.bankruptcySelection?.debtor) {
+			const debtor = business.bankruptcySelection.debtor;
+			const givenNames = debtor.givenNames || '';
+			const surname = debtor.surname || '';
+			if (givenNames || surname) {
+				searchWord = `${givenNames} ${surname}`.trim();
+			}
+		} else if (type === 'director-related' && business?.directorRelatedSelection?.name) {
+			searchWord = business.directorRelatedSelection.name;
+		} else if (type === 'director-court' || type === 'director-court-civil' || type === 'director-court-criminal') {
+			// For court reports, prefer civilSelection.fullname, fallback to criminalSelection.fullname
+			if (business?.civilSelection?.fullname) {
+				searchWord = business.civilSelection.fullname;
+			} else if (business?.criminalSelection?.fullname) {
+				searchWord = business.criminalSelection.fullname;
+			}
+		}
+
+		// If no selection object found, use fname and lname
+		if (!searchWord) {
+			const firstName = business?.fname || business?.firstName || '';
+			const middleName = business?.mname || business?.middleName || '';
+			const lastName = business?.lname || business?.lastName || '';
+			
+			const nameParts = [firstName, middleName, lastName].filter(part => part && part.trim());
+			searchWord = nameParts.length > 0 ? nameParts.join(' ').trim() : null;
+		}
+
+		return searchWord;
+	}
+
+	return null;
+}
+
 // Endpoint to get or create report data
 router.post('/get-report-data', async (req, res) => {
 	try {
@@ -518,38 +581,38 @@ async function director_ppsr_report(bussiness) {
 
 	// Convert dob to YYYY-MM-DD format
 	let formattedDob = "1993-03-01"; // Default fallback
-	if (dob) {
+	if (bussiness.dob) {
 		try {
 			// Try to parse the date with explicit format (DD/MM/YYYY is common)
 			// Try multiple formats to handle different input formats
 			let parsedDate;
-			if (typeof dob === 'string') {
+			if (typeof bussiness.dob === 'string') {
 				// Try DD/MM/YYYY format first (most common based on error)
-				if (dob.includes('/')) {
-					parsedDate = moment(dob, 'DD/MM/YYYY', true); // strict mode
+				if (bussiness.dob.includes('/')) {
+					parsedDate = moment(bussiness.dob, 'DD/MM/YYYY', true); // strict mode
 					if (!parsedDate.isValid()) {
 						// Try MM/DD/YYYY as fallback
-						parsedDate = moment(dob, 'MM/DD/YYYY', true);
+						parsedDate = moment(bussiness.dob, 'MM/DD/YYYY', true);
 					}
-				} else if (dob.includes('-')) {
+				} else if (bussiness.dob.includes('-')) {
 					// Already in ISO format or similar
-					parsedDate = moment(dob, ['YYYY-MM-DD', 'DD-MM-YYYY'], true);
+					parsedDate = moment(bussiness.dob, ['YYYY-MM-DD', 'DD-MM-YYYY'], true);
 				} else {
 					// Try moment's default parsing as last resort
-					parsedDate = moment(dob);
+					parsedDate = moment(bussiness.dob);
 				}
 			} else {
 				// If it's already a Date object or moment object
-				parsedDate = moment(dob);
+				parsedDate = moment(bussiness.dob);
 			}
 
 			if (parsedDate && parsedDate.isValid()) {
 				formattedDob = parsedDate.format('YYYY-MM-DD');
 			} else {
-				console.warn('Invalid date format for dob:', dob);
+				console.warn('Invalid date format for dob:', bussiness.dob);
 			}
 		} catch (error) {
-			console.error('Error formatting date of birth:', error, 'dob:', dob);
+			console.error('Error formatting date of birth:', error, 'dob:', bussiness.dob);
 			// If parsing fails, use default
 		}
 	}
@@ -564,8 +627,8 @@ async function director_ppsr_report(bussiness) {
 			{
 				grantorType: "individual",
 				individualDateOfBirth: formattedDob,
-				individualFamilyName: lname,
-				individualGivenNames: fname,
+				individualFamilyName: bussiness.lname,
+				individualGivenNames: bussiness.fname,
 				acceptIndividualGrantorSearchDeclaration: true,
 			}
 		]
@@ -698,31 +761,175 @@ async function director_related_report(bussiness) {
 	return reportData;
 }
 
+// Helper function to fetch all pages of court records
+async function fetchAllCourtRecords(apiUrl, params, bearerToken, totalRecords) {
+	const recordsPerPage = 20;
+	const totalPages = totalRecords ? Math.ceil(parseInt(totalRecords) / recordsPerPage) : 1;
+	
+	let allRecords = [];
+	let total = 0;
+	let responseStructure = null; // Track the response structure from first page
+	
+	for (let page = 1; page <= totalPages; page++) {
+		try {
+			// Try different pagination parameter formats
+			const pageParams = {
+				...params
+			};
+			
+			// Try common pagination parameter names
+			if (page > 1) {
+				// Try different pagination parameter formats
+				pageParams.page = page;
+				pageParams.per_page = recordsPerPage;
+				// Also try alternative parameter names
+				// pageParams.pageNumber = page;
+				// pageParams.pageSize = recordsPerPage;
+				// pageParams.offset = (page - 1) * recordsPerPage;
+				// pageParams.limit = recordsPerPage;
+			}
+			
+			const response = await axios.get(apiUrl, {
+				params: pageParams,
+				headers: {
+					'Api-Key': bearerToken,
+					'accept': 'application/json',
+					'X-CSRF-TOKEN': ''
+				},
+				timeout: 30000
+			});
+			
+			// Extract records from response - handle different response structures
+			const responseData = response.data || {};
+			let pageRecords = [];
+			
+			// Try different response structures
+			if (responseData.data?.records && Array.isArray(responseData.data.records)) {
+				pageRecords = responseData.data.records;
+				if (!responseStructure) responseStructure = 'data.records';
+			} else if (responseData.records && Array.isArray(responseData.records)) {
+				pageRecords = responseData.records;
+				if (!responseStructure) responseStructure = 'records';
+			} else if (responseData.data && Array.isArray(responseData.data)) {
+				pageRecords = responseData.data;
+				if (!responseStructure) responseStructure = 'data';
+			} else if (Array.isArray(responseData)) {
+				pageRecords = responseData;
+				if (!responseStructure) responseStructure = 'root';
+			}
+			
+			if (Array.isArray(pageRecords)) {
+				allRecords = allRecords.concat(pageRecords);
+			}
+			
+			// Update total from first page response
+			if (page === 1) {
+				total = responseData.data?.total || responseData.total || pageRecords.length;
+			}
+			
+			// If we got fewer records than expected, we've reached the last page
+			if (pageRecords.length < recordsPerPage) {
+				break;
+			}
+			
+			// Small delay between requests to avoid rate limiting
+			if (page < totalPages) {
+				await delay(500);
+			}
+		} catch (error) {
+			console.error(`Error fetching page ${page} of court records:`, error);
+			// Continue with other pages even if one fails
+			if (page === 1) {
+				throw error; // Only throw on first page failure
+			}
+		}
+	}
+	
+	// Return data in the same format as the API response structure
+	// Match the structure from the first page
+	if (responseStructure === 'data.records') {
+		return {
+			data: {
+				records: allRecords,
+				total: total || allRecords.length
+			}
+		};
+	} else if (responseStructure === 'records') {
+		return {
+			records: allRecords,
+			total: total || allRecords.length
+		};
+	} else {
+		// Default structure
+		return {
+			data: {
+				records: allRecords,
+				total: total || allRecords.length
+			}
+		};
+	}
+}
+
 async function director_court_report(bussiness) {
 	const bearerToken = '3eiXhUHT9G25QO9';
-	const criminalApiUrl = 'https://corp-api.courtdata.com.au/api/search/criminal/record';
-	const criminalParams = {
-		fullname: `${lname}, ${fname}`,
-	};
 
-	const criminalResponse = await axios.get(criminalApiUrl, {
-		params: criminalParams,
-		headers: {
-			'Api-Key': bearerToken,
-			'accept': 'application/json',
-			'X-CSRF-TOKEN': ''
-		},
-		timeout: 30000
-	});
+	// Get fullnames and totals from business object
+	const criminalFullname = bussiness?.criminalSelection?.fullname || bussiness?.civilSelection?.fullname || '';
+	const civilFullname = bussiness?.civilSelection?.fullname || bussiness?.criminalSelection?.fullname || '';
+	const criminalTotal = bussiness?.criminalSelection?.total ? parseInt(bussiness.criminalSelection.total) : null;
+	const civilTotal = bussiness?.civilSelection?.total ? parseInt(bussiness.civilSelection.total) : null;
 
-	// Civil Court API (POST)
+	// Search Criminal Court
+	let criminalResponse = null;
+	let criminalError = null;
+	if (criminalFullname) {
+		try {
+			const criminalApiUrl = 'https://corp-api.courtdata.com.au/api/search/criminal/record';
+			const criminalParams = {
+				fullname: criminalFullname,
+			};
+
+			// If total is more than 20, fetch all pages
+			if (criminalTotal && criminalTotal > 20) {
+				const fetchedData = await fetchAllCourtRecords(criminalApiUrl, criminalParams, bearerToken, criminalTotal);
+				// Ensure structure matches: { data: { records: [...], total: ... } }
+				criminalResponse = { data: fetchedData.data || fetchedData };
+			} else {
+				const response = await axios.get(criminalApiUrl, {
+					params: criminalParams,
+					headers: {
+						'Api-Key': bearerToken,
+						'accept': 'application/json',
+						'X-CSRF-TOKEN': ''
+					},
+					timeout: 30000
+				});
+				// Ensure structure matches: { data: { records: [...], total: ... } }
+				criminalResponse = { data: response.data?.data || response.data };
+			}
+		} catch (error) {
+			console.error('Error fetching criminal court data:', error);
+			criminalError = error;
+		}
+	}
+
+	// Search Civil Court
+	let civilResponse = null;
+	let civilError = null;
+	if (civilFullname) {
+		try {
 	const civilApiUrl = 'https://corp-api.courtdata.com.au/api/search/civil/record';
 	const civilParams = {
-		fullname: `${lname}, ${fname}`,
-		//fullname: 'ADGEMIS, Jon Angelo George',
-	};
+				fullname: civilFullname,
+			};
 
-	const civilResponse = await axios.get(civilApiUrl, {
+			// If total is more than 20, fetch all pages
+			if (civilTotal && civilTotal > 20) {
+				const fetchedData = await fetchAllCourtRecords(civilApiUrl, civilParams, bearerToken, civilTotal);
+				// Ensure structure matches: { data: { records: [...], total: ... } }
+				civilResponse = { data: fetchedData.data || fetchedData };
+			} else {
+				const response = await axios.get(civilApiUrl, {
 		params: civilParams,
 		headers: {
 			'Api-Key': bearerToken,
@@ -731,13 +938,22 @@ async function director_court_report(bussiness) {
 		},
 		timeout: 30000
 	});
+				// Ensure structure matches: { data: { records: [...], total: ... } }
+				civilResponse = { data: response.data?.data || response.data };
+			}
+		} catch (error) {
+			console.error('Error fetching civil court data:', error);
+			civilError = error;
+		}
+	}
 
 	// Merge both responses into one structured JSON
+	// PDF expects: criminal_court: { data: { records: [...], total: ... } }
 	const reportData = {
 		status: true,
 		data: {
-			criminal_court: criminalResponse.data,
-			civil_court: civilResponse.data
+			criminal_court: criminalResponse || null,
+			civil_court: civilResponse || null
 		}
 	};
 	reportData.data.uuid = 'abcdef';
@@ -747,29 +963,40 @@ async function director_court_report(bussiness) {
 async function director_court_civil(bussiness) {
 	const bearerToken = '3eiXhUHT9G25QO9';
 
-	// Civil Court API (POST)
+	// Civil Court API
 	const civilApiUrl = 'https://corp-api.courtdata.com.au/api/search/civil/record';
 	const civilParams = {
-		fullname: `${lname}, ${fname}`,
-		//fullname: 'ADGEMIS, Jon Angelo George',
+		fullname: bussiness?.civilSelection?.fullname || '',
 	};
+	
+	const civilTotal = bussiness?.civilSelection?.total ? parseInt(bussiness.civilSelection.total) : null;
+	let civilResponse;
 
-	const civilResponse = await axios.get(civilApiUrl, {
-		params: civilParams,
-		headers: {
-			'Api-Key': bearerToken,
-			'accept': 'application/json',
-			'X-CSRF-TOKEN': ''
-		},
-		timeout: 30000
-	});
+	// If total is more than 20, fetch all pages
+	if (civilTotal && civilTotal > 20) {
+		const fetchedData = await fetchAllCourtRecords(civilApiUrl, civilParams, bearerToken, civilTotal);
+		// Ensure structure matches: { data: { records: [...], total: ... } }
+		civilResponse = { data: fetchedData.data || fetchedData };
+	} else {
+		const response = await axios.get(civilApiUrl, {
+			params: civilParams,
+			headers: {
+				'Api-Key': bearerToken,
+				'accept': 'application/json',
+				'X-CSRF-TOKEN': ''
+			},
+			timeout: 30000
+		});
+		// Ensure structure matches: { data: { records: [...], total: ... } }
+		civilResponse = { data: response.data?.data || response.data };
+	}
 
-	// Merge both responses into one structured JSON
+	// Return only civil court response
+	// PDF expects: civil_court: { data: { records: [...], total: ... } }
 	const reportData = {
 		status: true,
 		data: {
-			criminal_court: null,
-			civil_court: civilResponse.data
+			civil_court: civilResponse
 		}
 	};
 	reportData.data.uuid = 'abcdef';
@@ -780,10 +1007,19 @@ async function director_court_criminal(bussiness) {
 	const bearerToken = '3eiXhUHT9G25QO9';
 	const criminalApiUrl = 'https://corp-api.courtdata.com.au/api/search/criminal/record';
 	const criminalParams = {
-		fullname: `${lname}, ${fname}`,
+		fullname: bussiness?.criminalSelection?.fullname || '',
 	};
+	
+	const criminalTotal = bussiness?.criminalSelection?.total ? parseInt(bussiness.criminalSelection.total) : null;
+	let criminalResponse;
 
-	const criminalResponse = await axios.get(criminalApiUrl, {
+	// If total is more than 20, fetch all pages
+	if (criminalTotal && criminalTotal > 20) {
+		const fetchedData = await fetchAllCourtRecords(criminalApiUrl, criminalParams, bearerToken, criminalTotal);
+		// Ensure structure matches: { data: { records: [...], total: ... } }
+		criminalResponse = { data: fetchedData.data || fetchedData };
+	} else {
+		const response = await axios.get(criminalApiUrl, {
 		params: criminalParams,
 		headers: {
 			'Api-Key': bearerToken,
@@ -792,13 +1028,16 @@ async function director_court_criminal(bussiness) {
 		},
 		timeout: 30000
 	});
+		// Ensure structure matches: { data: { records: [...], total: ... } }
+		criminalResponse = { data: response.data?.data || response.data };
+	}
 
-	// Merge both responses into one structured JSON
+	// Return only criminal court response
+	// PDF expects: criminal_court: { data: { records: [...], total: ... } }
 	const reportData = {
 		status: true,
 		data: {
-			criminal_court: criminalResponse.data,
-			civil_court: null
+			criminal_court: criminalResponse
 		}
 	};
 	reportData.data.uuid = 'abcdef';
@@ -806,10 +1045,6 @@ async function director_court_criminal(bussiness) {
 }
 
 async function property(abn, cname, ldata) {
-	console.log(abn);
-	console.log(cname);
-	console.log(ldata.addOn);
-
 	let cotalityData = null;
 	let titleRefData = null;
 
@@ -1523,35 +1758,23 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 
 			console.log(reportData.data);
 			if (!existingReport && reportData) {
-				// // Extract search word dynamically from business object
-				// // Check report type first, then fall back to business.isCompany
-				// let searchWord = null;
+				// Extract search word dynamically from business object
+				const searchWord = extractSearchWord(business, type);
 				
-				// // Determine if this is an organization or individual based on report type
-				// // For landtitle reports, use the type to determine organization vs individual
-				// const isLandTitleOrg = type === 'land-title-organisation';
-				// const isLandTitleIndividual = type === 'land-title-individual';
-				// const isOrganization = isLandTitleOrg || 
-				//                      (business?.isCompany == "ORGANISATION" && !isLandTitleIndividual);
-				// const isIndividual = isLandTitleIndividual || 
-				//                    (business?.isCompany == "INDIVIDUAL" && !isLandTitleOrg);
+				// Determine if this is an organization or individual based on report type
+				// For landtitle reports, use the type to determine organization vs individual
+				const isLandTitleOrg = type === 'land-title-organisation';
+				const isLandTitleIndividual = type === 'land-title-individual';
+				const isOrganization = isLandTitleOrg || 
+				                     (business?.isCompany === "ORGANISATION" && !isLandTitleIndividual);
 				
-				// if (isOrganization) {
-				// 	// For organizations, use company name
-				// 	searchWord = business?.Name || business?.name || business?.companyName || business?.CompanyName || null;
-				// 	// For landtitle organization reports, extract ABN if not already extracted
-				// 	if (isLandTitleOrg && !abn) {
-				// 		abn = business?.Abn || business?.abn || null;
-				// 		if (abn && abn.length >= 2) {
-				// 			acn = abn.substring(2);
-				// 		}
-				// 	}
-				// } else if (isIndividual) {
-				// 	// For individuals, combine first and last name
-				// 	const firstName = business?.fname || business?.firstName || '';
-				// 	const lastName = business?.lname || business?.lastName || '';
-				// 	searchWord = `${firstName} ${lastName}`.trim() || null;
-				// }
+				// For landtitle organization reports, extract ABN if not already extracted
+				if (isLandTitleOrg && !abn) {
+					abn = business?.Abn || business?.abn || null;
+					if (abn && abn.length >= 2) {
+						acn = abn.substring(2);
+					}
+				}
 
 				if (isOrganization) {
 					[iresult] = await sequelize.query(`
@@ -1560,7 +1783,7 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 							bind: [
 								type,
 								reportData.data.uuid,
-								null,
+								searchWord || null,
 								abn || null,
 								acn || null,
 								JSON.stringify(reportData.data) || null,
@@ -1575,7 +1798,7 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 							bind: [
 								type,
 								reportData.data.uuid,
-								null,
+								searchWord || null,
 								null,
 								null,
 								JSON.stringify(reportData.data) || null,

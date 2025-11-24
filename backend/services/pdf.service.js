@@ -28,6 +28,69 @@ function fmtDate(date) {
   return moment(date).format('DD MMM YYYY');
 }
 
+/**
+ * Extract search word from business object based on report type
+ * For ORGANISATION: returns company name
+ * For INDIVIDUAL: returns name from selection object if available, otherwise fname + lname
+ * @param {Object} business - Business object containing report data
+ * @param {String} type - Report type
+ * @returns {String|null} - Search word or null if not found
+ */
+function extractSearchWord(business, type) {
+	if (!business) {
+		return null;
+	}
+
+	// Determine if this is an organization or individual based on report type
+	const isLandTitleOrg = type === 'land-title-organisation';
+	const isLandTitleIndividual = type === 'land-title-individual';
+	const isOrganization = isLandTitleOrg || 
+	                     (business?.isCompany === "ORGANISATION" && !isLandTitleIndividual);
+	const isIndividual = isLandTitleIndividual || 
+	                    (business?.isCompany === "INDIVIDUAL" && !isLandTitleOrg);
+
+	if (isOrganization) {
+		// For organizations, use company name
+		return business?.Name || business?.name || business?.companyName || business?.CompanyName || null;
+	} else if (isIndividual) {
+		// For individuals, check for selection objects first based on report type
+		let searchWord = null;
+
+		// Check report-specific selection objects
+		if (type === 'director-bankruptcy' && business?.bankruptcySelection?.debtor) {
+			const debtor = business.bankruptcySelection.debtor;
+			const givenNames = debtor.givenNames || '';
+			const surname = debtor.surname || '';
+			if (givenNames || surname) {
+				searchWord = `${givenNames} ${surname}`.trim();
+			}
+		} else if (type === 'director-related' && business?.directorRelatedSelection?.name) {
+			searchWord = business.directorRelatedSelection.name;
+		} else if (type === 'director-court' || type === 'director-court-civil' || type === 'director-court-criminal') {
+			// For court reports, prefer civilSelection.fullname, fallback to criminalSelection.fullname
+			if (business?.civilSelection?.fullname) {
+				searchWord = business.civilSelection.fullname;
+			} else if (business?.criminalSelection?.fullname) {
+				searchWord = business.criminalSelection.fullname;
+			}
+		}
+
+		// If no selection object found, use fname and lname
+		if (!searchWord) {
+			const firstName = business?.fname || business?.firstName || '';
+			const middleName = business?.mname || business?.middleName || '';
+			const lastName = business?.lname || business?.lastName || '';
+			
+			const nameParts = [firstName, middleName, lastName].filter(part => part && part.trim());
+			searchWord = nameParts.length > 0 ? nameParts.join(' ').trim() : null;
+		}
+
+		return searchWord;
+	}
+
+	return null;
+}
+
 function fmtDateTime(date) {
   if (!date) return 'N/A';
   return `${moment(date).format('DD MMM YYYY')}<br>${moment(date).format('h:mma')}`;
@@ -1377,14 +1440,36 @@ function extractAsicCompanyData(data) {
 }
 
 // Extract data for Director Bankruptcy Report
-function extractBankruptcyData(data) {
+function extractBankruptcyData(data, business) {
   const rdata = data.rdata || data.data || data;
   
   // Extract search metadata
-  const searchId = rdata.uuid || rdata.insolvencySearchId || data.uuid || 'N/A';
-  // Safely get insolvencies array - ensure it's actually an array
-  const insolvencies = Array.isArray(rdata.insolvencies) ? rdata.insolvencies : [];
-  const resultCount = rdata.resultCount || insolvencies.length || 0;
+  const searchId = rdata.uuid || rdata.extractId || rdata.insolvencySearchId || data.uuid || 'N/A';
+  
+  // Handle two possible data structures:
+  // 1. Array format: rdata.insolvencies = [{debtor: {...}, ...}]
+  // 2. Single record format: rdata.debtor = {...}
+  let insolvencies = [];
+  let debtor = null;
+  
+  if (Array.isArray(rdata.insolvencies)) {
+    // Multiple records format
+    insolvencies = rdata.insolvencies;
+  } else if (rdata.debtor) {
+    // Single record format - wrap it in an array structure
+    debtor = rdata.debtor;
+    insolvencies = [{
+      debtor: debtor,
+      extractId: rdata.extractId || rdata.uuid,
+      uuid: rdata.uuid || rdata.extractId,
+      startDate: debtor.startDate || rdata.startDate
+    }];
+  }
+  
+  // Calculate result count - if we have debtor or insolvencies, count is at least 1
+  const resultCount = rdata.resultCount !== undefined 
+    ? rdata.resultCount 
+    : (insolvencies.length > 0 || debtor ? 1 : 0);
   
   // Extract person information from first insolvency record (if available)
   let surname = '';
@@ -1392,19 +1477,38 @@ function extractBankruptcyData(data) {
   let dateOfBirth = '';
   let occupation = '';
   let addressSuburb = '';
+  let startDate = '';
   
   if (insolvencies.length > 0) {
     const firstInsolvency = insolvencies[0];
-    const debtor = firstInsolvency.debtor || {};
+    const firstDebtor = firstInsolvency.debtor || firstInsolvency || debtor || {};
+    surname = firstDebtor.surname || '';
+    givenNames = firstDebtor.givenNames || '';
+    dateOfBirth = firstDebtor.dateOfBirth || '';
+    occupation = firstDebtor.occupation || '';
+    addressSuburb = firstDebtor.addressSuburb || '';
+    startDate = firstDebtor.startDate || firstInsolvency.startDate || '';
+  } else if (rdata.debtor) {
+    // Direct debtor object
+    debtor = rdata.debtor;
     surname = debtor.surname || '';
     givenNames = debtor.givenNames || '';
     dateOfBirth = debtor.dateOfBirth || '';
     occupation = debtor.occupation || '';
     addressSuburb = debtor.addressSuburb || '';
+    startDate = debtor.startDate || '';
   }
   
-  // Format full name
-  const fullName = [surname, givenNames].filter(Boolean).join(' ').toUpperCase() || 'N/A';
+  // Get search word from business parameter - use it even if results are empty
+  const searchWord = extractSearchWord(business, 'director-bankruptcy');
+  
+  // Format full name - prefer search word from business, fallback to extracted data
+  let fullName = 'N/A';
+  if (searchWord) {
+    fullName = searchWord.toUpperCase();
+  } else {
+    fullName = [surname, givenNames].filter(Boolean).join(' ').toUpperCase() || 'N/A';
+  }
   
   // Format date of birth
   const formattedDateOfBirth = dateOfBirth ? moment(dateOfBirth).format('DD MMMM YYYY') : 'N/A';
@@ -1443,14 +1547,16 @@ function extractBankruptcyData(data) {
   
   // Generate search details HTML
   let searchDetailsRows = '';
-  if (insolvencies.length > 0) {
-    const firstInsolvency = insolvencies[0];
-    const debtor = firstInsolvency.debtor || {};
-    const searchSurname = debtor.surname || 'N/A';
-    const searchGivenNames = debtor.givenNames || 'N/A';
-    const searchMiddleName = debtor.middleName ? debtor.middleName : 'Any (including none)';
-    const searchDateOfBirth = debtor.dateOfBirth ? moment(debtor.dateOfBirth).format('DD MMMM YYYY') : 'N/A';
-    const searchDateOfBirthMatch = debtor.dateOfBirth ? '(Exact match)' : '';
+  if (insolvencies.length > 0 || debtor) {
+    const firstDebtor = insolvencies.length > 0 
+      ? (insolvencies[0].debtor || insolvencies[0])
+      : (debtor || rdata.debtor || {});
+    
+    const searchSurname = firstDebtor.surname || surname || 'N/A';
+    const searchGivenNames = firstDebtor.givenNames || givenNames || 'N/A';
+    const searchMiddleName = firstDebtor.middleName ? firstDebtor.middleName : 'Any (including none)';
+    const searchDateOfBirth = (firstDebtor.dateOfBirth || dateOfBirth) ? moment(firstDebtor.dateOfBirth || dateOfBirth).format('DD MMMM YYYY') : 'N/A';
+    const searchDateOfBirthMatch = (firstDebtor.dateOfBirth || dateOfBirth) ? '(Exact match)' : '';
     
     searchDetailsRows = `
         <div class="data-item"><div class="data-label">Search Date</div><div class="data-value">${searchDateTime}</div></div>
@@ -1508,13 +1614,17 @@ function extractBankruptcyData(data) {
 }
 
 // Extract data for Director Related Entities Report
-function extractDirectorRelatedEntitiesData(data) {
+function extractDirectorRelatedEntitiesData(data, business) {
   // Handle different data structures (could be rdata or data)
   const rdata = data.rdata || data;
   
+  // Get search word from business parameter - use it even if results are empty
+  const searchWord = extractSearchWord(business, 'director-related');
+  
   // Extract entity information
   const entity = rdata.entity || {};
-  const directorName = entity.name || 'N/A';
+  // Prefer search word from business, fallback to entity name
+  const directorName = searchWord || entity.name || 'N/A';
   const dateOfBirth = entity.date_of_birth && entity.date_of_birth !== '0000-00-00' 
     ? moment(entity.date_of_birth).format('DD/MM/YYYY') 
     : 'N/A';
@@ -1779,7 +1889,7 @@ function extractDirectorRelatedEntitiesData(data) {
 }
 
 // Extract data for PPSR Report
-function extractPpsrData(data) {
+function extractPpsrData(data, business, reportype) {
   // Handle different data structures (could be rdata.resource or data.resource)
   const resource = data.resource || data.rdata?.resource || data;
   const searchCriteriaSummary = resource.searchCriteriaSummaries?.[0] || {};
@@ -1795,6 +1905,10 @@ function extractPpsrData(data) {
   let entityAcn = '';
   let entityAbn = '';
   
+  // let entityName = business.Name;
+  // let entityAcn = business.Abn.substring(2);
+  // let entityAbn = business.Abn;
+
   if (items.length > 0) {
     const firstItem = items[0];
     if (firstItem.grantors && firstItem.grantors.length > 0) {
@@ -1807,6 +1921,14 @@ function extractPpsrData(data) {
           entityAbn = firstGrantor.organisationNumber || '';
         }
       }
+    }
+  }
+  
+  // For director-ppsr reports, use search word from business parameter
+  if (reportype === 'director-ppsr' && business) {
+    const searchWord = extractSearchWord(business, 'director-ppsr');
+    if (searchWord) {
+      entityName = searchWord;
     }
   }
   
@@ -2314,7 +2436,7 @@ function extractPpsrData(data) {
 }
 
 // Extract data for Director Court Report
-function extractDirectorCourtData(data) {
+function extractDirectorCourtData(data, business) {
   const criminalCourtSection = data.criminal_court;
   const civilCourtSection = data.civil_court;
 
@@ -2335,7 +2457,19 @@ function extractDirectorCourtData(data) {
   // Get first record for cover page details (try criminal first, then civil)
   const firstRecord = criminalRecords[0] || civilRecords[0] || {};
   
-  const directorName = firstRecord.fullname || (firstRecord.given_name + ' ' + firstRecord.surname) || 'N/A';
+  // Get search word from business parameter - use it even if results are empty
+  // Determine report type for search word extraction
+  const reportType = business?.type || 'director-court';
+  const searchWord = extractSearchWord(business, reportType);
+  
+  // Prefer search word from business, fallback to extracted data
+  let directorName = 'N/A';
+  if (searchWord) {
+    directorName = searchWord;
+  } else {
+    directorName = firstRecord.fullname || (firstRecord.given_name + ' ' + firstRecord.surname) || 'N/A';
+  }
+  
   const reportDate = moment().format('DD MMMM YYYY');
   
   // Build criminal court rows
@@ -2397,11 +2531,37 @@ function extractDirectorCourtData(data) {
                     </tr>`;
   }
   
+  // Extract given name and surname from search word if available, otherwise from first record
+  let directorGivenName = 'N/A';
+  let directorSurname = 'N/A';
+  
+  if (searchWord) {
+    // Try to parse the search word (format: "SURNAME, Given Names" or "Given Names SURNAME")
+    const nameParts = searchWord.split(',').map(part => part.trim());
+    if (nameParts.length === 2) {
+      // Format: "SURNAME, Given Names"
+      directorSurname = nameParts[0] || 'N/A';
+      directorGivenName = nameParts[1] || 'N/A';
+    } else {
+      // Format: "Given Names SURNAME" or just "Name"
+      const words = searchWord.split(' ').filter(w => w.trim());
+      if (words.length > 1) {
+        directorSurname = words[words.length - 1] || 'N/A';
+        directorGivenName = words.slice(0, -1).join(' ') || 'N/A';
+      } else {
+        directorGivenName = searchWord;
+      }
+    }
+  } else {
+    directorGivenName = firstRecord.given_name || 'N/A';
+    directorSurname = firstRecord.surname || 'N/A';
+  }
+  
   return {
     director_name: directorName,
     report_date: reportDate,
-    director_given_name: firstRecord.given_name || 'N/A',
-    director_surname: firstRecord.surname || 'N/A',
+    director_given_name: directorGivenName,
+    director_surname: directorSurname,
     total_records: totalRecords,
     total_criminal_records: isCriminalNotOrdered ? 0 : totalCriminalRecords,
     total_civil_records: isCivilNotOrdered ? 0 : totalCivilRecords,
@@ -3731,15 +3891,15 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
   } else if (reportype === 'asic-company') {
     extractedData = extractAsicCompanyData(data);
   } else if (reportype === 'ppsr') {
-    extractedData = extractPpsrData(data);
+    extractedData = extractPpsrData(data, bussiness, reportype);
   } else if (reportype === 'director-ppsr') {
-    extractedData = extractPpsrData(data);
+    extractedData = extractPpsrData(data, bussiness, reportype);
   } else if (reportype === 'director-bankruptcy') {
-    extractedData = extractBankruptcyData(data);
+    extractedData = extractBankruptcyData(data, bussiness);
   } else if (reportype === 'director-related') {
-    extractedData = extractDirectorRelatedEntitiesData(data);
+    extractedData = extractDirectorRelatedEntitiesData(data, bussiness);
   } else if (reportype === 'director-court' || reportype === 'director-court-civil' || reportype === 'director-court-criminal' ) {
-    extractedData = extractDirectorCourtData(data);
+    extractedData = extractDirectorCourtData(data, bussiness);
   } else if (reportype === 'property' ) {
     extractedData = extractpropertyData(data);
   } else if (reportype === 'director-property' ) {
@@ -4375,7 +4535,6 @@ const getEnhancedCSS = () => `
       page-break-inside: avoid;
       break-after: page;
       width: 210mm;
-      height: 297mm;
       position: relative;
       background: white;
       margin: 0;
@@ -4595,10 +4754,8 @@ async function addDownloadReportInDB(rdata, userId, matterId, reportId, reportNa
   } else if (reportype == "land-title-address" ) {
     templateName = 'landtitle-titleadd.html';
   } else if (reportype == "land-title-organisation" ) {
-    // Organization landtitle reports use landtitle-report.html
     templateName = 'landtitle-report.html';
   } else if (reportype == "land-title-individual" ) {
-    // Individual landtitle reports use landtitle-individual-report.html
     templateName = 'landtitle-individual-report.html';
   } else {
     throw new Error(`Unknown report type: ${reportype}`);
@@ -4619,15 +4776,6 @@ async function addDownloadReportInDB(rdata, userId, matterId, reportId, reportNa
   // Replace variables in HTML - use rdata.data if rdata is an axios response object
   // But preserve the business object if it exists at the root level
   let dataForTemplate = rdata.data || rdata;
-  
-  
-  console.log('📋 Final dataForTemplate structure for replaceVariables:', {
-    hasData: !!dataForTemplate.data,
-    hasBusiness: !!dataForTemplate.business,
-    keys: Object.keys(dataForTemplate),
-    reportype
-  });
-  
   const updatedHtml = replaceVariables(htmlContent, dataForTemplate, reportype, business);
 
   // Generate filename

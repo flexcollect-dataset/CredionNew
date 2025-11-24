@@ -122,7 +122,7 @@ declare global {
   }
 }
 
-const Search = () => {
+const Search: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('ORGANISATION');
   const [selectedSearches, setSelectedSearches] = useState<Set<SearchType>>(new Set());
   const [selectedAsicTypes, setSelectedAsicTypes] = useState<Set<AsicType>>(new Set());
@@ -155,6 +155,11 @@ const Search = () => {
   const [individualMiddleName, setIndividualMiddleName] = useState('');
   const [individualLastName, setIndividualLastName] = useState('');
   const [individualDateOfBirth, setIndividualDateOfBirth] = useState('');
+  
+  // PPSR DOB picker modal state (only for individual PPSR when DOB is missing)
+  const [isPpsrDobModalOpen, setIsPpsrDobModalOpen] = useState(false);
+  const [ppsrDobValue, setPpsrDobValue] = useState('');
+  const confirmedPpsrDobRef = useRef<string>(''); // Track confirmed DOB to avoid state update delay
 
   // Data availability
   const [, setDataAvailable] = useState<boolean | null>(null);
@@ -276,7 +281,7 @@ const Search = () => {
   const [currentDirectorIndex, setCurrentDirectorIndex] = useState<number>(-1);
   const [directorRelatedMatches, setDirectorRelatedMatches] = useState<Map<number, DirectorRelatedMatch | null>>(new Map());
   const [directorPpsrMatches, setDirectorPpsrMatches] = useState<Map<number, DirectorRelatedMatch | null>>(new Map());
-  const [directorBankruptcyMatches, setDirectorBankruptcyMatches] = useState<Map<number, DirectorRelatedMatch | null>>(new Map());
+  const [directorBankruptcyMatches, setDirectorBankruptcyMatches] = useState<Map<number, BankruptcyMatch | null>>(new Map());
   const [currentDirectorSearchType, setCurrentDirectorSearchType] = useState<'related' | 'ppsr' | 'bankruptcy' | null>(null);
 
   const formatDisplayDate = useCallback((value?: string | null) => {
@@ -1232,93 +1237,66 @@ const Search = () => {
   }, [directorsList]);
 
   // Handler for director PPSR search in ORGANISATION category
+  // Note: No person selection popup for PPSR as there's no API to find persons
   const handleDirectorPpsrSearch = useCallback(async (directorIndex: number) => {
     if (directorIndex < 0 || directorIndex >= directorsList.length) {
+      // All directors processed, complete the flow
       setCurrentDirectorIndex(-1);
       setIsIndividualNameSearchModalOpen(false);
       setIndividualNameSearchModalType(null);
       setCurrentDirectorSearchType(null);
+      
+      // Add DIRECTOR PPSR to selected additional searches if not already added
+      setSelectedAdditionalSearches(prev => {
+        if (!prev.has('DIRECTOR PPSR')) {
+          const updated = new Set(prev);
+          updated.add('DIRECTOR PPSR');
+          return updated;
+        }
+        return prev;
+      });
       return;
     }
 
     const director = directorsList[directorIndex];
     if (!director) {
+      // Skip invalid director and move to next
       handleDirectorPpsrSearch(directorIndex + 1);
       return;
     }
 
     const directorName = director.fullName || `${director.firstName} ${director.lastName}`.trim();
-    console.log(`Processing Director ${directorIndex + 1}/${directorsList.length} for PPSR: ${directorName}`);
+    console.log(`Processing Director ${directorIndex + 1}/${directorsList.length} for PPSR: ${directorName} (no person selection needed)`);
 
-    setSelectedRelatedMatch(null);
-    setRelatedEntityMatchOptions([]);
-    setRelatedMatchesError(null);
-    setIsLoadingRelatedMatches(true);
+    // Store null for this director since we're not selecting a person match
+    setDirectorPpsrMatches(prev => {
+      const updated = new Map(prev);
+      updated.set(directorIndex, null);
+      return updated;
+    });
 
-    try {
-      let dobFromParam: string | undefined;
-      let dobToParam: string | undefined;
+    // Move to next director without showing popup
+    const nextIndex = directorIndex + 1;
+    if (nextIndex < directorsList.length) {
+      setCurrentDirectorIndex(nextIndex);
+      // Process next director
+      handleDirectorPpsrSearch(nextIndex);
+    } else {
+      // All directors processed
+      setCurrentDirectorIndex(-1);
+      setIsIndividualNameSearchModalOpen(false);
+      setIndividualNameSearchModalType(null);
+      setCurrentDirectorSearchType(null);
       
-      if (director.dob) {
-        const dobParts = director.dob.split('/');
-        if (dobParts.length === 3) {
-          const [day, month, year] = dobParts;
-          dobFromParam = `${day}-${month}-${year}`;
-          dobToParam = `${day}-${month}-${year}`;
+      // Add DIRECTOR PPSR to selected additional searches if not already added
+      setSelectedAdditionalSearches(prev => {
+        if (!prev.has('DIRECTOR PPSR')) {
+          const updated = new Set(prev);
+          updated.add('DIRECTOR PPSR');
+          return updated;
         }
-      }
-
-      const lastName = director.lastName?.trim() || '';
-      if (!lastName) {
-        console.warn(`Director ${directorIndex + 1} has no last name, skipping...`);
-        handleDirectorPpsrSearch(directorIndex + 1);
-        return;
-      }
-
-      const response = await apiService.searchIndividualRelatedEntityMatches({
-        firstName: director.firstName?.trim() || undefined,
-        lastName: lastName,
-        dobFrom: dobFromParam,
-        dobTo: dobToParam
+        return prev;
       });
-
-      const matches = response?.matches || [];
-      const labelCounts = new Map<string, number>();
-      const formattedOptions = matches.map((match) => {
-        const parts: string[] = [];
-        parts.push(match.name || 'Unknown');
-        if (match.dob) {
-          parts.push(`DOB: ${match.dob}`);
-        }
-        if (match.state) {
-          parts.push(match.state);
-        }
-        if (match.suburb) {
-          parts.push(match.suburb);
-        }
-
-        const baseLabel = parts.join(' • ');
-        const currentCount = labelCounts.get(baseLabel) ?? 0;
-        labelCounts.set(baseLabel, currentCount + 1);
-
-        const label = currentCount > 0 ? `${baseLabel} (${currentCount + 1})` : baseLabel;
-
-        return { label, match };
-      });
-
-      setRelatedEntityMatchOptions(formattedOptions);
-      
-      setIndividualNameSearchModalType('related');
-      setIsIndividualNameSearchModalOpen(true);
-    } catch (error: any) {
-      console.error('Error fetching PPSR matches for director:', error);
-      setRelatedMatchesError(
-        error?.message || 'Failed to fetch PPSR records. Please try again.'
-      );
-      setIndividualNameSearchModalType('related');
-      setIsIndividualNameSearchModalOpen(true);
-    } finally {
-      setIsLoadingRelatedMatches(false);
     }
   }, [directorsList]);
 
@@ -1341,21 +1319,24 @@ const Search = () => {
     const directorName = director.fullName || `${director.firstName} ${director.lastName}`.trim();
     console.log(`Processing Director ${directorIndex + 1}/${directorsList.length} for Bankruptcy: ${directorName}`);
 
-    setSelectedRelatedMatch(null);
-    setRelatedEntityMatchOptions([]);
-    setRelatedMatchesError(null);
-    setIsLoadingRelatedMatches(true);
+    setSelectedBankruptcyMatch(null);
+    setBankruptcyMatchOptions([]);
+    setBankruptcyMatchesError(null);
+    setIsLoadingBankruptcyMatches(true);
 
     try {
-      let dobFromParam: string | undefined;
-      let dobToParam: string | undefined;
+      let dateOfBirthParam: string | undefined;
       
       if (director.dob) {
+        // Convert DD/MM/YYYY to the format expected by bankruptcy API
         const dobParts = director.dob.split('/');
         if (dobParts.length === 3) {
           const [day, month, year] = dobParts;
-          dobFromParam = `${day}-${month}-${year}`;
-          dobToParam = `${day}-${month}-${year}`;
+          // Bankruptcy API expects YYYY-MM-DD format
+          dateOfBirthParam = `${year}-${month}-${day}`;
+        } else {
+          // If already in another format, try to use as is
+          dateOfBirthParam = director.dob;
         }
       }
 
@@ -1366,26 +1347,26 @@ const Search = () => {
         return;
       }
 
-      const response = await apiService.searchIndividualRelatedEntityMatches({
+      const response = await apiService.searchIndividualBankruptcyMatches({
         firstName: director.firstName?.trim() || undefined,
         lastName: lastName,
-        dobFrom: dobFromParam,
-        dobTo: dobToParam
+        dateOfBirth: dateOfBirthParam
       });
 
       const matches = response?.matches || [];
       const labelCounts = new Map<string, number>();
       const formattedOptions = matches.map((match) => {
+        const name = [match.debtor?.givenNames, match.debtor?.surname].filter(Boolean).join(' ').trim();
+        const dob = formatDisplayDate(match.debtor?.dateOfBirth);
+        const startDate = formatDisplayDate(match.startDate);
+
         const parts: string[] = [];
-        parts.push(match.name || 'Unknown');
-        if (match.dob) {
-          parts.push(`DOB: ${match.dob}`);
+        parts.push(name || 'Unknown');
+        if (dob) {
+          parts.push(`DOB: ${dob}`);
         }
-        if (match.state) {
-          parts.push(match.state);
-        }
-        if (match.suburb) {
-          parts.push(match.suburb);
+        if (startDate) {
+          parts.push(`Start: ${startDate}`);
         }
 
         const baseLabel = parts.join(' • ');
@@ -1397,21 +1378,21 @@ const Search = () => {
         return { label, match };
       });
 
-      setRelatedEntityMatchOptions(formattedOptions);
+      setBankruptcyMatchOptions(formattedOptions);
       
-      setIndividualNameSearchModalType('related');
+      setIndividualNameSearchModalType('bankruptcy');
       setIsIndividualNameSearchModalOpen(true);
     } catch (error: any) {
       console.error('Error fetching bankruptcy matches for director:', error);
-      setRelatedMatchesError(
+      setBankruptcyMatchesError(
         error?.message || 'Failed to fetch bankruptcy records. Please try again.'
       );
-      setIndividualNameSearchModalType('related');
+      setIndividualNameSearchModalType('bankruptcy');
       setIsIndividualNameSearchModalOpen(true);
     } finally {
-      setIsLoadingRelatedMatches(false);
+      setIsLoadingBankruptcyMatches(false);
     }
-  }, [directorsList]);
+  }, [directorsList, formatDisplayDate]);
 
   const handleLandTitleIndividualSearchClick = useCallback(async () => {
     const isBankruptcySearch = isIndividualBankruptcySelected;
@@ -1419,6 +1400,37 @@ const Search = () => {
     const isIndividualCourtSearch = selectedCategory === 'INDIVIDUAL' && selectedSearches.has('COURT');
     const isIndividualLandTitleSearch = selectedCategory === 'INDIVIDUAL' && selectedSearches.has('INDIVIDUAL LAND TITLE');
     const isLandTitleSearch = selectedCategory === 'LAND TITLE';
+    // Check for INDIVIDUAL PPSR in both top searches and additional searches - requires exact DOB
+    const isIndividualPpsrSelected = selectedCategory === 'INDIVIDUAL' && 
+      (selectedSearches.has('INDIVIDUAL PPSR') || selectedIndividualAdditionalSearches.has('INDIVIDUAL PPSR'));
+
+    // Check for INDIVIDUAL PPSR - requires exact DOB (only for INDIVIDUAL category, not LAND TITLE)
+    if (isIndividualPpsrSelected && selectedCategory === 'INDIVIDUAL') {
+      // First check if firstName and lastName are entered
+      const firstName = individualFirstName.trim() || landTitleIndividualFirstName.trim();
+      const lastName = individualLastName.trim() || landTitleIndividualLastName.trim();
+      
+      if (!firstName || !lastName) {
+        alert('Please enter first name and last name before searching');
+        return;
+      }
+      
+      // Check if exact DOB is provided
+      // If we have a confirmed DOB in ref (just confirmed), skip the check
+      const hasConfirmedDob = !!confirmedPpsrDobRef.current;
+      if (!hasConfirmedDob) {
+        // Check state for exact DOB
+        const hasExactDob = landTitleIndividualDobMode === 'EXACT' && landTitleIndividualDob.trim();
+        const isRangeMode = landTitleIndividualDobMode === 'RANGE';
+        
+        // If user selected birth year range or exact DOB is not provided, show DOB picker modal
+        if (isRangeMode || !hasExactDob) {
+          setPpsrDobValue('');
+          setIsPpsrDobModalOpen(true);
+          return; // Don't proceed with search yet
+        }
+      }
+    }
 
     if ((isBankruptcySearch || isRelatedEntitiesSearch) && !landTitleIndividualLastName.trim()) {
       alert('Please enter a last name to search records');
@@ -1449,6 +1461,11 @@ const Search = () => {
       }
     }
 
+    // Clear the confirmed DOB ref after passing validation (if it was set)
+    if (confirmedPpsrDobRef.current) {
+      confirmedPpsrDobRef.current = '';
+    }
+    
     setIsLandTitleIndividualSearchPerformed(true);
     setIsIndividualNameConfirmed(false);
     setSelectedLandTitleIndividualMatch(null);
@@ -1978,12 +1995,42 @@ const Search = () => {
     setIsIndividualNameSearchModalOpen(false);
     setPendingIndividualNameSelection(null);
 
-    const isIndividualCourtSearch = selectedCategory === 'INDIVIDUAL' && selectedSearches.has('COURT');
+    const isIndividualCourtSearch = selectedCategory === 'INDIVIDUAL' && 
+      (selectedSearches.has('COURT') || selectedIndividualAdditionalSearches.has('COURT'));
     const isIndividualLandTitleSearch = selectedCategory === 'INDIVIDUAL' && selectedSearches.has('INDIVIDUAL LAND TITLE');
 
     // Determine next modal to show based on sequence: bankruptcy -> related -> criminal -> civil -> land title
     if (individualNameSearchModalType === 'bankruptcy') {
-      // Just confirmed bankruptcy - check what's next
+      // Check if this is a director bankruptcy
+      if (selectedCategory === 'ORGANISATION' && currentDirectorIndex >= 0 && currentDirectorSearchType === 'bankruptcy') {
+        // Director bankruptcy - store the match directly from pendingSelection (full match object or null if fallback name selected)
+        // Use bankruptcyMatch from pendingIndividualNameSelection, not from state (state update is async)
+        const matchToStore = source === 'bankruptcy' ? (bankruptcyMatch ?? null) : null;
+        const updatedMatches = new Map(directorBankruptcyMatches);
+        updatedMatches.set(currentDirectorIndex, matchToStore);
+        setDirectorBankruptcyMatches(updatedMatches);
+
+        const nextIndex = currentDirectorIndex + 1;
+        if (nextIndex < directorsList.length) {
+          // Move to next director
+          setCurrentDirectorIndex(nextIndex);
+          handleDirectorBankruptcySearch(nextIndex);
+        } else {
+          // All directors processed - add to selected searches and close
+          setCurrentDirectorIndex(-1);
+          setIsIndividualNameSearchModalOpen(false);
+          setIndividualNameSearchModalType(null);
+          setCurrentDirectorSearchType(null);
+          if (!selectedAdditionalSearches.has('DIRECTOR BANKRUPTCY')) {
+            const updated = new Set(selectedAdditionalSearches);
+            updated.add('DIRECTOR BANKRUPTCY');
+            setSelectedAdditionalSearches(updated);
+          }
+        }
+        return;
+      }
+      
+      // Individual bankruptcy - check what's next
       if (isIndividualRelatedEntitiesSelected && !isLoadingRelatedMatches) {
         // Show related entities modal next (even if no results)
         setIndividualNameSearchModalType('related');
@@ -2011,11 +2058,25 @@ const Search = () => {
         setIndividualNameSearchModalType(null);
       }
      } else if (individualNameSearchModalType === 'related') {
+      // Check if this is individual PPSR name confirmation
+      const isIndividualPpsrSelected = selectedCategory === 'INDIVIDUAL' && 
+        (selectedSearches.has('INDIVIDUAL PPSR') || selectedIndividualAdditionalSearches.has('INDIVIDUAL PPSR'));
+      // Only return early for PPSR if court is NOT selected (court modal should be shown first)
+      if (isIndividualPpsrSelected && currentDirectorIndex < 0 && !isIndividualCourtSearch) {
+        // Individual PPSR name confirmed, just close the modal
+        // User will click "Process Reports" later to actually process
+        setIsIndividualNameSearchModalOpen(false);
+        setIndividualNameSearchModalType(null);
+        return;
+      }
       
-       if (selectedCategory === 'ORGANISATION' && currentDirectorIndex >= 0) {
+      if (selectedCategory === 'ORGANISATION' && currentDirectorIndex >= 0) {
          if (currentDirectorSearchType === 'related') {
+           // Director related - store the match directly from pendingSelection (full match object or null if fallback name selected)
+           // Use relatedMatch from pendingIndividualNameSelection, not from state (state update is async)
+           const matchToStore = source === 'related' ? (relatedMatch ?? null) : null;
            const updatedMatches = new Map(directorRelatedMatches);
-           updatedMatches.set(currentDirectorIndex, selectedRelatedMatch);
+           updatedMatches.set(currentDirectorIndex, matchToStore);
            setDirectorRelatedMatches(updatedMatches);
 
            const nextIndex = currentDirectorIndex + 1;
@@ -2057,7 +2118,7 @@ const Search = () => {
            return;
          } else if (currentDirectorSearchType === 'bankruptcy') {
            const updatedMatches = new Map(directorBankruptcyMatches);
-           updatedMatches.set(currentDirectorIndex, selectedRelatedMatch);
+           updatedMatches.set(currentDirectorIndex, selectedBankruptcyMatch);
            setDirectorBankruptcyMatches(updatedMatches);
 
            const nextIndex = currentDirectorIndex + 1;
@@ -2200,6 +2261,35 @@ const Search = () => {
 
   // Handler for closing individual name search modal (called when user clicks Cancel or X)
   // Note: This is NOT called when user confirms - handleIndividualNameSearchConfirm handles that
+  // Handler to confirm PPSR DOB and proceed with search (which will show name selection)
+  const handlePpsrDobConfirm = useCallback(() => {
+    if (!ppsrDobValue.trim()) {
+      alert('Please select a date of birth');
+      return;
+    }
+    
+    // Store confirmed DOB in ref for immediate use (avoids state update delay)
+    confirmedPpsrDobRef.current = ppsrDobValue;
+    
+    // Set the exact DOB in the form fields (update both landTitleIndividualDob and individualDateOfBirth)
+    setLandTitleIndividualDob(ppsrDobValue);
+    setLandTitleIndividualDobMode('EXACT'); // Ensure mode is set to EXACT
+    setIndividualDateOfBirth(ppsrDobValue);
+    setIsPpsrDobModalOpen(false);
+    
+    // After DOB is confirmed, continue with the search which will show name selection modal
+    // Use setTimeout to ensure modal is closed before calling the search handler
+    setTimeout(() => {
+      handleLandTitleIndividualSearchClick();
+    }, 100);
+  }, [ppsrDobValue, handleLandTitleIndividualSearchClick]);
+  
+  const handlePpsrDobModalClose = useCallback(() => {
+    setIsPpsrDobModalOpen(false);
+    setPpsrDobValue('');
+    confirmedPpsrDobRef.current = ''; // Clear ref when modal is closed
+  }, []);
+
   const handleIndividualNameSearchModalClose = useCallback(() => {
     // User cancelled - remove the search option but continue to next popup
     if (individualNameSearchModalType === 'bankruptcy') {
@@ -4325,9 +4415,9 @@ setLandTitleOrganisationSearchTerm(displayText);
         if (!hasFirstName || !hasLastName) {
           alert('Please enter first name and last name');
           return;
-        }
-      }
-    }
+        }
+      }
+    }
 
     // Check if at least one search is selected
     const hasMainSearches = Array.from(selectedSearches).some(s => s !== 'SELECT ALL');
@@ -4663,34 +4753,46 @@ setLandTitleOrganisationSearchTerm(displayText);
         const shouldLoopDirectors = isDirectorReport && selectedCategory === 'ORGANISATION' && directorsList.length > 0;
         if (shouldLoopDirectors) {
           // Loop through each director and create a report for each
-          for (const director of directorsList) {
+          for (const [directorIndex, director] of directorsList.entries()) {
+            // Base business data - director reports are person type reports, so use INDIVIDUAL
+            const business: any = {
+              Abn: abn,
+              Name: companyName || 'Unknown',
+              isCompany: 'INDIVIDUAL', // Director reports are person type reports
+              fname: director.firstName,
+              lname: director.lastName,
+              dob: director.dob || ''
+            };
+
+            // Always pass the full API match response for director reports
+            // This allows backend to handle individual and director reports the same way
+            if (reportType === 'director-bankruptcy') {
+              const bankruptcyMatch = directorBankruptcyMatches.get(directorIndex);
+              // Only include the property if there's an actual value (not null/undefined)
+              if (bankruptcyMatch != null) {
+                business.bankruptcySelection = bankruptcyMatch;
+              }
+            } else if (reportType === 'director-related') {
+              const relatedMatch = directorRelatedMatches.get(directorIndex);
+              // Only include the property if there's an actual value (not null/undefined)
+              if (relatedMatch != null) {
+                business.directorRelatedSelection = relatedMatch;
+              }
+            }
+
             const reportData: any = {
               type: reportType,
               userId: user?.userId || 0,
               matterId: currentMatter?.matterId,
               ispdfcreate: true as const,
-              business: {
-                Abn: abn,
-                Name: companyName || 'Unknown',
-                isCompany: 'ORGANISATION',
-                fname: director.firstName,
-                lname: director.lastName,
-                dob: director.dob
-              }
+              business
             };
-
-            if (reportItem.meta?.landTitleSelection) {
-              reportData.business = {
-                ...reportData.business,
-                landTitleSelection: reportItem.meta.landTitleSelection
-              };
-            }
 
             console.log(reportData);
 
             // Call backend to create report
-           //const reportResponse = await apiService.createReport(reportData);
-            const reportResponse: any = null;
+            const reportResponse = await apiService.createReport(reportData);
+            //const reportResponse: any = null;
             // Extract PDF filename from response
             const pdfFilename = (reportResponse as any)?.report;
 
@@ -4744,10 +4846,12 @@ setLandTitleOrganisationSearchTerm(displayText);
               isCompany: 'INDIVIDUAL'
             };
 
-            if (reportType === 'director-bankruptcy' && selectedBankruptcyMatch) {
+            // Only include bankruptcySelection if it has a value (not null/undefined)
+            if (reportType === 'director-bankruptcy' && selectedBankruptcyMatch != null) {
               (businessData as any).bankruptcySelection = selectedBankruptcyMatch;
             }
-            if (reportType === 'director-related' && selectedRelatedMatch) {
+            // Only include directorRelatedSelection if it has a value (not null/undefined)
+            if (reportType === 'director-related' && selectedRelatedMatch != null) {
               (businessData as any).directorRelatedSelection = selectedRelatedMatch;
             }
             // Handle court data - pass criminal and/or civil matches based on report type
@@ -4821,73 +4925,26 @@ setLandTitleOrganisationSearchTerm(displayText);
             reportData.documentId = documentSearchId;
           }
 
-          // Handle ALL court selection - create separate reports for criminal and civil
-          if (reportItem.type === 'COURT' && selectedCategory === 'INDIVIDUAL' && selectedCourtType === 'ALL') {
-            // Create criminal court report if criminal match exists
-            if (selectedCriminalMatch) {
-              const criminalReportData = {
-                ...reportData,
-                type: 'director-court-criminal',
-                business: {
-                  ...(reportData.business || {}),
-                  criminalSelection: selectedCriminalMatch
-                }
-              };
-              console.log('Criminal Court Report Data:', criminalReportData);
-              //const criminalReportResponse = await apiService.createReport(criminalReportData);
-              const criminalReportResponse: any = null;
-              const criminalPdfFilename = (criminalReportResponse as any)?.report;
-              if (criminalPdfFilename && typeof criminalPdfFilename === 'string') {
-                setPdfFilenames(prev => [...prev, criminalPdfFilename]);
-              }
-              createdReports.push({
-                reportResponse: criminalReportResponse,
-                pdfFilename: criminalPdfFilename || undefined
-              });
-            }
-            
-            // Create civil court report if civil match exists
-            if (selectedCivilMatch) {
-              const civilReportData = {
-                ...reportData,
-                type: 'director-court-civil',
-                business: {
-                  ...(reportData.business || {}),
-                  civilSelection: selectedCivilMatch
-                }
-              };
-              console.log('Civil Court Report Data:', civilReportData);
-              //const civilReportResponse = await apiService.createReport(civilReportData);
-              const civilReportResponse: any = null;
-              const civilPdfFilename = (civilReportResponse as any)?.report;
-              if (civilPdfFilename && typeof civilPdfFilename === 'string') {
-                setPdfFilenames(prev => [...prev, civilPdfFilename]);
-              }
-              createdReports.push({
-                reportResponse: civilReportResponse,
-                pdfFilename: civilPdfFilename || undefined
-              });
-            }
-          } else {
-            // Normal report creation for non-ALL court or other report types
-            console.log(reportData);
-            // Call backend to create report
-            //const reportResponse = await apiService.createReport(reportData);
-            const reportResponse: any = null;
-            // Extract PDF filename from response
-            // The response always has the filename in the 'report' property and always ends with .pdf
-            const pdfFilename = (reportResponse as any)?.report;
+          // Normal report creation - single report for all types including 'director-court' (ALL)
+          // When reportType is 'director-court', the businessData already contains both 
+          // criminalSelection and civilSelection, so backend will handle both in one call
+          console.log('Report Data:', reportData);
+          // Call backend to create report
+          const reportResponse = await apiService.createReport(reportData);
+          //const reportResponse: any = null;
+          // Extract PDF filename from response
+          // The response always has the filename in the 'report' property and always ends with .pdf
+          const pdfFilename = (reportResponse as any)?.report;
 
-            if (pdfFilename && typeof pdfFilename === 'string') {
-              // Add PDF filename to the array
-              setPdfFilenames(prev => [...prev, pdfFilename]);
-            }
-
-            createdReports.push({
-              reportResponse,
-              pdfFilename: pdfFilename || undefined
-            });
+          if (pdfFilename && typeof pdfFilename === 'string') {
+            // Add PDF filename to the array
+            setPdfFilenames(prev => [...prev, pdfFilename]);
           }
+
+          createdReports.push({
+            reportResponse,
+            pdfFilename: pdfFilename || undefined
+          });
         }
       }
 
@@ -7694,6 +7751,8 @@ setLandTitleOrganisationSearchTerm(displayText);
                     : currentDirectorSearchType === 'bankruptcy'
                     ? `Select Director Bankruptcy Record ${currentDirectorIndex + 1} of ${directorsList.length}`
                     : `Select Director Related Entity Record ${currentDirectorIndex + 1} of ${directorsList.length}`
+                  : selectedCategory === 'INDIVIDUAL' && (selectedSearches.has('INDIVIDUAL PPSR') || selectedIndividualAdditionalSearches.has('INDIVIDUAL PPSR'))
+                  ? 'Confirm Name for PPSR Search'
                   : 'Select Related Entity Record'
                 : individualNameSearchModalType === 'criminal'
                 ? 'Select Criminal Court Record'
@@ -7713,6 +7772,8 @@ setLandTitleOrganisationSearchTerm(displayText);
                     : currentDirectorSearchType === 'bankruptcy'
                     ? `Please select the exact director bankruptcy record that matches director`
                     : `Please select the exact director related entity record that matches director`
+                  : selectedCategory === 'INDIVIDUAL' && (selectedSearches.has('INDIVIDUAL PPSR') || selectedIndividualAdditionalSearches.has('INDIVIDUAL PPSR'))
+                  ? 'Please confirm the name to use for the PPSR search. This name will be used along with the date of birth you provided.'
                   : 'Please select the exact related entity record that matches the person you are searching for.'
                 : individualNameSearchModalType === 'criminal'
                 ? 'Please select the exact criminal court record that matches the person you are searching for.'
@@ -7815,7 +7876,32 @@ setLandTitleOrganisationSearchTerm(displayText);
                 const personFullName = [personFirstName, personLastName].filter(Boolean).join(' ').trim().toUpperCase() || 'UNKNOWN';
 
                 if (individualNameSearchModalType === 'bankruptcy' && !isLoadingBankruptcyMatches) {
-                  // Always add actual search name as first option
+                  // Check if this is a director bankruptcy or individual bankruptcy
+                  if (selectedCategory === 'ORGANISATION' && currentDirectorIndex >= 0 && directorsList[currentDirectorIndex] && currentDirectorSearchType === 'bankruptcy') {
+                    // Director bankruptcy - use director's name
+                    const director = directorsList[currentDirectorIndex];
+                    const directorFullName = director.fullName || `${director.firstName} ${director.lastName}`.trim().toUpperCase();
+                    
+                    if (directorFullName) {
+                      options.push({
+                        key: `bankruptcy-actual-${directorFullName}`,
+                        displayLabel: directorFullName,
+                        source: 'bankruptcy' as const,
+                        bankruptcyMatch: null
+                      });
+                    }
+                    
+                    // Add separator if there are API results
+                    if (bankruptcyMatchOptions.length > 0 && directorFullName) {
+                      options.push({
+                        key: 'bankruptcy-separator',
+                        displayLabel: '---or---',
+                        source: 'bankruptcy' as const,
+                        bankruptcyMatch: null
+                      });
+                    }
+                  } else {
+                    // Individual bankruptcy - use person's name from input fields
                   if (personLastName) {
                     options.push({
                       key: `bankruptcy-actual-${personFullName}`,
@@ -7833,6 +7919,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                       source: 'bankruptcy' as const,
                       bankruptcyMatch: null
                     });
+                    }
                   }
                   
                   // Add API response options
@@ -7960,13 +8047,33 @@ setLandTitleOrganisationSearchTerm(displayText);
                       civilMatch: option.match
                     })));
                   }
-                } else if (individualNameSearchModalType === 'landtitle' && !isLoadingLandTitlePersonNames && landTitleIndividualMatches.length > 0) {
-                  // Show dynamic results for INDIVIDUAL LAND TITLE
-                  options = landTitleIndividualMatches.map(label => ({
+                } else if (individualNameSearchModalType === 'landtitle' && !isLoadingLandTitlePersonNames) {
+                  // Always add actual search name as first option for LAND TITLE
+                  if (personLastName) {
+                    options.push({
+                      key: `landtitle-actual-${personFullName}`,
+                      displayLabel: personFullName,
+                      source: 'landtitle' as const
+                    });
+                  }
+                  
+                  // Add separator if there are API results
+                  if (landTitleIndividualMatches.length > 0 && personLastName) {
+                    options.push({
+                      key: 'landtitle-separator',
+                      displayLabel: '---or---',
+                      source: 'landtitle' as const
+                    });
+                  }
+                  
+                  // Add API response options
+                  if (landTitleIndividualMatches.length > 0) {
+                    options.push(...landTitleIndividualMatches.map(label => ({
                     key: `landtitle-${label}`,
                     displayLabel: label,
                     source: 'landtitle' as const
-                  }));
+                    })));
+                  }
                 } else if (!individualNameSearchModalType) {
                   // Show mock results when no other search types are selected
                   const isIndividualCourtSearch = selectedCategory === 'INDIVIDUAL' && selectedSearches.has('COURT');
@@ -8036,6 +8143,76 @@ setLandTitleOrganisationSearchTerm(displayText);
                 className="flex-1 rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Confirm Selection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PPSR DOB Picker Modal - Only for Individual PPSR when DOB is missing */}
+      {isPpsrDobModalOpen && selectedCategory === 'INDIVIDUAL' && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-gray-900/60 px-4"
+          onClick={handlePpsrDobModalClose}
+        >
+          <div
+            className="relative w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={handlePpsrDobModalClose}
+              className="absolute top-4 right-4 text-gray-400 transition-colors duration-200 hover:text-red-600"
+              aria-label="Close modal"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <h3 className="text-2xl font-bold text-gray-900 mb-2">
+              Exact Date of Birth Required
+            </h3>
+            <p className="text-sm text-gray-600 mb-6">
+              {landTitleIndividualDobMode === 'RANGE' 
+                ? 'Individual PPSR search requires an exact date of birth. You have selected a birth year range, but an exact date of birth is needed for this search. Please select the exact date of birth for the person you are searching for.'
+                : 'Individual PPSR search requires an exact date of birth. Please select the exact date of birth for the person you are searching for.'}
+            </p>
+            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-xs text-yellow-800 font-medium">
+                <strong>Note:</strong> An exact date of birth is required to proceed with the Individual PPSR search. After confirming, you may be asked to select a person if multiple matches are found.
+              </p>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Date of Birth<span className="text-red-500">*</span>
+              </label>
+              <input
+                type="date"
+                value={ppsrDobValue}
+                onChange={(e) => setPpsrDobValue(e.target.value)}
+                className="block w-full px-4 py-3 border-2 border-gray-200 rounded-xl shadow-sm focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100 transition-colors duration-200"
+                required
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="mt-6 flex justify-between gap-3 pt-6 border-t border-gray-200">
+              <button
+                type="button"
+                onClick={handlePpsrDobModalClose}
+                className="flex-1 rounded-xl border-2 border-gray-200 bg-white py-3 text-sm font-semibold uppercase tracking-wide text-gray-600 transition-all duration-200 hover:border-gray-300 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handlePpsrDobConfirm}
+                disabled={!ppsrDobValue.trim()}
+                className="flex-1 rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Confirm
               </button>
             </div>
           </div>
