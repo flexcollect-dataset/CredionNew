@@ -4176,24 +4176,27 @@ setLandTitleOrganisationSearchTerm(displayText);
   };
 
   const handleLandTitleDetailSelect = (detail: LandTitleDetailSelection) => {
-    // Determine which titleReferences to include based on selection
-    let titleReferencesToInclude: Array<{ titleReference: string; jurisdiction: string }> = [];
+    // Helper function to extract titleReferences from either array or object format
+    const extractTitleReferences = (titleRefs: typeof landTitleCounts.titleReferences, detailType: LandTitleDetailSelection): Array<{ titleReference: string; jurisdiction: string }> => {
+      if (!titleRefs) return [];
+      if (Array.isArray(titleRefs)) {
+        return titleRefs;
+      }
+      if (detailType === 'ALL') {
+        // For "ALL", combine current and historical
+        const current = (titleRefs as { current?: Array<{ titleReference: string; jurisdiction: string }> }).current || [];
+        const historical = (titleRefs as { historical?: Array<{ titleReference: string; jurisdiction: string }> }).historical || [];
+        return [...current, ...historical];
+      } else if (detailType === 'SUMMARY' || detailType === 'CURRENT') {
+        return (titleRefs as { current?: Array<{ titleReference: string; jurisdiction: string }> }).current || [];
+      } else if (detailType === 'PAST') {
+        return (titleRefs as { historical?: Array<{ titleReference: string; jurisdiction: string }> }).historical || [];
+      }
+      return [];
+    };
     
-    if (detail === 'ALL') {
-      // For "ALL", include all titleReferences (current + historical)
-      // Since historical is always 0, all titleReferences are from current
-      titleReferencesToInclude = landTitleCounts.titleReferences || [];
-    } else if (detail === 'CURRENT') {
-      // For "CURRENT", include all current titleReferences
-      // Since historical is always 0, all titleReferences are from current
-      titleReferencesToInclude = landTitleCounts.titleReferences || [];
-    } else if (detail === 'PAST') {
-      // For "PAST", include historical titleReferences (which will be empty since historical is always 0)
-      titleReferencesToInclude = []; // Historical is always 0, so no titleReferences
-    } else {
-      // For "SUMMARY", no titleReferences needed
-      titleReferencesToInclude = [];
-    }
+    // Determine which titleReferences to include based on selection
+    const titleReferencesToInclude = extractTitleReferences(landTitleCounts.titleReferences, detail);
     
     setPendingLandTitleSelection(prev => ({
       ...prev,
@@ -7134,7 +7137,6 @@ setLandTitleOrganisationSearchTerm(displayText);
                       
                       return options.map((match, index) => {
                         const isSelected = selectedLandTitleIndividualMatch === match;
-                        const isActualName = index === 0 && personLastName && match === personFullName;
                         return (
                           <div key={`${match}-${index}`}>
                             {index === 1 && personLastName && landTitleIndividualMatches.length > 0 && (
