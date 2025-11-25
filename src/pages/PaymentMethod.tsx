@@ -4,6 +4,7 @@ import { CreditCard, Check } from 'lucide-react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { apiService } from '../services/api';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_51SIdKfHzbA6hZtQghlH9aivNQpRNOnnYRyk5TvpsapHXkvF8tW2bVlnuP02FaWgF9jBNEVz4NykC35KOMgx9IDIq00EvTPwU4F');
 
@@ -102,10 +103,7 @@ const PaymentForm = () => {
   if (!user) {
     return (
       <div className="pt-16 md:pt-20 min-h-screen bg-gradient-to-br from-white via-credion-grey to-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-credion-red mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
+        <LoadingSpinner text="Loading..." size="lg" />
       </div>
     );
   }

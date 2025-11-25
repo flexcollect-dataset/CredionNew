@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, ArrowRight } from 'lucide-react';
 import { apiService } from '../services/api';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 const MatterSelection: React.FC = () => {
   const navigate = useNavigate();
@@ -76,10 +77,7 @@ const MatterSelection: React.FC = () => {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
+        <LoadingSpinner text="Loading..." size="lg" />
       </div>
     );
   }

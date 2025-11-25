@@ -685,11 +685,15 @@ async function director_bankrupcty_report(bussiness) {
 
 async function director_related_report(bussiness) {
 	const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
-	reportData = null;
+	
 	// Check if directorRelatedSelection exists in business object
 	if (!bussiness || !bussiness.directorRelatedSelection) {
-		reportData.data.uuid = null;
-		return reportData;
+		// Return proper structure when no selection is available
+		return {
+			data: {
+				uuid: null
+			}
+		};
 	}
 
 	// Extract values from directorRelatedSelection
@@ -698,7 +702,7 @@ async function director_related_report(bussiness) {
 	const name = directorRelatedSelection.name || '';
 	const person_id = directorRelatedSelection.person_id || '';
 	const acs_search_id = directorRelatedSelection.search_id || '';
-
+	
 	// Convert dob to DD-MM-YYYY format
 	let formattedDob = "01-03-1993"; // Default fallback
 	if (dob) {
@@ -1312,7 +1316,19 @@ async function land_title_organisation(ldata) {
 	
 	
 	// Get titleReferences from landTitleSelection
-	const titleReferences = ldata.landTitleSelection?.titleReferences || [];
+	// Handle both old format (array) and new format (object with current/historical)
+	let titleReferencesRaw = ldata.landTitleSelection?.titleReferences || [];
+	let titleReferences = { current: [], historical: [] };
+	
+	// Normalize to new format
+	if (Array.isArray(titleReferencesRaw)) {
+		// Old format: flat array, put all in current
+		titleReferences.current = titleReferencesRaw;
+	} else if (titleReferencesRaw.current && Array.isArray(titleReferencesRaw.current)) {
+		// New format: object with current/historical
+		titleReferences = titleReferencesRaw;
+	}
+	
 	const detail = ldata.landTitleSelection?.detail || 'ALL';
 	
 	let isNearMatch = false;
@@ -1366,15 +1382,19 @@ async function land_title_organisation(ldata) {
 		
 
 	// Filter titleReferences based on detail selection
-	let filteredTitleReferences = titleReferences;
+	let filteredTitleReferences = [];
 	if (detail === 'CURRENT') {
-		// For CURRENT, we need to determine which are current - this will be handled by the stored data
-		filteredTitleReferences = titleReferences;
+		// For CURRENT, use current array
+		filteredTitleReferences = titleReferences.current || [];
 	} else if (detail === 'PAST') {
-		// For PAST, historical count is always 0, so this would be empty
-		filteredTitleReferences = [];
+		// For PAST, use historical array
+		filteredTitleReferences = titleReferences.historical || [];
 	} else if (detail === 'ALL') {
-		filteredTitleReferences = titleReferences;
+		// For ALL, combine current and historical
+		filteredTitleReferences = [...(titleReferences.current || []), ...(titleReferences.historical || [])];
+	} else if (detail === 'SUMMARY') {
+		// For SUMMARY, still fetch all title references for Complete Property Portfolio
+		filteredTitleReferences = [...(titleReferences.current || []), ...(titleReferences.historical || [])];
 	}
 
 	// Process each titleReference
@@ -1414,13 +1434,15 @@ async function land_title_organisation(ldata) {
 			titleOrders: titleOrders, // Array of all title orders
 			cotality: cotalityDataArray.length > 0 ? cotalityDataArray : null, // Array of cotality data
 			locatorData: locatorDataArray.length > 0 ? locatorDataArray : null, // Array of locator data
-			storedLocatorData: titleReferences.map(tr => {
+			storedLocatorData: [...(titleReferences.current || []), ...(titleReferences.historical || [])].map(tr => {
 				// Return stored locator data structure
 				return {
 					titleReference: tr.titleReference,
 					jurisdiction: tr.jurisdiction
 				};
-			})
+			}),
+			// Include titleReferences in the data structure for PDF service to access
+			titleReferences: titleReferences
 		}
 	};
 	
@@ -1434,17 +1456,35 @@ async function land_title_individual(ldata) {
 	const locatorDataArray = [];
 
 	// Get titleReferences from landTitleSelection
-	const titleReferences = ldata.landTitleSelection?.titleReferences || [];
+	// Handle both old format (array) and new format (object with current/historical)
+	let titleReferencesRaw = ldata.landTitleSelection?.titleReferences || [];
+	let titleReferences = { current: [], historical: [] };
+	
+	// Normalize to new format
+	if (Array.isArray(titleReferencesRaw)) {
+		// Old format: flat array, put all in current
+		titleReferences.current = titleReferencesRaw;
+	} else if (titleReferencesRaw.current && Array.isArray(titleReferencesRaw.current)) {
+		// New format: object with current/historical
+		titleReferences = titleReferencesRaw;
+	}
+	
 	const detail = ldata.landTitleSelection?.detail || 'ALL';
 	
 	// Filter titleReferences based on detail selection
-	let filteredTitleReferences = titleReferences;
+	let filteredTitleReferences = [];
 	if (detail === 'CURRENT') {
-		filteredTitleReferences = titleReferences;
+		// For CURRENT, use current array
+		filteredTitleReferences = titleReferences.current || [];
 	} else if (detail === 'PAST') {
-		filteredTitleReferences = [];
+		// For PAST, use historical array
+		filteredTitleReferences = titleReferences.historical || [];
 	} else if (detail === 'ALL') {
-		filteredTitleReferences = titleReferences;
+		// For ALL, combine current and historical
+		filteredTitleReferences = [...(titleReferences.current || []), ...(titleReferences.historical || [])];
+	} else if (detail === 'SUMMARY') {
+		// For SUMMARY, still fetch all title references for Complete Property Portfolio
+		filteredTitleReferences = [...(titleReferences.current || []), ...(titleReferences.historical || [])];
 	}
 
 	// Process each titleReference
@@ -1498,13 +1538,15 @@ async function land_title_individual(ldata) {
 			titleOrders: titleOrders, // Array of all title orders
 			cotality: cotalityDataArray.length > 0 ? cotalityDataArray : null, // Array of cotality data
 			locatorData: locatorDataArray.length > 0 ? locatorDataArray : null, // Array of locator data
-			storedLocatorData: titleReferences.map(tr => {
+			storedLocatorData: [...(titleReferences.current || []), ...(titleReferences.historical || [])].map(tr => {
 				// Return stored locator data structure
 				return {
 					titleReference: tr.titleReference,
 					jurisdiction: tr.jurisdiction
 				};
-			})
+			}),
+			// Include titleReferences in the data structure for PDF service to access
+			titleReferences: titleReferences
 		}
 	};
 	reportData.data.uuid = "12345678";
@@ -1932,18 +1974,6 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 					}
 				}
 
-				// Log data before insertion for debugging
-				if (type === 'sole-trader-check') {
-					console.log('💾 Preparing to store sole-trader-check data:');
-					console.log('  - Type:', type);
-					console.log('  - UUID:', reportData.data?.uuid);
-					console.log('  - Search Word:', searchWord);
-					console.log('  - Is Organization:', isOrganization);
-					console.log('  - ReportData.data keys:', Object.keys(reportData.data || {}));
-					console.log('  - Has abnSearchResults:', !!reportData.data?.abnSearchResults);
-					console.log('  - Data to store:', JSON.stringify(reportData.data, null, 2).substring(0, 500) + '...');
-				}
-
 				if (isOrganization) {
 					[iresult] = await sequelize.query(`
                         INSERT INTO api_data ( rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW()) RETURNING id`,
@@ -1975,28 +2005,6 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 						}
 					);
 				}
-				
-				if (type === 'sole-trader-check') {
-					console.log('✅ Data inserted successfully. Report ID:', iresult[0]?.id);
-					console.log('📊 Verifying stored data...');
-					const [verify] = await sequelize.query(`
-						SELECT id, rtype, uuid, search_word, LENGTH(rdata::text) as data_length 
-						FROM api_data 
-						WHERE id = $1
-					`, {
-						bind: [iresult[0].id]
-					});
-					if (verify && verify.length > 0) {
-						console.log('✅ Verification - Stored record:', {
-							id: verify[0].id,
-							rtype: verify[0].rtype,
-							uuid: verify[0].uuid,
-							search_word: verify[0].search_word,
-							data_length: verify[0].data_length
-						});
-					}
-				}
-				
 				reportId = iresult[0].id;
 			}
 		}
@@ -2355,20 +2363,19 @@ async function searchLandTitleByOrganization(abn, state, companyName) {
 		// If NEAR_MATCHES, set current to 0 and don't pass titleReferences
 		let currentCount = 0;
 		let historicalCount = 0; // Always 0 as per requirements
-		let titleReferences = [];
+		let titleReferences = { current: [], historical: [] };
 		
 		if (!isNearMatch) {
 			currentCount = realPropertySegment.length; // Total count of IdentityBlock items
 			// Extract all TitleReferences with their jurisdictions from IdentityBlock
-			
-		}
-		titleReferences = realPropertySegment
+			// Put them in current array (historical is always empty for organizations)
+			titleReferences.current = realPropertySegment
 				.map(segment => ({
 					titleReference: segment?.IdentityBlock?.TitleReference,
 					jurisdiction: segment?.IdentityBlock?.Jurisdiction || state
 				}))
 				.filter(item => item.titleReference != null); // Filter out null/undefined values
-		
+		}
 
 		return {
 			current: currentCount,
@@ -2446,12 +2453,17 @@ async function searchLandTitleByPerson(firstName, lastName, state) {
 		const historicalCount = 0; // Always 0 as per requirements
 		
 		// Extract all TitleReferences with their jurisdictions from IdentityBlock
-		const titleReferences = realPropertySegment
-			.map(segment => ({
-				titleReference: segment?.IdentityBlock?.TitleReference,
-				jurisdiction: segment?.IdentityBlock?.Jurisdiction || state
-			}))
-			.filter(item => item.titleReference != null); // Filter out null/undefined values
+		// Put them in current array (historical is always empty for individuals)
+		const titleReferences = {
+			current: realPropertySegment
+				.map(segment => ({
+					titleReference: segment?.IdentityBlock?.TitleReference,
+
+					jurisdiction: segment?.IdentityBlock?.Jurisdiction || state
+				}))
+				.filter(item => item.titleReference != null), // Filter out null/undefined values
+			historical: []
+		};
 
 		// Extract unique person names from OwnerNames
 		const personNamesSet = new Set();
@@ -2505,8 +2517,10 @@ router.post('/land-title/counts', async (req, res) => {
 
 		let currentCount = 0;
 		let historicalCount = 0;
-		const allTitleReferences = []; // Collect all TitleReferences from all states
+		const allTitleReferences = { current: [], historical: [] }; // Collect all TitleReferences from all states, organized by current/historical
 		const storedDataIds = []; // Collect stored data IDs
+		let organizationName = null; // Declare organizationName in outer scope
+		let searchTerm = null; // Declare searchTerm in outer scope
 
 		try {
 			if (type === 'organization') {
@@ -2544,8 +2558,18 @@ router.post('/land-title/counts', async (req, res) => {
 						historicalCount = rdata?.historicalCount || 0;
 						
 						// Extract titleReferences from summary record
-						if (rdata?.titleReferences && Array.isArray(rdata.titleReferences)) {
-							allTitleReferences.push(...rdata.titleReferences);
+						// Handle both old format (array) and new format (object with current/historical)
+						if (rdata?.titleReferences) {
+							if (Array.isArray(rdata.titleReferences)) {
+								// Old format: flat array, put all in current
+								allTitleReferences.current.push(...rdata.titleReferences);
+							} else if (rdata.titleReferences.current && Array.isArray(rdata.titleReferences.current)) {
+								// New format: object with current/historical
+								allTitleReferences.current.push(...rdata.titleReferences.current);
+								if (rdata.titleReferences.historical && Array.isArray(rdata.titleReferences.historical)) {
+									allTitleReferences.historical.push(...rdata.titleReferences.historical);
+								}
+							}
 						}
 
 						// Return cached data
@@ -2564,7 +2588,7 @@ router.post('/land-title/counts', async (req, res) => {
 				}
 
 				// Get company name if not provided
-				let organizationName = companyName;
+				organizationName = companyName;
 				if (!organizationName && abn) {
 					try {
 						const abnInfo = await getABNInfo(abn);
@@ -2585,9 +2609,18 @@ router.post('/land-title/counts', async (req, res) => {
 						currentCount += searchResults.current || 0;
 						historicalCount += searchResults.historical || 0;
 						
-						// Add titleReferences to the collection
-						if (searchResults.titleReferences && Array.isArray(searchResults.titleReferences)) {
-							allTitleReferences.push(...searchResults.titleReferences);
+						// Add titleReferences to the collection (merge current and historical)
+						if (searchResults.titleReferences) {
+							if (Array.isArray(searchResults.titleReferences)) {
+								// Old format: flat array, put all in current
+								allTitleReferences.current.push(...searchResults.titleReferences);
+							} else if (searchResults.titleReferences.current && Array.isArray(searchResults.titleReferences.current)) {
+								// New format: object with current/historical
+								allTitleReferences.current.push(...searchResults.titleReferences.current);
+								if (searchResults.titleReferences.historical && Array.isArray(searchResults.titleReferences.historical)) {
+									allTitleReferences.historical.push(...searchResults.titleReferences.historical);
+								}
+							}
 						}
 						
 						if (searchResults.fullApiResponse) {
@@ -2634,9 +2667,6 @@ router.post('/land-title/counts', async (req, res) => {
 					currentCount: currentCount,
 					historicalCount: historicalCount,
 					titleReferences: allTitleReferences,
-					cotality: null,
-					locatorData: null,
-					titleOrders: [] // Will be populated when reports are generated
 				};
 
 				// Insert new record - ensure ABN is properly stored
@@ -2665,7 +2695,7 @@ router.post('/land-title/counts', async (req, res) => {
 						message: 'Last name is required for individual search'
 					});
 				}
-				const searchTerm = `${firstName || ''} ${lastName}`.trim();
+				searchTerm = `${firstName || ''} ${lastName}`.trim();
 
 				// Check if data already exists in api_data table for this individual
 				// For individuals, we check by rtype and search_word (which contains firstName lastName dob)
@@ -2695,10 +2725,23 @@ router.post('/land-title/counts', async (req, res) => {
 						historicalCount = rdata?.historicalCount || 0;
 						
 						// Extract titleReferences from summary record
-						if (rdata?.titleReferences && Array.isArray(rdata.titleReferences)) {
-							allTitleReferences.push(...rdata.titleReferences);
+						// Handle both old format (array) and new format (object with current/historical)
+						if (rdata?.titleReferences) {
+							if (Array.isArray(rdata.titleReferences)) {
+								// Old format: flat array, put all in current
+								allTitleReferences.current.push(...rdata.titleReferences);
+							} else if (rdata.titleReferences.current && Array.isArray(rdata.titleReferences.current)) {
+								// New format: object with current/historical
+								allTitleReferences.current.push(...rdata.titleReferences.current);
+								if (rdata.titleReferences.historical && Array.isArray(rdata.titleReferences.historical)) {
+									allTitleReferences.historical.push(...rdata.titleReferences.historical);
+								}
+							}
 						}
 
+						// Extract search_word from summary record
+						const searchWord = summaryRecord.search_word || searchTerm;
+						
 						// Return cached data
 						return res.json({
 							success: true,
@@ -2706,6 +2749,7 @@ router.post('/land-title/counts', async (req, res) => {
 							historical: historicalCount,
 							titleReferences: allTitleReferences,
 							storedDataIds: summaryRecord.id,
+							search_word: searchWord, // Return search word from counts response
 							cached: true // Flag to indicate this is cached data
 						});
 					} catch (parseError) {
@@ -2724,17 +2768,27 @@ router.post('/land-title/counts', async (req, res) => {
 						currentCount += searchResults.current || 0;
 						historicalCount += searchResults.historical || 0;
 						
-						// Add titleReferences to the collection
-						if (searchResults.titleReferences && Array.isArray(searchResults.titleReferences)) {
-							allTitleReferences.push(...searchResults.titleReferences);
+						// Add titleReferences to the collection (merge current and historical)
+						if (searchResults.titleReferences) {
+							if (Array.isArray(searchResults.titleReferences)) {
+								// Old format: flat array, put all in current
+								allTitleReferences.current.push(...searchResults.titleReferences);
+							} else if (searchResults.titleReferences.current && Array.isArray(searchResults.titleReferences.current)) {
+								// New format: object with current/historical
+								allTitleReferences.current.push(...searchResults.titleReferences.current);
+								if (searchResults.titleReferences.historical && Array.isArray(searchResults.titleReferences.historical)) {
+									allTitleReferences.historical.push(...searchResults.titleReferences.historical);
+								}
+							}
 						}
 						
 						// Store API response once per state (not per titleReference)
-						if (searchResults.fullApiResponse && searchResults.titleReferences && searchResults.titleReferences.length > 0) {
+						const titleRefsArray = searchResults.titleReferences?.current || (Array.isArray(searchResults.titleReferences) ? searchResults.titleReferences : []);
+						if (searchResults.fullApiResponse && titleRefsArray.length > 0) {
 							try {
 								// Store the full API response once for this state search
 								// Use the first titleReference as the uuid for this stored record
-								const firstTitleRef = searchResults.titleReferences[0];
+								const firstTitleRef = titleRefsArray[0];
 								const [result] = await sequelize.query(`
 									INSERT INTO api_data (rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at)
 									VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`, {
@@ -2774,9 +2828,6 @@ router.post('/land-title/counts', async (req, res) => {
 					currentCount: currentCount,
 					historicalCount: historicalCount,
 					titleReferences: allTitleReferences,
-					cotality: null,
-					locatorData: null,
-					titleOrders: [] // Will be populated when reports are generated
 				};
 
 				// Insert new record - ensure ABN is properly stored

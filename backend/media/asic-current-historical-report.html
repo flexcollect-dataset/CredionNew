@@ -516,28 +516,7 @@
             
             <div class="card info">
                 <div class="card-header" style="color: #0F172A;">ASIC Extract Summary</div>
-                <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;">
-                    <div style="text-align: center;">
-                        <div class="stat-label">Report Type</div>
-                        <div style="font-size: 12px; font-weight: 700; color: #0F172A; margin-top: 6px;">{{extract_report_type}}</div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div class="stat-label">Addresses</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #0F172A;">{{extract_addresses_count}}</div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div class="stat-label">Directors</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #0F172A;">{{extract_directors_count}}</div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div class="stat-label">Secretaries</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #0F172A;">{{extract_secretaries_count}}</div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div class="stat-label">Shareholders</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #0F172A;">{{extract_shareholders_count}}</div>
-                    </div>
-                </div>
+                {{extract_summary_html}}
             </div>
             
             <div class="section-title">Addresses</div>

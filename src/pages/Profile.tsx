@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { User, CreditCard, Settings, ArrowLeft, Plus, Trash2, Star } from 'lucide-react';
 import { apiService } from '../services/api';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 interface PaymentMethod {
   id: string;
@@ -83,7 +84,7 @@ const Profile = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-credion-red"></div>
+        <LoadingSpinner text="Loading..." size="md" />
       </div>
     );
   }

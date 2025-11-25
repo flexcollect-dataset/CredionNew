@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, FileText, Calendar, ArrowRight } from 'lucide-react';
 import { apiService } from '../services/api';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 interface Matter {
   matterId: number;
@@ -110,10 +111,7 @@ const MyMatters: React.FC = () => {
       <div className="min-h-screen bg-gray-50 pt-16">
         <div className="max-w-6xl mx-auto px-4 py-6">
           <div className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto mb-3"></div>
-              <p className="text-gray-600 text-sm">Loading...</p>
-            </div>
+            <LoadingSpinner text="Loading..." size="md" />
           </div>
         </div>
       </div>

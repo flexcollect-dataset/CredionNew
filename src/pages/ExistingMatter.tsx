@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Search, FileText, Calendar, ArrowRight } from 'lucide-react';
 import { apiService } from '../services/api';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 interface Matter {
   matterId: number;
@@ -85,10 +86,7 @@ const ExistingMatter: React.FC = () => {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
+        <LoadingSpinner text="Loading..." size="lg" />
       </div>
     );
   }
@@ -139,8 +137,7 @@ const ExistingMatter: React.FC = () => {
         {/* Loading State */}
         {isSearching && (
           <div className="text-center py-6">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600 mx-auto mb-3"></div>
-            <p className="text-gray-600 text-sm">Loading matters...</p>
+            <LoadingSpinner text="Loading matters..." size="sm" />
           </div>
         )}
 

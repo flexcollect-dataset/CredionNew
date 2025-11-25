@@ -164,6 +164,7 @@ This document ID was generated from the Add Document Search option.`;
 
     console.log(`📧 Preparing to send ${pdfFilenames.length} report(s) to ${toEmail}`);
 
+    // Download all PDFs from S3 (skip failures, but require at least one)
     const downloads = await Promise.all(pdfFilenames.map(downloadPDFFromS3));
     const attachments = downloads.filter(d => d.success).map(d => ({
       filename: d.filename,

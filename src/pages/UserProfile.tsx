@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { CreditCard, Plus, Trash2, Star, StarOff } from 'lucide-react';
 import { apiService } from '../services/api';
 import StripeCardElement from '../components/StripeCardElement';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 interface PaymentMethod {
   id: string;
@@ -162,8 +163,7 @@ const UserProfile = () => {
                 <div className="p-4 sm:p-6">
                   {loading ? (
                     <div className="text-center py-8">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-credion-red mx-auto"></div>
-                      <p className="mt-2 text-gray-600">Loading payment methods...</p>
+                      <LoadingSpinner text="Loading payment methods..." size="md" />
                     </div>
                   ) : paymentMethods.length === 0 ? (
                     <div className="text-center py-8">

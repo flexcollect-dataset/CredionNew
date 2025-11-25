@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { CreditCard, Plus, Trash2, Check } from 'lucide-react';
 import { apiService } from '../services/api';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 interface PaymentMethod {
   id: string;
@@ -105,10 +106,7 @@ const PaymentMethods = () => {
   if (!user) {
     return (
       <div className="pt-16 md:pt-20 min-h-screen bg-gradient-to-br from-white via-credion-grey to-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-credion-red mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
+        <LoadingSpinner text="Loading..." size="lg" />
       </div>
     );
   }
@@ -134,8 +132,7 @@ const PaymentMethods = () => {
           <div className="space-y-4">
             {isLoading ? (
               <div className="text-center py-12">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-credion-red mx-auto mb-4"></div>
-                <p className="text-gray-600">Loading payment methods...</p>
+                <LoadingSpinner text="Loading payment methods..." size="lg" />
               </div>
             ) : paymentMethods.length === 0 ? (
               <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6 sm:p-8 lg:p-12 text-center">
