@@ -44,7 +44,7 @@ interface LandTitleSelection {
   summary: boolean;
   detail: LandTitleDetailSelection;
   addOn: boolean;
-  titleReferences?: Array<{ titleReference: string; jurisdiction: string }>;
+  titleReferences?: Array<{ titleReference: string; jurisdiction: string }> | { current: Array<{ titleReference: string; jurisdiction: string }>; historical: Array<{ titleReference: string; jurisdiction: string }> };
   currentCount?: number;
   historicalCount?: number;
 }
@@ -2518,25 +2518,52 @@ const Search: React.FC = () => {
       return;
     }
     
-    // Helper function to extract titleReferences from either array or object format
-    const extractTitleReferences = (titleRefs: typeof landTitleCounts.titleReferences, detail: LandTitleDetailSelection): Array<{ titleReference: string; jurisdiction: string }> => {
-      if (!titleRefs) return [];
+    // Helper function to get titleReferences in the correct format based on detail selection
+    // For 'ALL', preserve current/historical structure; for others, return array
+    const getTitleReferences = (titleRefs: typeof landTitleCounts.titleReferences, detailType: LandTitleDetailSelection): Array<{ titleReference: string; jurisdiction: string }> | { current: Array<{ titleReference: string; jurisdiction: string }>; historical: Array<{ titleReference: string; jurisdiction: string }> } => {
+      if (!titleRefs) {
+        return detailType === 'ALL' ? { current: [], historical: [] } : [];
+      }
+      
       if (Array.isArray(titleRefs)) {
+        // If it's already an array, for 'ALL' we need to split it (but we don't know which is which)
+        // So we'll put all in current for 'ALL', or return as-is for others
+        if (detailType === 'ALL') {
+          return { current: titleRefs, historical: [] };
+        }
         return titleRefs;
       }
-      if (detail === 'SUMMARY' || detail === 'CURRENT' || detail === 'ALL') {
-        return (titleRefs as { current?: Array<{ titleReference: string; jurisdiction: string }> }).current || [];
-      } else if (detail === 'PAST') {
-        return (titleRefs as { historical?: Array<{ titleReference: string; jurisdiction: string }> }).historical || [];
+      
+      // It's an object with current/historical
+      const current = (titleRefs as { current?: Array<{ titleReference: string; jurisdiction: string }> }).current || [];
+      const historical = (titleRefs as { historical?: Array<{ titleReference: string; jurisdiction: string }> }).historical || [];
+      
+      if (detailType === 'ALL') {
+        // For "ALL", preserve the structure so backend can distinguish
+        return { current, historical };
+      } else if (detailType === 'CURRENT') {
+        return current;
+      } else if (detailType === 'PAST') {
+        return historical;
+      } else if (detailType === 'SUMMARY') {
+        // For SUMMARY, return current (or could be combined, but current is safer)
+        return current;
       }
+      
       return [];
     };
     
     // Ensure titleReferences are set if they're missing
     // For SUMMARY mode, we still need titleReferences for Complete Property Portfolio section
     let finalSelection = { ...pendingLandTitleSelection };
-    if (!finalSelection.titleReferences || finalSelection.titleReferences.length === 0) {
-      const titleReferencesToInclude = extractTitleReferences(landTitleCounts.titleReferences, finalSelection.detail);
+    const hasTitleReferences = finalSelection.titleReferences && (
+      Array.isArray(finalSelection.titleReferences) 
+        ? finalSelection.titleReferences.length > 0
+        : (finalSelection.titleReferences.current?.length > 0 || finalSelection.titleReferences.historical?.length > 0)
+    );
+    
+    if (!hasTitleReferences) {
+      const titleReferencesToInclude = getTitleReferences(landTitleCounts.titleReferences, finalSelection.detail);
       
       finalSelection = {
         ...finalSelection,
@@ -2717,25 +2744,50 @@ const Search: React.FC = () => {
   const handleLandTitleIndividualDetailContinue = useCallback(() => {
     // Ensure titleReferences are set if they're missing
     // For SUMMARY mode, we still need titleReferences for Complete Property Portfolio section
-    if (!pendingLandTitleSelection.titleReferences || pendingLandTitleSelection.titleReferences.length === 0) {
-      let titleReferencesToInclude: any = [];
-      
-      // Helper function to extract titleReferences from either array or object format
-      const extractTitleReferences = (titleRefs: typeof landTitleCounts.titleReferences, detailType: LandTitleDetailSelection): Array<{ titleReference: string; jurisdiction: string }> => {
-        if (!titleRefs) return [];
+    const hasTitleReferences = pendingLandTitleSelection.titleReferences && (
+      Array.isArray(pendingLandTitleSelection.titleReferences) 
+        ? pendingLandTitleSelection.titleReferences.length > 0
+        : (pendingLandTitleSelection.titleReferences.current?.length > 0 || pendingLandTitleSelection.titleReferences.historical?.length > 0)
+    );
+    
+    if (!hasTitleReferences) {
+      // Helper function to get titleReferences in the correct format based on detail selection
+      // For 'ALL', preserve current/historical structure; for others, return array
+      const getTitleReferences = (titleRefs: typeof landTitleCounts.titleReferences, detailType: LandTitleDetailSelection): Array<{ titleReference: string; jurisdiction: string }> | { current: Array<{ titleReference: string; jurisdiction: string }>; historical: Array<{ titleReference: string; jurisdiction: string }> } => {
+        if (!titleRefs) {
+          return detailType === 'ALL' ? { current: [], historical: [] } : [];
+        }
+        
         if (Array.isArray(titleRefs)) {
+          // If it's already an array, for 'ALL' we need to split it (but we don't know which is which)
+          // So we'll put all in current for 'ALL', or return as-is for others
+          if (detailType === 'ALL') {
+            return { current: titleRefs, historical: [] };
+          }
           return titleRefs;
         }
-        if (detailType === 'SUMMARY' || detailType === 'CURRENT' || detailType === 'ALL') {
-          return (titleRefs as { current?: Array<{ titleReference: string; jurisdiction: string }> }).current || [];
+        
+        // It's an object with current/historical
+        const current = (titleRefs as { current?: Array<{ titleReference: string; jurisdiction: string }> }).current || [];
+        const historical = (titleRefs as { historical?: Array<{ titleReference: string; jurisdiction: string }> }).historical || [];
+        
+        if (detailType === 'ALL') {
+          // For "ALL", preserve the structure so backend can distinguish
+          return { current, historical };
+        } else if (detailType === 'CURRENT') {
+          return current;
         } else if (detailType === 'PAST') {
-          return (titleRefs as { historical?: Array<{ titleReference: string; jurisdiction: string }> }).historical || [];
+          return historical;
+        } else if (detailType === 'SUMMARY') {
+          // For SUMMARY, return current (or could be combined, but current is safer)
+          return current;
         }
+        
         return [];
       };
       
-      // Extract titleReferences using helper function
-      titleReferencesToInclude = extractTitleReferences(landTitleCounts.titleReferences, pendingLandTitleSelection.detail);
+      // Get titleReferences in the correct format
+      const titleReferencesToInclude = getTitleReferences(landTitleCounts.titleReferences, pendingLandTitleSelection.detail);
       
       setPendingLandTitleSelection(prev => ({
         ...prev,
@@ -2755,24 +2807,43 @@ const Search: React.FC = () => {
 
 
   const handleLandTitleIndividualDetailSelect = useCallback((detail: LandTitleDetailSelection) => {
-    // Helper function to extract titleReferences from either array or object format
-    const extractTitleReferences = (titleRefs: typeof landTitleCounts.titleReferences, detailType: LandTitleDetailSelection): Array<{ titleReference: string; jurisdiction: string }> => {
-      if (!titleRefs) return [];
+    // Helper function to get titleReferences in the correct format based on detail selection
+    // For 'ALL', preserve current/historical structure; for others, return array
+    const getTitleReferences = (titleRefs: typeof landTitleCounts.titleReferences, detailType: LandTitleDetailSelection): Array<{ titleReference: string; jurisdiction: string }> | { current: Array<{ titleReference: string; jurisdiction: string }>; historical: Array<{ titleReference: string; jurisdiction: string }> } => {
+      if (!titleRefs) {
+        return detailType === 'ALL' ? { current: [], historical: [] } : [];
+      }
+      
       if (Array.isArray(titleRefs)) {
+        // If it's already an array, for 'ALL' we need to split it (but we don't know which is which)
+        // So we'll put all in current for 'ALL', or return as-is for others
+        if (detailType === 'ALL') {
+          return { current: titleRefs, historical: [] };
+        }
         return titleRefs;
       }
-      if (detailType === 'SUMMARY' || detailType === 'CURRENT' || detailType === 'ALL') {
-        return (titleRefs as { current?: Array<{ titleReference: string; jurisdiction: string }> }).current || [];
+      
+      // It's an object with current/historical
+      const current = (titleRefs as { current?: Array<{ titleReference: string; jurisdiction: string }> }).current || [];
+      const historical = (titleRefs as { historical?: Array<{ titleReference: string; jurisdiction: string }> }).historical || [];
+      
+      if (detailType === 'ALL') {
+        // For "ALL", preserve the structure so backend can distinguish
+        return { current, historical };
+      } else if (detailType === 'CURRENT') {
+        return current;
       } else if (detailType === 'PAST') {
-        return (titleRefs as { historical?: Array<{ titleReference: string; jurisdiction: string }> }).historical || [];
+        return historical;
+      } else if (detailType === 'SUMMARY') {
+        // For SUMMARY, return current (or could be combined, but current is safer)
+        return current;
       }
+      
       return [];
     };
     
-    // Determine which titleReferences to include based on selection
-    // For "SUMMARY", still include titleReferences for Complete Property Portfolio section
-    // The backend will use these to generate the portfolio page but skip Title Search Information sections
-    const titleReferencesToInclude = extractTitleReferences(landTitleCounts.titleReferences, detail);
+    // Get titleReferences in the correct format
+    const titleReferencesToInclude = getTitleReferences(landTitleCounts.titleReferences, detail);
     
     setPendingLandTitleSelection(prev => ({
       ...prev,
@@ -4176,27 +4247,43 @@ setLandTitleOrganisationSearchTerm(displayText);
   };
 
   const handleLandTitleDetailSelect = (detail: LandTitleDetailSelection) => {
-    // Helper function to extract titleReferences from either array or object format
-    const extractTitleReferences = (titleRefs: typeof landTitleCounts.titleReferences, detailType: LandTitleDetailSelection): Array<{ titleReference: string; jurisdiction: string }> => {
-      if (!titleRefs) return [];
+    // Helper function to get titleReferences in the correct format based on detail selection
+    // For 'ALL', preserve current/historical structure; for others, return array
+    const getTitleReferences = (titleRefs: typeof landTitleCounts.titleReferences, detailType: LandTitleDetailSelection): Array<{ titleReference: string; jurisdiction: string }> | { current: Array<{ titleReference: string; jurisdiction: string }>; historical: Array<{ titleReference: string; jurisdiction: string }> } => {
+      if (!titleRefs) {
+        return detailType === 'ALL' ? { current: [], historical: [] } : [];
+      }
+      
       if (Array.isArray(titleRefs)) {
+        // If it's already an array, for 'ALL' we need to split it (but we don't know which is which)
+        // So we'll put all in current for 'ALL', or return as-is for others
+        if (detailType === 'ALL') {
+          return { current: titleRefs, historical: [] };
+        }
         return titleRefs;
       }
+      
+      // It's an object with current/historical
+      const current = (titleRefs as { current?: Array<{ titleReference: string; jurisdiction: string }> }).current || [];
+      const historical = (titleRefs as { historical?: Array<{ titleReference: string; jurisdiction: string }> }).historical || [];
+      
       if (detailType === 'ALL') {
-        // For "ALL", combine current and historical
-        const current = (titleRefs as { current?: Array<{ titleReference: string; jurisdiction: string }> }).current || [];
-        const historical = (titleRefs as { historical?: Array<{ titleReference: string; jurisdiction: string }> }).historical || [];
-        return [...current, ...historical];
-      } else if (detailType === 'SUMMARY' || detailType === 'CURRENT') {
-        return (titleRefs as { current?: Array<{ titleReference: string; jurisdiction: string }> }).current || [];
+        // For "ALL", preserve the structure so backend can distinguish
+        return { current, historical };
+      } else if (detailType === 'CURRENT') {
+        return current;
       } else if (detailType === 'PAST') {
-        return (titleRefs as { historical?: Array<{ titleReference: string; jurisdiction: string }> }).historical || [];
+        return historical;
+      } else if (detailType === 'SUMMARY') {
+        // For SUMMARY, return current (or could be combined, but current is safer)
+        return current;
       }
+      
       return [];
     };
     
-    // Determine which titleReferences to include based on selection
-    const titleReferencesToInclude = extractTitleReferences(landTitleCounts.titleReferences, detail);
+    // Get titleReferences in the correct format
+    const titleReferencesToInclude = getTitleReferences(landTitleCounts.titleReferences, detail);
     
     setPendingLandTitleSelection(prev => ({
       ...prev,

@@ -1287,11 +1287,11 @@ async function land_title_reference(ldata) {
 	let cotalityData = null;
 	let titleRefData = null;
 
-	titleRefData = await createTitleOrder('NSW', ldata.landTitleSelection.referenceId);
+	titleRefData = await createTitleOrder('NSW', ldata.referenceId);
 	const loc = titleRefData?.LocationSegment?.[0]?.Address;
 	const formattedAddress = loc ? `${loc.StreetNumber} ${loc.StreetName} ${loc.StreetType} ${loc.City} ${loc.State} ${loc.PostCode}` : null;
 	console.log(titleRefData);
-	if (ldata.landTitleSelection.addOn === true) {
+	if (ldata.addOn === true) {
 		cotalityData = await get_cotality_pid(formattedAddress);
 	}
 
