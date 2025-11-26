@@ -1260,7 +1260,7 @@ async function land_title_address(ldata) {
 		console.log(orderIdentifier);
 		titleRefData = await createTitleOrder(details.state, tdata.data.RealPropertySegment?.[0].IdentityBlock.TitleReference);
 		console.log(titleRefData);
-		if (ldata.landTitleSelection.addOn === true) {
+		if (ldata.addOn === true) {
 			cotalityData = await get_cotality_pid(ldata.address);
 		}
 
@@ -2559,6 +2559,7 @@ router.post('/land-title/counts', async (req, res) => {
 						
 						// Extract titleReferences from summary record
 						// Handle both old format (array) and new format (object with current/historical)
+						console.log(rdata);
 						if (rdata?.titleReferences) {
 							if (Array.isArray(rdata.titleReferences)) {
 								// Old format: flat array, put all in current
@@ -2571,7 +2572,7 @@ router.post('/land-title/counts', async (req, res) => {
 								}
 							}
 						}
-
+						console.log(allTitleReferences);
 						// Return cached data
 						return res.json({
 							success: true,

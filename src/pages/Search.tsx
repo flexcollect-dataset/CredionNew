@@ -3649,14 +3649,18 @@ setLandTitleOrganisationSearchTerm(displayText);
       const currentMatter = localStorage.getItem('currentMatter')
         ? JSON.parse(localStorage.getItem('currentMatter') || '{}')
         : null;
-
+        
+      let reportType = 'asic-current';
+      if (selectedCategory === 'ORGANISATION' && selectedAsicTypes.has('CURRENT/HISTORICAL')) {
+        reportType = 'asic-historical';
+      }
       const reportData: any = {
         business: {
           Abn: pendingCompany.abn,
           Name: pendingCompany.name,
           isCompany: 'ORGANISATION'
         },
-        type: 'asic-current',
+        type: reportType,
         userId: user.userId,
         matterId: currentMatter?.matterId,
         ispdfcreate: false
