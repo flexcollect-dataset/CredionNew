@@ -101,6 +101,10 @@ function extractAtoData(data) {
   const entity = data.entity || {};
   const current_tax_debt = data.current_tax_debt || {};
   
+  const taxDebtAmount = current_tax_debt.amount ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(current_tax_debt.amount) : 'N/A';
+  const taxDebtUpdatedAt = current_tax_debt.ato_updated_at ? moment.utc(current_tax_debt.ato_updated_at).format('MMMM D, YYYY, [at] h:mm:ss A') : 'N/A';
+  const taxDebtUpdatedLine = taxDebtAmount !== 'N/A' ? `<div style="font-size: 10px; color: #64748B;">Outstanding/Updated as of ${taxDebtUpdatedAt} AEDT</div>` : '';
+  
   return {
     company_type: 'ato',
     acn: data.acn || entity.acn || 'N/A',
@@ -117,8 +121,9 @@ function extractAtoData(data) {
     entity_asic_date_of_registration: entity.asic_date_of_registration ? moment(entity.asic_date_of_registration).format('DD/MM/YYYY') : 'N/A',
     abn_state: data.abn_state || 'N/A',
     abn_status: data.abn_status || 'N/A',
-    current_tax_debt_amount: current_tax_debt.amount ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(current_tax_debt.amount) : 'N/A',
-    current_tax_debt_ato_updated_at: current_tax_debt.ato_updated_at ? moment.utc(current_tax_debt.ato_updated_at).format('MMMM D, YYYY, [at] h:mm:ss A') : 'N/A',
+    current_tax_debt_amount: taxDebtAmount,
+    current_tax_debt_ato_updated_at: taxDebtUpdatedAt,
+    current_tax_debt_updated_line: taxDebtUpdatedLine,
     // ATO reports don't need court/insolvency data
     actionSummaryRows: '',
     insolvency_notice_id: 'N/A',
@@ -266,7 +271,8 @@ function extractCourtData(data) {
     documents_rows,
     caseNumber,
     current_tax_debt_amount: 'N/A',
-    current_tax_debt_ato_updated_at: 'N/A'
+    current_tax_debt_ato_updated_at: 'N/A',
+    current_tax_debt_updated_line: ''
   };
 }
 
@@ -4445,6 +4451,7 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 	// Replace ATO-specific variables
 	replaceVar('current_tax_debt_amount', extractedData.current_tax_debt_amount || '');
 	replaceVar('current_tax_debt_ato_updated_at', extractedData.current_tax_debt_ato_updated_at || '');
+	replaceVar('current_tax_debt_updated_line', extractedData.current_tax_debt_updated_line || '');
 
 	// Replace court-specific variables
 	replaceVar('caseNumber', extractedData.caseNumber || '');
