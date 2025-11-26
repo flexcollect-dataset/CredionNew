@@ -271,9 +271,7 @@
                 <div style="font-size: 24px; font-weight: 700; color: #0F172A; margin-bottom: 8px;">
                     ${current_tax_debt_amount}
                 </div>
-                <div style="font-size: 10px; color: #64748B;">
-                    Outstanding/Updated as of ${current_tax_debt_ato_updated_at} AEDT
-                </div>
+                ${current_tax_debt_amount !== 'N/A' ? `<div style="font-size: 10px; color: #64748B;">Outstanding/Updated as of ${current_tax_debt_ato_updated_at} AEDT</div>` : ''}
             </div>
             
             <!-- Footer -->
