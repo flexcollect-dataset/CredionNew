@@ -38,9 +38,6 @@ function sanitizeBusinessNumber(input) {
 async function searchABNByName(companyName) {
 	const ABN_GUID = process.env.ABN_GUID || '250e9f55-f46e-4104-b0df-774fa28cff97';
 	const url = `https://abr.business.gov.au/json/MatchingNames.aspx?name=${encodeURIComponent(companyName)}&maxResults=10&guid=${ABN_GUID}`;
-
-	console.log(`🔍 Searching ABN for: ${companyName}`);
-
 	try {
 		const response = await axios.get(url);
 		const text = response.data;
@@ -63,9 +60,6 @@ async function searchABNByName(companyName) {
 async function getABNInfo(abn) {
 	const ABN_GUID = process.env.ABN_GUID || '250e9f55-f46e-4104-b0df-774fa28cff97';
 	const url = `https://abr.business.gov.au/json/AbnDetails.aspx?abn=${abn}&callback=callback&guid=${ABN_GUID}`;
-
-	console.log(`🔍 Getting ABN info for: ${abn}`);
-
 	try {
 		const response = await axios.get(url);
 		const text = response.data;
@@ -92,14 +86,12 @@ router.get('/search-company/:searchTerm', async (req, res) => {
 
 		// Check if it's a number (ABN/ACN search)
 		if (sanitized && sanitized.length >= 9) {
-			console.log(`📊 Searching by ABN: ${sanitized}`);
 			const abnInfo = await getABNInfo(sanitized);
 			res.json({
 				success: true,
 				results: abnInfo ? [abnInfo] : []
 			});
 		} else {
-			console.log(`📊 Searching by name: ${searchTerm}`);
 			const results = await searchABNByName(searchTerm);
 			res.json({
 				success: true,
@@ -159,12 +151,6 @@ router.get('/director-related/matches', async (req, res) => {
 
 // Bankruptcy matches endpoint
 router.get('/bankruptcy/matches', async (req, res) => {
-	console.log('🔍 Bankruptcy matches endpoint called:', {
-		query: req.query,
-		url: req.url,
-		method: req.method
-	});
-	
 	try {
 		const { firstName, lastName, dateOfBirth } = req.query;
 
@@ -244,12 +230,6 @@ router.get('/bankruptcy/matches', async (req, res) => {
 
 // Court name search endpoint
 router.get('/court/name-search', async (req, res) => {
-	console.log('🔍 Court name search endpoint called:', {
-		query: req.query,
-		url: req.url,
-		method: req.method
-	});
-	
 	try {
 		const { firstName, lastName, state, courtType } = req.query;
 
@@ -542,7 +522,6 @@ router.post('/get-report-data', async (req, res) => {
 async function asic_report_data(uuid) {
 	//Now call GET API to fetch the report data
 	await delay(5000);
-	console.log(uuid);
 	const getApiUrl = `https://alares.com.au/api/reports/${uuid}/json`;
 	const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
 
@@ -1184,8 +1163,57 @@ async function sole_trader_check_report(business) {
 		} else {
 			jsonData = response.data;
 		}
+		
 
+		// Filter results to only include records that contain ALL words from the search query
+		const searchWords = searchName.toLowerCase().split(/\s+/).filter(word => word.length > 0);
+		
+		// Helper function to check if a text contains all search words
+		const containsAllWords = (text) => {
+			if (!text || typeof text !== 'string') return false;
+			const lowerText = text.toLowerCase();
+			return searchWords.every(word => lowerText.includes(word));
+		};
 
+		// Helper function to extract name from a record
+		const extractNameFromRecord = (record) => {
+			// Check multiple possible name fields
+			const nameFields = [
+				record?.legalName?.fullName,
+				record?.mainTradingName?.organisationName,
+				record?.mainName?.organisationName
+			];
+			
+			// Return the first non-empty name found
+			for (const name of nameFields) {
+				if (name && typeof name === 'string' && name.trim()) {
+					return name;
+				}
+			}
+			return null;
+		};
+
+		// Filter the search results
+		if (jsonData?.ABRPayloadSearchResults?.response?.searchResultsList?.searchResultsRecord) {
+			const allRecords = Array.isArray(jsonData.ABRPayloadSearchResults.response.searchResultsList.searchResultsRecord)
+				? jsonData.ABRPayloadSearchResults.response.searchResultsList.searchResultsRecord
+				: [jsonData.ABRPayloadSearchResults.response.searchResultsList.searchResultsRecord];
+
+			// Filter records that contain all search words
+			const filteredRecords = allRecords.filter(record => {
+				const recordName = extractNameFromRecord(record);
+				return recordName && containsAllWords(recordName);
+			});
+
+			// Update the search results with filtered data
+			jsonData.ABRPayloadSearchResults.response.searchResultsList.searchResultsRecord = filteredRecords;
+			jsonData.ABRPayloadSearchResults.response.searchResultsList.numberOfRecords = filteredRecords.length;
+			
+			// Update exceedsMaximum flag if needed
+			if (filteredRecords.length === 0) {
+				jsonData.ABRPayloadSearchResults.response.searchResultsList.exceedsMaximum = 'N';
+			}
+		}
 		const reportUuid = `sole-trader-${Date.now()}-${uuidv4().substring(0, 8)}`;
 
 		// Structure the report data similar to other report types
@@ -1239,10 +1267,6 @@ async function property(abn, cname, ldata) {
 }
 
 async function director_property(bussiness) {
-	console.log(fname);
-	console.log(lname);
-	console.log(ldata.addOn);
-
 	let cotalityData = null;
 	let titleRefData = null;
 
@@ -1308,6 +1332,8 @@ async function land_title_address(ldata) {
 			},
 		});
 		console.log(orderIdentifier);
+		console.log(tdata.data);
+		console.log(tdata.data.RealPropertySegment?.[0].IdentityBlock.TitleReference);
 		titleRefData = await createTitleOrder(details.state, tdata.data.RealPropertySegment?.[0].IdentityBlock.TitleReference);
 		console.log(titleRefData);
 		if (ldata.addOn === true) {
@@ -1340,7 +1366,6 @@ async function land_title_reference(ldata) {
 	titleRefData = await createTitleOrder('NSW', ldata.referenceId);
 	const loc = titleRefData?.LocationSegment?.[0]?.Address;
 	const formattedAddress = loc ? `${loc.StreetNumber} ${loc.StreetName} ${loc.StreetType} ${loc.City} ${loc.State} ${loc.PostCode}` : null;
-	console.log(titleRefData);
 	if (ldata.addOn === true) {
 		cotalityData = await get_cotality_pid(formattedAddress);
 	}
@@ -1604,8 +1629,6 @@ async function land_title_individual(ldata) {
 }
 
 async function createTitleOrder(jurisdiction, titleReference, abn = null, companyName = null) {
-
-	console.log('Function Called');
 	// First, check if data already exists in api_data table for this titleReference
 	const [existingData] = await sequelize.query(`
 		SELECT rdata, id
@@ -1618,7 +1641,6 @@ async function createTitleOrder(jurisdiction, titleReference, abn = null, compan
 	});
 
 	if (existingData && existingData.length > 0) {
-		console.log(`✅ Found existing title order data for ${titleReference}, using cached data`);
 		try {
 			const rdata = typeof existingData[0].rdata === 'string' 
 				? JSON.parse(existingData[0].rdata) 
@@ -1632,9 +1654,6 @@ async function createTitleOrder(jurisdiction, titleReference, abn = null, compan
 			// Fall through to API call if parsing fails
 		}
 	}
-
-	// No cached data found, proceed with API call
-	console.log(`🔄 No cached data found for titleReference ${titleReference}, calling API`);
 	
 	bearerToken = await getToken('landtitle');
 
@@ -1695,7 +1714,7 @@ async function createTitleOrder(jurisdiction, titleReference, abn = null, compan
 						existingRecord[0].id
 					]
 				});
-				console.log(`✅ Updated title order data for ${titleReference} with ABN: ${abn}, Company: ${companyName}`);
+				
 			} else {
 				// Insert new record - store ABN and company name if provided
 				await sequelize.query(`
@@ -1712,7 +1731,6 @@ async function createTitleOrder(jurisdiction, titleReference, abn = null, compan
 						false
 					]
 				});
-				console.log(`✅ Stored title order data for ${titleReference} with ABN: ${abn}, Company: ${companyName}`);
 			}
 		} catch (storeError) {
 			console.error(`Error storing title order data for ${titleReference}:`, storeError);
@@ -1857,11 +1875,7 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 						created_at: existingData[0].created_at,
 						updated_at: existingData[0].updated_at
 					};
-					console.log(`✅ Found existing sole-trader-check report in database for: ${searchWord}`);
-					console.log('📋 Existing Report Data:', JSON.stringify(existingReport.rdata, null, 2));
-				} else {
-					console.log(`🔄 No existing sole-trader-check report found in database for: ${searchWord}`);
-				}
+				} 
 			}
 		}
 
@@ -1975,7 +1989,6 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 
 				// Step 2: Fetch actual data using the auSearchIdentifier
 				reportData = await fetchPpsrReportData(auSearchIdentifier);
-				console.log(reportData);
 			} else if (type == 'property') {
 				reportData = await property(business.Abn, business.Name, business);
 			} else if (type == "director-ppsr") {
@@ -2006,7 +2019,6 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 				reportData = await rego_ppsr_report(business);
 			}
 
-			console.log(reportData.data);
 			if (!existingReport && reportData && reportData.status !== false && reportData.data) {
 				// Extract search word dynamically from business object
 				const searchWord = extractSearchWord(business, type);
@@ -2350,16 +2362,6 @@ async function searchLandTitleByOrganization(abn, state, companyName) {
 
 	// If company name is not provided, get it from ABN lookup
 	let organizationName = companyName;
-	if (!organizationName && abn) {
-		try {
-			const abnInfo = await getABNInfo(abn);
-			organizationName = abnInfo?.EntityName || abnInfo?.Name || null;
-		} catch (error) {
-			console.error('Error fetching company name from ABN:', error);
-			// If ABN lookup fails, use ABN as fallback
-			organizationName = abn;
-		}
-	}
 
 	if (!organizationName) {
 		throw new Error('Company name is required for organization search');
@@ -2455,12 +2457,9 @@ async function searchLandTitleByPerson(firstName, lastName, state) {
 		throw new Error('Last name is required for individual search');
 	}
 
-	// Use firstName or generate a unique order reference
-	const orderReference = firstName ? firstName : `Search_${Date.now()}`;
-
 	const body = {
 		OrderRequestBlock: {
-			OrderReference: orderReference,
+			OrderReference: 'Credion',
 		},
 		ServiceRequestBlock: {
 			Jurisdiction: state,
@@ -2593,8 +2592,8 @@ router.post('/land-title/counts', async (req, res) => {
 				`, {
 					bind: [abn]
 				});
+
 				if (existingData && existingData.length > 0) {
-					console.log(`✅ Found existing data for ABN ${abn}, using cached data`);
 					
 					// Extract data from the summary record (land-title-organisation)
 					// This record contains the aggregated counts and titleReferences
@@ -2611,7 +2610,7 @@ router.post('/land-title/counts', async (req, res) => {
 						
 						// Extract titleReferences from summary record
 						// Handle both old format (array) and new format (object with current/historical)
-						console.log(rdata);
+						
 						if (rdata?.titleReferences) {
 							if (Array.isArray(rdata.titleReferences)) {
 								// Old format: flat array, put all in current
@@ -2624,7 +2623,7 @@ router.post('/land-title/counts', async (req, res) => {
 								}
 							}
 						}
-						console.log(allTitleReferences);
+		
 						// Return cached data
 						return res.json({
 							success: true,
@@ -2652,9 +2651,6 @@ router.post('/land-title/counts', async (req, res) => {
 					}
 				}
 
-				// No cached data found, proceed with API call
-				console.log(`🔄 No cached data found for ABN ${abn}, calling API`);
-				
 				// Search for land titles by organization/ABN across all states
 				for (const state of states) {
 					try {
@@ -2676,7 +2672,8 @@ router.post('/land-title/counts', async (req, res) => {
 							}
 						}
 						
-						if (searchResults.fullApiResponse) {
+						const titleRefsArray = searchResults.titleReferences?.current || (Array.isArray(searchResults.titleReferences) ? searchResults.titleReferences : []);
+						if (searchResults.fullApiResponse && titleRefsArray.length > 0) {
 							try {
 								// Store the full API response once for this state search
 								const [result] = await sequelize.query(`
@@ -2722,8 +2719,6 @@ router.post('/land-title/counts', async (req, res) => {
 					titleReferences: allTitleReferences,
 				};
 
-				// Insert new record - ensure ABN is properly stored
-				console.log(`📝 Inserting summary record: rtype='land-title-organisation', uuid='${abn}', abn='${abn}', search_word='${organizationName || abn}'`);
 				await sequelize.query(`
 					INSERT INTO api_data (rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at)
 					VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
@@ -2764,8 +2759,6 @@ router.post('/land-title/counts', async (req, res) => {
 				});
 
 				if (existingData && existingData.length > 0) {
-					console.log(`✅ Found existing data for individual ${searchTerm}, using cached data`);
-					
 					try {
 						const summaryRecord = existingData[0]; // Get the most recent summary record
 						// Parse rdata if it's a string (stored as JSON in PostgreSQL)
@@ -2810,9 +2803,6 @@ router.post('/land-title/counts', async (req, res) => {
 						// Fall through to API call if parsing fails
 					}
 				}
-
-				// No cached data found, proceed with API call
-				console.log(`🔄 No cached data found for individual ${searchTerm}, calling API`);
 
 				// Search for land titles by individual name across all states
 				for (const state of states) {
@@ -2883,8 +2873,6 @@ router.post('/land-title/counts', async (req, res) => {
 					titleReferences: allTitleReferences,
 				};
 
-				// Insert new record - ensure ABN is properly stored
-				console.log(`📝 Inserting summary record: rtype='land-title-organisation'`);
 				await sequelize.query(`
 					INSERT INTO api_data (rtype, uuid, search_word, abn, acn, rdata, alert, created_at, updated_at)
 					VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
@@ -2900,8 +2888,6 @@ router.post('/land-title/counts', async (req, res) => {
 					]
 				});
 			}
-			console.log("allTitleReferences");
-			console.log(allTitleReferences);
 			return res.json({
 				success: true,
 				current: currentCount,

@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs').promises;
+const fsp = require('fs');
 const moment = require('moment');
 const puppeteer = require('puppeteer');
 const { uploadToS3 } = require('./s3.service');
@@ -8,24 +9,24 @@ const UserReport = require('../models/UserReport');
 // Create media directory if it doesn't exist
 const mediaDir = path.join(__dirname, '../media');
 async function ensureMediaDir() {
-	try {
-		await fs.access(mediaDir);
-	} catch {
-		await fs.mkdir(mediaDir, { recursive: true });
-	}
+  try {
+    await fs.access(mediaDir);
+  } catch {
+    await fs.mkdir(mediaDir, { recursive: true });
+  }
 }
 
 // Helper function to format ACN
 function fmtAcn(acnVal) {
-	if (!acnVal) return '';
-	const s = ('' + acnVal).replace(/\D/g, '');
-	return s.length === 9 ? s.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3') : acnVal;
+  if (!acnVal) return '';
+  const s = ('' + acnVal).replace(/\D/g, '');
+  return s.length === 9 ? s.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3') : acnVal;
 }
 
 // Helper function to format dates
 function fmtDate(date) {
-	if (!date) return 'N/A';
-	return moment(date).format('DD MMM YYYY');
+  if (!date) return 'N/A';
+  return moment(date).format('DD MMM YYYY');
 }
 
 /**
@@ -44,10 +45,10 @@ function extractSearchWord(business, type) {
 	// Determine if this is an organization or individual based on report type
 	const isLandTitleOrg = type === 'land-title-organisation';
 	const isLandTitleIndividual = type === 'land-title-individual';
-	const isOrganization = isLandTitleOrg ||
-		(business?.isCompany === "ORGANISATION" && !isLandTitleIndividual);
-	const isIndividual = isLandTitleIndividual ||
-		(business?.isCompany === "INDIVIDUAL" && !isLandTitleOrg);
+	const isOrganization = isLandTitleOrg || 
+	                     (business?.isCompany === "ORGANISATION" && !isLandTitleIndividual);
+	const isIndividual = isLandTitleIndividual || 
+	                    (business?.isCompany === "INDIVIDUAL" && !isLandTitleOrg);
 
 	if (isOrganization) {
 		// For organizations, use company name
@@ -80,7 +81,7 @@ function extractSearchWord(business, type) {
 			const firstName = business?.fname || business?.firstName || '';
 			const middleName = business?.mname || business?.middleName || '';
 			const lastName = business?.lname || business?.lastName || '';
-
+			
 			const nameParts = [firstName, middleName, lastName].filter(part => part && part.trim());
 			searchWord = nameParts.length > 0 ? nameParts.join(' ').trim() : null;
 		}
@@ -92,8 +93,8 @@ function extractSearchWord(business, type) {
 }
 
 function fmtDateTime(date) {
-	if (!date) return 'N/A';
-	return `${moment(date).format('DD MMM YYYY')}<br>${moment(date).format('h:mma')}`;
+  if (!date) return 'N/A';
+  return `${moment(date).format('DD MMM YYYY')}<br>${moment(date).format('h:mma')}`;
 }
 
 // Extract data for ATO Report
@@ -126,6 +127,7 @@ function extractAtoData(data) {
 		current_tax_debt_updated_line: taxDebtUpdatedLine,
 		// ATO reports don't need court/insolvency data
 		actionSummaryRows: '',
+    actionSectionsHtml: '',
 		insolvency_notice_id: 'N/A',
 		insolvency_type: 'N/A',
 		insolvency_publish_date: 'N/A',
@@ -152,172 +154,366 @@ function extractAtoData(data) {
 
 // Extract data for Court Report
 function extractCourtData(data) {
-	const entity = data.entity || {};
-	const firstInsolv = data.insolvencies ? Object.values(data.insolvencies)[0] : null;
-	const firstCase = data.cases ? (Array.isArray(data.cases) ? data.cases[0] : Object.values(data.cases)[0]) : null;
+  const entity = data.entity || {};
+  
+  // Get all cases - handle both array and object formats
+  let allCases = [];
+  if (data.cases) {
+    if (Array.isArray(data.cases)) {
+      allCases = data.cases;
+    } else if (typeof data.cases === 'object') {
+      allCases = Object.values(data.cases);
+    }
+  }
+  
+  // Extract case number from first case if available
+  let caseNumber = 'N/A';
+  if (allCases.length > 0) {
+    caseNumber = allCases[0].case_number || allCases[0].case_name || 'N/A';
+  }
+  
+  // Action summary rows - only if cases exist
+  let actionSummaryRows = '';
+  let actionSectionsHtml = '';
+  
+  if (allCases.length === 0) {
+    // No cases available
+    actionSummaryRows = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #64748B;">No data available</td></tr>';
+    actionSectionsHtml = '<div style="text-align: center; padding: 40px; color: #64748B; font-size: 14px;">No data available</div>';
+  } else {
+    // Generate action summary table rows
+    let rowIndex = 1;
+    allCases.forEach((caseItem, index) => {
+      const date = caseItem.notification_time || caseItem.most_recent_event || caseItem.created_at;
+      actionSummaryRows += `<tr><td>${rowIndex++}</td><td>${fmtDate(date)}<br><span style="font-size: 9px; color: #64748B;">(${moment(date).fromNow(true)} ago)</span></td><td>${caseItem.match_on || caseItem.name || 'N/A'}</td><td>${caseItem.court_name || caseItem.source || 'N/A'}</td><td>${caseItem.case_type || caseItem.type || 'N/A'}</td><td>${caseItem.case_number || caseItem.case_name || 'N/A'}</td></tr>`;
+    });
+    
+    // Generate action sections for each case
+    allCases.forEach((caseItem, index) => {
+      const actionNumber = index + 1;
+      const caseType = caseItem.case_name;
+      
+      // Case information
+      const case_case_id = caseItem.case_number || caseItem.case_name || 'N/A';
+      const case_source = caseItem.court_name || caseItem.source || 'N/A';
+      const case_jurisdiction = caseItem.jurisdiction || 'N/A';
+      const case_type = caseItem.case_type || caseItem.type || 'N/A';
+      const case_status = (caseItem.applications && caseItem.applications[0]?.status) || 'N/A';
+      const case_location = caseItem.suburb || caseItem.registered_in || 'N/A';
+      const case_most_recent_event = fmtDate(caseItem.most_recent_event || caseItem.last_event || caseItem.updated_at);
+      const case_notification_date = fmtDate(caseItem.notification_time || caseItem.applications?.[0]?.date_filed || caseItem.created_at);
+      const case_next_event = caseItem.next_hearing_date ? fmtDate(caseItem.next_hearing_date) : 'N/A';
+      
+      // Orders and Outcomes - include both judgments and applications
+      let orders_rows = '';
+      const allOrders = [];
+      
+      // Add judgments
+      if (Array.isArray(caseItem.judgments)) {
+        caseItem.judgments.forEach(j => {
+          const orderDate = j.date || j.date_filed || j.date_finalised || '';
+          if (orderDate || j.title || j.description) {
+            allOrders.push({
+              date: orderDate,
+              title: j.title || j.description || ''
+            });
+          }
+        });
+      }
+      
+      // Add applications if no judgments
+      if (allOrders.length === 0 && Array.isArray(caseItem.applications)) {
+        caseItem.applications.forEach(app => {
+          const orderDate = app.date_filed || app.date_finalised || '';
+          if (orderDate || app.title) {
+            allOrders.push({
+              date: orderDate,
+              title: app.title || app.type || ''
+            });
+          }
+        });
+      }
+      
+      if (allOrders.length > 0) {
+        // Sort by date (most recent first)
+        allOrders.sort((a, b) => {
+          const dateA = a.date ? moment(a.date).valueOf() : 0;
+          const dateB = b.date ? moment(b.date).valueOf() : 0;
+          return dateB - dateA;
+        });
+        
+        allOrders.forEach(order => {
+          orders_rows += `<tr><td style="padding: 8px;">${fmtDate(order.date)}</td><td style="padding: 8px;">${order.title}</td></tr>`;
+        });
+      } else {
+        orders_rows = '<tr><td colspan="2" style="text-align: center; padding: 20px; color: #64748B;">No orders or outcomes available</td></tr>';
+      }
+      
+      // Parties
+      let case_parties_rows = '';
+      if (Array.isArray(caseItem.parties) && caseItem.parties.length > 0) {
+        caseItem.parties.forEach(p => {
+          const repName = p.representative_firm || p.representative_name || '';
+          const acn = fmtAcn(p.acn) || '';
+          case_parties_rows += `<tr><td>${p.name || ''}</td><td>${p.role || ''}</td><td>${repName}</td><td>${acn}</td></tr>`;
+        });
+      } else {
+        case_parties_rows = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #64748B;">No parties available</td></tr>';
+      }
+      
+      // Hearings
+      let hearings_rows = '';
+      if (Array.isArray(caseItem.hearings) && caseItem.hearings.length > 0) {
+        // Sort hearings by datetime (most recent first)
+        const sortedHearings = [...caseItem.hearings].sort((a, b) => {
+          const dateA = a.datetime ? moment(a.datetime).valueOf() : 0;
+          const dateB = b.datetime ? moment(b.datetime).valueOf() : 0;
+          return dateB - dateA;
+        });
+        
+        sortedHearings.forEach(h => {
+          // Build court location from available fields
+          let courtLocationParts = [];
+          if (h.court_name) courtLocationParts.push(h.court_name);
+          if (h.court_address) courtLocationParts.push(h.court_address);
+          if (h.court_suburb) courtLocationParts.push(h.court_suburb);
+          const fullLocation = courtLocationParts.length > 0 ? courtLocationParts.join(', ') : '';
+          
+          // Format court room - handle special cases like "By Web Conference"
+          const courtRoom = h.court_room || '';
+          
+          hearings_rows += `<tr><td>${fmtDateTime(h.datetime)}</td><td>${h.officer || ''}</td><td>${courtRoom}</td><td>${fullLocation}</td><td>${h.type || ''}</td><td>${h.outcome || ''}</td></tr>`;
+        });
+      } else {
+        hearings_rows = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #64748B;">No hearings available</td></tr>';
+      }
+      
+      // Documents
+      let documents_rows = '';
+      if (Array.isArray(caseItem.documents) && caseItem.documents.length > 0) {
+        // Sort documents by datetime (most recent first)
+        const sortedDocuments = [...caseItem.documents].sort((a, b) => {
+          const dateA = a.datetime ? moment(a.datetime).valueOf() : 0;
+          const dateB = b.datetime ? moment(b.datetime).valueOf() : 0;
+          return dateB - dateA;
+        });
+        
+        sortedDocuments.forEach(d => {
+          const docDate = d.datetime || d.date_filed || '';
+          const docTime = docDate ? moment(docDate).format('h:mma') : '';
+          documents_rows += `<tr><td>${fmtDate(docDate)}</td><td>${docTime}</td><td>${d.title || ''} ${d.description ? '- ' + d.description : ''}</td><td>${d.filed_by || ''}</td></tr>`;
+        });
+      } else {
+        documents_rows = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #64748B;">No documents available</td></tr>';
+      }
+      
+      // Build action section HTML
+      actionSectionsHtml += `
+        <!-- ACTION ${actionNumber}: ${caseType} -->
+        <div class="page" style="page-break-before: ${index > 0 ? 'always' : 'auto'};">
+            <div class="page-title">Action ${actionNumber}: ${caseType}</div>
+            
+            <div class="card" style="border: 2px solid #CBD5E1; background: #F8FAFC; padding: 12px;">
+                <div class="card-header" style="background: #F8FAFC; color: #475569; font-weight: 600;">CASE INFORMATION</div>
+                <div class="data-grid" style="grid-template-columns: repeat(2, 1fr);">
+                    <div class="data-item">
+                        <div class="data-label">Case ID</div>
+                        <div class="data-value">${case_case_id}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Source</div>
+                        <div class="data-value">${case_source}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Jurisdiction</div>
+                        <div class="data-value">${case_jurisdiction}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Case Type</div>
+                        <div class="data-value">${case_type}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Case Status</div>
+                        <div class="data-value">${case_status}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Location</div>
+                        <div class="data-value">${case_location}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Most Recent Event</div>
+                        <div class="data-value">${case_most_recent_event}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Notification Date</div>
+                        <div class="data-value">${case_notification_date}</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Next Event</div>
+                        <div class="data-value">${case_next_event}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="card info">
+                <div class="card-header" style="color: #0F172A;">Action Summary</div>
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
+                    <div style="text-align: center;">
+                        <div class="stat-label">Outcome</div>
+                        <div style="font-size: 12px; font-weight: 700; color: #0F172A; margin-top: 6px;">
+                            ${allOrders.length}</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div class="stat-label">Hearing</div>
+                        <div style="font-size: 18px; font-weight: 700; color: #0F172A;">${caseItem.hearings.length}
+                        </div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div class="stat-label">Parties</div>
+                        <div style="font-size: 18px; font-weight: 700; color: #0F172A;">${caseItem.parties.length}
+                        </div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div class="stat-label">Documents</div>
+                        <div style="font-size: 18px; font-weight: 700; color: #0F172A;">${caseItem.documents.length}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="section-title">Orders and Outcomes</div>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 20%;">Date</th>
+                        <th style="width: 80%;">Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${orders_rows}
+                </tbody>
+            </table>
+            
+            <div class="section-title">Parties</div>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 40%;">Name</th>
+                        <th style="width: 15%;">Role</th>
+                        <th style="width: 30%;">Representative</th>
+                        <th style="width: 15%;">ACN</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${case_parties_rows}
+                </tbody>
+            </table>
 
-	// Extract case number
-	let caseNumber = 'N/A';
-	if (firstCase) {
-		caseNumber = firstCase.case_number || firstCase.case_name || 'N/A';
-	} else if (firstInsolv) {
-		caseNumber = firstInsolv.case_number || firstInsolv.asic_notice_id || 'N/A';
-	}
+			<div class="section-title">Hearing Schedule</div>
+			<table>
+                <thead>
+                    <tr>
+                        <th style="width: 15%;">Date/Time</th>
+                        <th style="width: 18%;">Officer</th>
+                        <th style="width: 15%;">Court Room</th>
+                        <th style="width: 25%;">Court Location</th>
+                        <th style="width: 12%;">Type</th>
+                        <th style="width: 15%;">Outcome</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${hearings_rows}
+                </tbody>
+            </table>
 
-	// Action summary rows
-	let actionSummaryRows = '';
-	let rowIndex = 1;
-	if (firstInsolv) {
-		const date = firstInsolv.notification_time || firstInsolv.date_filed || firstInsolv.created_at;
-		actionSummaryRows += `<tr><td>${rowIndex++}</td><td>${fmtDate(date)}<br><span style="font-size: 9px; color: #64748B;">(${moment(date).fromNow(true)} ago)</span></td><td>${firstInsolv.match_on || firstInsolv.name || 'N/A'}</td><td>${firstInsolv.court_name || firstInsolv.court || 'ASIC Insolvencies'}</td><td>${firstInsolv.case_type || firstInsolv.type || 'N/A'}</td><td>${firstInsolv.case_number || firstInsolv.asic_notice_id || 'N/A'}</td></tr>`;
-	}
-	if (firstCase) {
-		const date = firstCase.notification_time || firstCase.most_recent_event || firstCase.created_at;
-		actionSummaryRows += `<tr><td>${rowIndex++}</td><td>${fmtDate(date)}<br><span style="font-size: 9px; color: #64748B;">(${moment(date).fromNow(true)} ago)</span></td><td>${firstCase.match_on || firstCase.name || 'N/A'}</td><td>${firstCase.court_name || firstCase.source || 'N/A'}</td><td>${firstCase.case_type || firstCase.type || 'N/A'}</td><td>${firstCase.case_number || firstCase.case_name || 'N/A'}</td></tr>`;
-	}
+			<div class="section-title">Document Timeline</div>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 12%;">Date</th>
+                        <th style="width: 10%;">Time</th>
+                        <th style="width: 40%;">Title</th>
+                        <th style="width: 38%;">Filed By</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${documents_rows}
+                </tbody>
+            </table>
 
-	// Insolvency details
-	const insolvency_notice_id = firstInsolv?.asic_notice_id || firstInsolv?.case_number || 'N/A';
-	const insolvency_type = firstInsolv?.case_type || firstInsolv?.type || 'N/A';
-	const insolvency_publish_date = fmtDate(firstInsolv?.notification_time || firstInsolv?.date_filed || firstInsolv?.created_at);
-	const insolvency_status = firstInsolv?.status || 'N/A';
-	const insolvency_appointee = (firstInsolv?.parties && firstInsolv.parties[0]?.name) || 'N/A';
-	const insolvency_court = firstInsolv?.court_name || firstInsolv?.court || 'ASIC Insolvencies';
-
-	let insolvency_parties_rows = '';
-	if (firstInsolv && Array.isArray(firstInsolv.parties)) {
-		firstInsolv.parties.forEach(p => {
-			insolvency_parties_rows += `<tr><td>${p.name || ''}</td><td>${fmtAcn(p.acn) || ''}</td></tr>`;
-		});
-	} else if (firstInsolv) {
-		insolvency_parties_rows = `<tr><td>${firstInsolv.name || 'N/A'}</td><td></td></tr>`;
-	}
-
-	// Case details
-	const case_case_id = firstCase?.case_number || firstCase?.case_name || 'N/A';
-	const case_source = firstCase?.court_name || firstCase?.source || 'N/A';
-	const case_jurisdiction = firstCase?.jurisdiction || 'N/A';
-	const case_type = firstCase?.case_type || firstCase?.type || 'N/A';
-	const case_status = (firstCase?.applications && firstCase.applications[0]?.status) || 'N/A';
-	const case_location = firstCase?.suburb || firstCase?.registered_in || 'N/A';
-	const case_most_recent_event = fmtDate(firstCase?.most_recent_event || firstCase?.last_event || firstCase?.updated_at);
-	const case_notification_date = fmtDate(firstCase?.notification_time || firstCase?.applications?.[0]?.date_filed || firstCase?.created_at);
-	const case_next_event = firstCase?.next_hearing_date ? fmtDate(firstCase.next_hearing_date) : 'N/A';
-
-	let orders_rows = '';
-	if (firstCase && Array.isArray(firstCase.judgments)) {
-		firstCase.judgments.forEach(j => {
-			orders_rows += `<tr><td style="padding: 8px;"><strong>${fmtDate(j.date)}</strong></td><td style="padding: 8px;"><strong>Title:</strong> ${j.title || ''}</td></tr>`;
-		});
-	}
-
-	let case_parties_rows = '';
-	if (firstCase && Array.isArray(firstCase.parties)) {
-		firstCase.parties.forEach(p => {
-			case_parties_rows += `<tr><td>${p.name || ''}</td><td>${p.role || ''}</td><td>${p.representative_firm || p.representative_name || ''}</td><td>${fmtAcn(p.acn) || ''}</td></tr>`;
-		});
-	}
-
-	let hearings_rows = '';
-	if (firstCase && Array.isArray(firstCase.hearings)) {
-		firstCase.hearings.forEach(h => {
-			hearings_rows += `<tr><td>${fmtDateTime(h.datetime)}</td><td>${h.officer || ''}</td><td>${h.court_room || ''}</td><td>${h.court_name || ''}</td><td>${h.type || ''}</td><td>${h.outcome || ''}</td></tr>`;
-		});
-	}
-
-	let documents_rows = '';
-	if (firstCase && Array.isArray(firstCase.documents)) {
-		firstCase.documents.forEach(d => {
-			documents_rows += `<tr><td>${fmtDate(d.datetime)}</td><td>${moment(d.datetime).format('h:mma')}</td><td>${d.title || ''}</td><td>${d.filed_by || ''}</td></tr>`;
-		});
-	}
-
-	return {
-		company_type: 'court',
-		acn: data.acn || entity.acn || 'N/A',
-		abn: data.abn || entity.abn || 'N/A',
-		companyName: entity.name || 'N/A',
-		entity_abn: entity.abn || 'N/A',
-		entity_acn: entity.acn || 'N/A',
-		entity_name: entity.name || 'N/A',
-		entity_review_date: entity.review_date ? moment(entity.review_date).format('DD/MM/YYYY') : 'N/A',
-		entity_registered_in: entity.registered_in || 'N/A',
-		entity_abr_gst_status: entity.abr_gst_status || 'N/A',
-		entity_document_number: entity.document_number || 'N/A',
-		entity_organisation_type: entity.organisation_type || 'N/A',
-		entity_asic_date_of_registration: entity.asic_date_of_registration ? moment(entity.asic_date_of_registration).format('DD/MM/YYYY') : 'N/A',
-		abn_state: data.abn_state || 'N/A',
-		abn_status: data.abn_status || 'N/A',
-		actionSummaryRows,
-		insolvency_notice_id,
-		insolvency_type,
-		insolvency_publish_date,
-		insolvency_status,
-		insolvency_appointee,
-		insolvency_parties_rows,
-		insolvency_court,
-		case_case_id,
-		case_source,
-		case_jurisdiction,
-		case_type,
-		case_status,
-		case_location,
-		case_most_recent_event,
-		case_notification_date,
-		case_next_event,
-		orders_rows,
-		case_parties_rows,
-		hearings_rows,
-		documents_rows,
-		caseNumber,
-		current_tax_debt_amount: 'N/A',
-		current_tax_debt_ato_updated_at: 'N/A',
-		current_tax_debt_updated_line: ''
-	};
+        </div>
+      `;
+    });
+  }
+  
+  return {
+    company_type: 'court',
+    acn: data.acn || entity.acn || 'N/A',
+    abn: data.abn || entity.abn || 'N/A',
+    companyName: entity.name || 'N/A',
+    entity_abn: entity.abn || 'N/A',
+    entity_acn: entity.acn || 'N/A',
+    entity_name: entity.name || 'N/A',
+    entity_review_date: entity.review_date ? moment(entity.review_date).format('DD/MM/YYYY') : 'N/A',
+    entity_registered_in: entity.registered_in || 'N/A',
+    entity_abr_gst_status: entity.abr_gst_status || 'N/A',
+    entity_document_number: entity.document_number || 'N/A',
+    entity_organisation_type: entity.organisation_type || 'N/A',
+    entity_asic_date_of_registration: entity.asic_date_of_registration ? moment(entity.asic_date_of_registration).format('DD/MM/YYYY') : 'N/A',
+    abn_state: data.abn_state || 'N/A',
+    abn_status: data.abn_status || 'N/A',
+    actionSummaryRows,
+    actionSectionsHtml,
+    caseNumber,
+    current_tax_debt_amount: 'N/A',
+    current_tax_debt_ato_updated_at: 'N/A',
+    current_tax_debt_updated_line: ''
+  };
 }
 
 // Extract data for ASIC Current Report
 function extractAsicCurrentData(data) {
-	const entity = data.entity || {};
-	const rdata = data.rdata || data;
-
-	const entityData = rdata.entity || entity;
-	const formattedAcn = entityData.acn ? fmtAcn(entityData.acn) : 'N/A';
-	const formattedAbn = entityData.abn ? entityData.abn.replace(/\D/g, '').replace(/(\d{2})(\d{3})(\d{3})(\d{3})/, '$1 $2 $3 $4') : 'N/A';
-
-	const currentDate = moment();
-	const reportDate = currentDate.format('DD MMMM YYYY');
-	const reportDateWithTime = `${currentDate.format('DD MMM YYYY')}, ${currentDate.format('h:mma')}`;
-
-	const asicRegistrationDate = entityData.asic_date_of_registration
-		? moment(entityData.asic_date_of_registration).format('DD/MM/YYYY')
-		: 'N/A';
-
-	// Format review date
-	const reviewDate = entityData.review_date
-		? moment(entityData.review_date).format('DD/MM/YYYY')
-		: 'N/A';
-
-	// Extract tax debt information
-	let taxDebtAmount = 'N/A';
-	let taxDebtUpdatedAt = 'N/A';
-	let taxDebtSection = ''; // HTML for tax debt section
-
-	if (rdata.current_tax_debt && rdata.current_tax_debt.amount !== null && rdata.current_tax_debt.amount !== undefined) {
-		const amount = parseFloat(rdata.current_tax_debt.amount);
-		taxDebtAmount = new Intl.NumberFormat('en-AU', {
-			style: 'currency',
-			currency: 'AUD',
-			minimumFractionDigits: 2,
-			maximumFractionDigits: 2
-		}).format(amount);
-
-		if (rdata.current_tax_debt.ato_updated_at) {
-			taxDebtUpdatedAt = moment.utc(rdata.current_tax_debt.ato_updated_at).format('DD/MM/YYYY [at] h:mm:ss A');
-		}
-
-		// Generate tax debt section HTML
-		taxDebtSection = `
+  const entity = data.entity || {};
+  const rdata = data.rdata || data; 
+  
+  const entityData = rdata.entity || entity;
+  const formattedAcn = entityData.acn ? fmtAcn(entityData.acn) : 'N/A';
+  const formattedAbn = entityData.abn ? entityData.abn.replace(/\D/g, '').replace(/(\d{2})(\d{3})(\d{3})(\d{3})/, '$1 $2 $3 $4') : 'N/A';
+  
+  const currentDate = moment();
+  const reportDate = currentDate.format('DD MMMM YYYY');
+  const reportDateWithTime = `${currentDate.format('DD MMM YYYY')}, ${currentDate.format('h:mma')}`;
+  
+  const asicRegistrationDate = entityData.asic_date_of_registration 
+    ? moment(entityData.asic_date_of_registration).format('DD/MM/YYYY') 
+    : 'N/A';
+  
+  // Format review date
+  const reviewDate = entityData.review_date 
+    ? moment(entityData.review_date).format('DD/MM/YYYY') 
+    : 'N/A';
+  
+  // Extract tax debt information
+  let taxDebtAmount = 'N/A';
+  let taxDebtUpdatedAt = 'N/A';
+  let taxDebtSection = ''; // HTML for tax debt section
+  
+  if (rdata.current_tax_debt && rdata.current_tax_debt.amount !== null && rdata.current_tax_debt.amount !== undefined) {
+    const amount = parseFloat(rdata.current_tax_debt.amount);
+    taxDebtAmount = new Intl.NumberFormat('en-AU', {
+      style: 'currency',
+      currency: 'AUD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(amount);
+    
+    if (rdata.current_tax_debt.ato_updated_at) {
+      taxDebtUpdatedAt = moment.utc(rdata.current_tax_debt.ato_updated_at).format('DD/MM/YYYY [at] h:mm:ss A');
+    }
+    
+    // Generate tax debt section HTML
+    taxDebtSection = `
             <div style="margin-top: 60px;">
                 <div class="card" style="border: 2px solid #CBD5E1; background: #F8FAFC;">
                     <div style="font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 16px; display: flex; align-items: center;">
@@ -1075,6 +1271,7 @@ function extractAsicCurrentData(data) {
 
 		// Placeholder fields for future pages
 		actionSummaryRows: '',
+		actionSectionsHtml: '',
 		insolvency_notice_id: 'N/A',
 		insolvency_type: 'N/A',
 		insolvency_publish_date: 'N/A',
@@ -3056,31 +3253,34 @@ function extractpropertyData(data) {
 }
 
 // Extract data for Land Title Organisation Report
-function extractLandTitleOrganisationData(data) {
+function extractLandTitleOrganisationData(data, bussiness) {
+
 	const titleOrders = Array.isArray(data?.titleOrders) ? data.titleOrders : [];
 	const cotalityDataArray = Array.isArray(data?.cotalityData) ? data.cotalityData : [];
 	const currentCount = data?.currentCount || 0;
 	const historicalCount = data?.historicalCount || 0;
 	const allCount = data?.allCount || 0;
-
+	
 	const detail = bussiness?.landTitleSelection?.detail || 'ALL';
 	const addOn = bussiness?.landTitleSelection?.addOn || false;
-	const CompanyFullName = bussiness?.Name || 'N/A';
-
+	const CompanyFullName = bussiness?.Name|| 'N/A';
+	const Abn = bussiness?.Abn|| 'N/A';
+	
+	
 	// Get title references from business
 	const titleReferencesRaw = bussiness?.landTitleSelection?.titleReferences || {};
 	let titleReferences = { current: [], historical: [] };
-
+	
 	if (Array.isArray(titleReferencesRaw)) {
 		titleReferences.current = titleReferencesRaw;
 	} else if (titleReferencesRaw.current && Array.isArray(titleReferencesRaw.current)) {
 		titleReferences = titleReferencesRaw;
 	}
-
+	
 	// Determine which title orders to show based on detail
 	let currentTitleOrders = [];
 	let historicalTitleOrders = [];
-
+	
 	if (detail === 'CURRENT') {
 		// Only show current
 		currentTitleOrders = titleOrders.filter((order) => {
@@ -3104,7 +3304,7 @@ function extractLandTitleOrganisationData(data) {
 			return titleReferences.historical && titleReferences.historical.some(tr => tr.titleReference === titleRef);
 		});
 	}
-
+	
 	const escapeHtml = (value) => {
 		if (value === null || value === undefined) {
 			return '';
@@ -3116,19 +3316,19 @@ function extractLandTitleOrganisationData(data) {
 			.replace(/"/g, '&quot;')
 			.replace(/'/g, '&#39;');
 	};
-
+	
 	const formatDate = (value, format = 'DD MMMM YYYY') => {
 		if (!value) return 'N/A';
 		const m = moment(value);
 		return m.isValid() ? m.format(format) : 'N/A';
 	};
-
+	
 	const formatDateTime = (value, format = 'DD MMMM YYYY, h:mma') => {
 		if (!value) return 'N/A';
 		const m = moment(value);
 		return m.isValid() ? m.format(format) : 'N/A';
 	};
-
+	
 	const formatCurrency = (value) => {
 		if (value === null || value === undefined || value === '') {
 			return 'N/A';
@@ -3147,25 +3347,25 @@ function extractLandTitleOrganisationData(data) {
 			return String(value);
 		}
 	};
-
+	
 	// Current date for report
 	const reportDate = new Date().toLocaleDateString('en-GB', {
 		day: 'numeric',
 		month: 'long',
 		year: 'numeric'
 	});
-
+	
 	// Generate Executive Summary section
 	const showExecutiveSummary = detail !== 'SUMMARY';
 	let executiveSummaryHtml = '';
-
+	
 	if (showExecutiveSummary) {
 		const primaryProperty = currentTitleOrders[0];
 		const primaryAddress = primaryProperty?.RealPropertySegment?.[0]?.IdentityBlock?.AddressString || 'N/A';
-		const estimatedValue = primaryProperty?.cotality?.propertyData?.avmEstimate
-			? formatCurrency(primaryProperty.cotality.propertyData.avmEstimate)
+		const estimatedValue = primaryProperty?.cotality?.propertyData?.avmEstimate 
+			? formatCurrency(primaryProperty.cotality.propertyData.avmEstimate) 
 			: 'N/A';
-
+		
 		executiveSummaryHtml = `
     <div class="card">
       <div class="data-grid" style="grid-template-columns: repeat(4, 1fr);">
@@ -3176,12 +3376,12 @@ function extractLandTitleOrganisationData(data) {
       </div>
     </div>`;
 	}
-
+	
 	// Generate Title Search Information sections
 	const showTitleSearchInfo = detail !== 'SUMMARY';
 	let currentTitleSearchHtml = '';
 	let historicalTitleSearchHtml = '';
-
+	
 	if (showTitleSearchInfo) {
 		// Current Title Search Information
 		if (currentTitleOrders.length > 0) {
@@ -3192,7 +3392,7 @@ function extractLandTitleOrganisationData(data) {
 				const registryBlock = realPropertySegment.RegistryBlock || {};
 				const dataSources = Array.isArray(orderResultBlock.DataSources) ? orderResultBlock.DataSources : [];
 				const primaryDataSource = dataSources[0] || {};
-
+				
 				const titleRef = identityBlock.TitleReference || 'N/A';
 				const addressString = identityBlock.AddressString || 'N/A';
 				const searchDate = formatDateTime(orderResultBlock.OrderCompletedDateTime);
@@ -3202,7 +3402,7 @@ function extractLandTitleOrganisationData(data) {
 				const transferRef = registryBlock.Ownership?.Dealings?.[0]?.Reference || 'N/A';
 				const folio = registryBlock.Folio || 'N/A';
 				const volume = registryBlock.Volume || 'N/A';
-
+				
 				const plans = Array.isArray(registryBlock.Plans) ? registryBlock.Plans : [];
 				const scheduleRows = plans.length
 					? plans.map((plan) => {
@@ -3211,7 +3411,7 @@ function extractLandTitleOrganisationData(data) {
 						return `<tr><td>${escapeHtml(parcelDesc)}</td><td>${escapeHtml(planRef)}</td></tr>`;
 					}).join('')
 					: '<tr><td colspan="2" style="text-align:center; padding: 12px; color: #94A3B8;">No parcel information available</td></tr>';
-
+				
 				const interests = Array.isArray(registryBlock.Interests) ? registryBlock.Interests : [];
 				const encumbrancesList = interests.length
 					? interests.map((interest) => {
@@ -3219,7 +3419,7 @@ function extractLandTitleOrganisationData(data) {
 						return `<li>${escapeHtml(desc)}</li>`;
 					}).join('')
 					: '<li style="color:#94A3B8;">No encumbrances recorded</li>';
-
+				
 				return `
       <div class="card" style="margin-bottom: 20px;">
         <div class="card-header">Property Title Details - ${escapeHtml(titleRef)}</div>
@@ -3248,12 +3448,12 @@ function extractLandTitleOrganisationData(data) {
         <ol class="text-sm" style="margin-left:18px; line-height:1.8;">${encumbrancesList}</ol>
       </div>`;
 			}).join('');
-
+			
 			currentTitleSearchHtml = `
     <div class="section-title">Title Search Information - Current Ownership</div>
     ${titleSearchSections}`;
 		}
-
+		
 		// Historical Title Search Information
 		if (historicalTitleOrders.length > 0 && (detail === 'ALL' || detail === 'PAST')) {
 			const titleSearchSections = historicalTitleOrders.map((order) => {
@@ -3263,13 +3463,13 @@ function extractLandTitleOrganisationData(data) {
 				const registryBlock = realPropertySegment.RegistryBlock || {};
 				const dataSources = Array.isArray(orderResultBlock.DataSources) ? orderResultBlock.DataSources : [];
 				const primaryDataSource = dataSources[0] || {};
-
+				
 				const titleRef = identityBlock.TitleReference || 'N/A';
 				const searchDate = formatDateTime(orderResultBlock.OrderCompletedDateTime);
 				const editionDate = formatDate(primaryDataSource.EditionIssuedDateTime);
 				const folio = registryBlock.Folio || 'N/A';
 				const volume = registryBlock.Volume || 'N/A';
-
+				
 				const plans = Array.isArray(registryBlock.Plans) ? registryBlock.Plans : [];
 				const scheduleRows = plans.length
 					? plans.map((plan) => {
@@ -3278,7 +3478,7 @@ function extractLandTitleOrganisationData(data) {
 						return `<tr><td>${escapeHtml(parcelDesc)}</td><td>${escapeHtml(planRef)}</td></tr>`;
 					}).join('')
 					: '<tr><td colspan="2" style="text-align:center; padding: 12px; color: #94A3B8;">No parcel information available</td></tr>';
-
+				
 				const interests = Array.isArray(registryBlock.Interests) ? registryBlock.Interests : [];
 				const encumbrancesList = interests.length
 					? interests.map((interest) => {
@@ -3286,7 +3486,7 @@ function extractLandTitleOrganisationData(data) {
 						return `<li>${escapeHtml(desc)}</li>`;
 					}).join('')
 					: '<li style="color:#94A3B8;">No encumbrances recorded</li>';
-
+				
 				return `
       <div class="card" style="margin-bottom: 20px;">
         <div class="card-header">Property Title Details - ${escapeHtml(titleRef)}</div>
@@ -3312,17 +3512,17 @@ function extractLandTitleOrganisationData(data) {
         <ol class="text-sm" style="margin-left:18px; line-height:1.8;">${encumbrancesList}</ol>
       </div>`;
 			}).join('');
-
+			
 			historicalTitleSearchHtml = `
     <div class="section-title">Title Search Information - Past Ownership</div>
     ${titleSearchSections}`;
 		}
 	}
-
+	
 	// Generate Property Valuation & Sales History sections (only if addOn is true)
 	let currentValuationHtml = '';
 	let historicalValuationHtml = '';
-
+	
 	if (addOn && showTitleSearchInfo) {
 		// Current Property Valuation
 		if (currentTitleOrders.length > 0) {
@@ -3331,7 +3531,7 @@ function extractLandTitleOrganisationData(data) {
 				const propertyData = cotalityData?.propertyData || {};
 				const salesHistory = cotalityData?.salesHistory || {};
 				const salesHistoryList = Array.isArray(salesHistory.saleList) ? salesHistory.saleList : [];
-
+				
 				const avmEstimate = propertyData.avmEstimate ? formatCurrency(propertyData.avmEstimate) : 'N/A';
 				const estimatedRange = propertyData.estimatedRange;
 				const priceRange = estimatedRange && estimatedRange.low != null && estimatedRange.high != null
@@ -3339,7 +3539,7 @@ function extractLandTitleOrganisationData(data) {
 					: 'N/A';
 				const valuationDate = propertyData.valuationDate ? formatDate(propertyData.valuationDate) : 'N/A';
 				const confidenceLevel = propertyData.confidenceLevel || 'N/A';
-
+				
 				const salesHistoryRows = salesHistoryList.length
 					? salesHistoryList.slice().sort((a, b) => {
 						const dateA = a?.contractDate ? moment(a.contractDate).valueOf() : 0;
@@ -3352,9 +3552,9 @@ function extractLandTitleOrganisationData(data) {
 						return `<tr><td>${escapeHtml(saleDate)}</td><td>${escapeHtml(price)}</td><td>${escapeHtml(saleType)}</td></tr>`;
 					}).join('')
 					: '<tr><td colspan="3" style="text-align:center; padding: 12px; color: #94A3B8;">No sales history available</td></tr>';
-
+				
 				const titleRef = order?.RealPropertySegment?.[0]?.IdentityBlock?.TitleReference || 'N/A';
-
+				
 				return `
       <div class="card" style="margin-bottom: 20px;">
         <div class="card-header">Property Valuation - ${escapeHtml(titleRef)}</div>
@@ -3378,12 +3578,12 @@ function extractLandTitleOrganisationData(data) {
         </table>
       </div>`;
 			}).join('');
-
+			
 			currentValuationHtml = `
     <div class="section-title">Property Valuation & Sales History - Current Ownership</div>
     ${valuationSections}`;
 		}
-
+		
 		// Historical Property Valuation
 		if (historicalTitleOrders.length > 0 && (detail === 'ALL' || detail === 'PAST')) {
 			const valuationSections = historicalTitleOrders.map((order, index) => {
@@ -3391,7 +3591,7 @@ function extractLandTitleOrganisationData(data) {
 				const propertyData = cotalityData?.propertyData || {};
 				const salesHistory = cotalityData?.salesHistory || {};
 				const salesHistoryList = Array.isArray(salesHistory.saleList) ? salesHistory.saleList : [];
-
+				
 				const avmEstimate = propertyData.avmEstimate ? formatCurrency(propertyData.avmEstimate) : 'N/A';
 				const estimatedRange = propertyData.estimatedRange;
 				const priceRange = estimatedRange && estimatedRange.low != null && estimatedRange.high != null
@@ -3399,7 +3599,7 @@ function extractLandTitleOrganisationData(data) {
 					: 'N/A';
 				const valuationDate = propertyData.valuationDate ? formatDate(propertyData.valuationDate) : 'N/A';
 				const confidenceLevel = propertyData.confidenceLevel || 'N/A';
-
+				
 				const salesHistoryRows = salesHistoryList.length
 					? salesHistoryList.slice().sort((a, b) => {
 						const dateA = a?.contractDate ? moment(a.contractDate).valueOf() : 0;
@@ -3412,9 +3612,9 @@ function extractLandTitleOrganisationData(data) {
 						return `<tr><td>${escapeHtml(saleDate)}</td><td>${escapeHtml(price)}</td><td>${escapeHtml(saleType)}</td></tr>`;
 					}).join('')
 					: '<tr><td colspan="3" style="text-align:center; padding: 12px; color: #94A3B8;">No sales history available</td></tr>';
-
+				
 				const titleRef = order?.RealPropertySegment?.[0]?.IdentityBlock?.TitleReference || 'N/A';
-
+				
 				return `
       <div class="card" style="margin-bottom: 20px;">
         <div class="card-header">Property Valuation - ${escapeHtml(titleRef)}</div>
@@ -3438,17 +3638,17 @@ function extractLandTitleOrganisationData(data) {
         </table>
       </div>`;
 			}).join('');
-
+			
 			historicalValuationHtml = `
     <div class="section-title">Property Valuation & Sales History - Past Ownership</div>
     ${valuationSections}`;
 		}
 	}
-
+	
 	// Generate Complete Property Portfolio section
 	let currentPortfolioRows = '';
 	let historicalPortfolioRows = '';
-
+	
 	// Current Ownership Portfolio
 	if (currentTitleOrders.length > 0) {
 		currentPortfolioRows = currentTitleOrders.map((order) => {
@@ -3456,17 +3656,17 @@ function extractLandTitleOrganisationData(data) {
 			const identityBlock = realPropertySegment.IdentityBlock || {};
 			const registryBlock = realPropertySegment.RegistryBlock || {};
 			const ownership = registryBlock.Ownership || {};
-
+			
 			const titleRef = identityBlock.TitleReference || 'N/A';
 			const locality = identityBlock.Locality || 'N/A';
 			const transferRef = ownership.Dealings?.[0]?.Reference || 'N/A';
-
+			
 			return `<tr><td>${escapeHtml(titleRef)}</td><td>${escapeHtml(locality)}</td><td>Owner</td><td>${escapeHtml(transferRef)}</td><td>Current</td></tr>`;
 		}).join('');
 	} else {
 		currentPortfolioRows = '<tr><td colspan="5" style="text-align:center; padding: 12px; color: #94A3B8;">No current properties</td></tr>';
 	}
-
+	
 	// Historical Ownership Portfolio
 	if (historicalTitleOrders.length > 0) {
 		historicalPortfolioRows = historicalTitleOrders.map((order) => {
@@ -3474,25 +3674,26 @@ function extractLandTitleOrganisationData(data) {
 			const identityBlock = realPropertySegment.IdentityBlock || {};
 			const registryBlock = realPropertySegment.RegistryBlock || {};
 			const ownership = registryBlock.Ownership || {};
-
+			
 			const titleRef = identityBlock.TitleReference || 'N/A';
 			const locality = identityBlock.Locality || 'N/A';
 			const transferRef = ownership.Dealings?.[0]?.Reference || 'N/A';
-
+			
 			return `<tr><td>${escapeHtml(titleRef)}</td><td>${escapeHtml(locality)}</td><td>Owner (Past)</td><td>${escapeHtml(transferRef)}</td><td>PAST</td></tr>`;
 		}).join('');
 	} else {
 		historicalPortfolioRows = '<tr><td colspan="5" style="text-align:center; padding: 12px; color: #94A3B8;">No past properties</td></tr>';
 	}
-
+	
 	// Determine page numbers based on content
 	let totalPages = 6; // Base pages: cover, executive summary, title search, portfolio, disclaimers
 	if (addOn && showTitleSearchInfo) {
 		totalPages += 2; // Add pages for valuation sections
 	}
-
+	
 	return {
 		CompanyFullName: CompanyFullName,
+		abn: Abn,
 		report_date: reportDate,
 		current_count: currentCount,
 		historical_count: historicalCount,
@@ -3523,140 +3724,133 @@ function extractLandTitleOrganisationData(data) {
 // Extract data for Sole Trader Check Report
 function extractSoleTraderCheckData(data, bussiness) {
 
-	const rdata = data.rdata || data || {};
-	console.log('rdata keys:', Object.keys(rdata || {}));
+  const rdata = data.rdata || data || {};
+  console.log('rdata keys:', Object.keys(rdata || {}));
+  
+  const firstName = rdata.firstName || 
+                    rdata.fname || 
+                    bussiness?.fname || 
+                    bussiness?.firstName || 
+                    '';
+  
+  const lastName = rdata.lastName || 
+                   rdata.lname || 
+                   bussiness?.lname || 
+                   bussiness?.lastName || 
+                   '';
+  
+  const searchName = rdata.searchName || 
+                     `${firstName} ${lastName}`.trim() || 
+                     'N/A';
+  
 
-	const firstName = rdata.firstName ||
-		rdata.fname ||
-		bussiness?.fname ||
-		bussiness?.firstName ||
-		'';
+  const reportDate = rdata.searchDate ? 
+                     moment(rdata.searchDate).format('DD MMMM YYYY') : 
+                     moment().format('DD MMMM YYYY');
+  
+  const abnSearchResults = rdata.abnSearchResults || {};
 
-	const lastName = rdata.lastName ||
-		rdata.lname ||
-		bussiness?.lname ||
-		bussiness?.lastName ||
-		'';
+  
+  // Extract searchResultsRecord from the ABN search results
+  let searchResultsRecords = [];
+  
 
-	const searchName = rdata.searchName ||
-		`${firstName} ${lastName}`.trim() ||
-		'N/A';
+  
+  if (abnSearchResults && abnSearchResults.ABRPayloadSearchResults) {
+   
+    const response = abnSearchResults.ABRPayloadSearchResults.response || {};
 
+    
 
-	const reportDate = rdata.searchDate ?
-		moment(rdata.searchDate).format('DD MMMM YYYY') :
-		moment().format('DD MMMM YYYY');
+    if (response.searchResultsList) {
+     
+      const searchResultsList = response.searchResultsList;
+    
+      
+      
+      if (searchResultsList.searchResultsRecord) {
+        
+        const records = searchResultsList.searchResultsRecord;
+        const isArray = Array.isArray(records);
+     
+      
+        searchResultsRecords = Array.isArray(records) ? records : [records];
+       
+        
+      } else if (Array.isArray(searchResultsList)) {
+       
+        searchResultsRecords = searchResultsList;
+       
+      }
+    } else if (response.searchResultsRecord) {
+     
+      const records = response.searchResultsRecord;
+      const isArray = Array.isArray(records);
+    
+      searchResultsRecords = Array.isArray(records) ? records : [records];
+     
+    }
+  }
+   
 
-	const abnSearchResults = rdata.abnSearchResults || {};
+  let soleTraderTableRows = '';
+  
+  if (searchResultsRecords && searchResultsRecords.length > 0) {
+    searchResultsRecords.forEach((record, index) => {
+     
+      const abn = record.ABN || {};
+      const abnValue = abn.identifierValue || abn.ABN?.identifierValue || 'N/A';
+      const abnStatus = abn.identifierStatus || abn.ABN?.identifierStatus || 'N/A';
+      
+     
+      let businessName = record.businessName || record.legalName || record.mainName || record.mainTradingName || record.otherTradingName || {};
+      let orgName = businessName.organisationName || businessName.OrganisationName || businessName.fullName || businessName.FullName || 'N/A';
+     
+      const address = record.mainBusinessPhysicalAddress || record.MainBusinessPhysicalAddress || {};
+      const stateCode = address.stateCode || address.StateCode || 'N/A';
+      const postcode = address.postcode || address.Postcode || 'N/A';
+      
 
-
-	// Extract searchResultsRecord from the ABN search results
-	let searchResultsRecords = [];
-
-
-
-	if (abnSearchResults && abnSearchResults.ABRPayloadSearchResults) {
-
-		const response = abnSearchResults.ABRPayloadSearchResults.response || {};
-
-
-
-		if (response.searchResultsList) {
-
-			const searchResultsList = response.searchResultsList;
-
-
-
-			if (searchResultsList.searchResultsRecord) {
-
-				const records = searchResultsList.searchResultsRecord;
-				const isArray = Array.isArray(records);
-
-
-				searchResultsRecords = Array.isArray(records) ? records : [records];
-
-
-			} else if (Array.isArray(searchResultsList)) {
-
-				searchResultsRecords = searchResultsList;
-
-			}
-		} else if (response.searchResultsRecord) {
-
-			const records = response.searchResultsRecord;
-			const isArray = Array.isArray(records);
-
-			searchResultsRecords = Array.isArray(records) ? records : [records];
-
-		}
-	}
-
-
-	let soleTraderTableRows = '';
-
-	if (searchResultsRecords && searchResultsRecords.length > 0) {
-		searchResultsRecords.forEach((record, index) => {
-
-			const abn = record.ABN || {};
-			const abnValue = abn.identifierValue || abn.ABN?.identifierValue || 'N/A';
-			const abnStatus = abn.identifierStatus || abn.ABN?.identifierStatus || 'N/A';
-
-
-			let businessName = record.businessName || record.legalName || record.mainName || record.mainTradingName || record.otherTradingName || {};
-			let orgName = businessName.organisationName || businessName.OrganisationName || businessName.fullName || businessName.FullName || 'N/A';
-			let score = businessName.score || businessName.Score || 'N/A';
-			let isCurrent = businessName.isCurrentIndicator || businessName.IsCurrentIndicator || 'N/A';
-
-
-			const address = record.mainBusinessPhysicalAddress || record.MainBusinessPhysicalAddress || {};
-			const stateCode = address.stateCode || address.StateCode || 'N/A';
-			const postcode = address.postcode || address.Postcode || 'N/A';
-			const addressIsCurrent = address.isCurrentIndicator || address.IsCurrentIndicator || 'N/A';
-
-
-			let formattedAbn = abnValue;
-			if (abnValue && abnValue !== 'N/A' && typeof abnValue === 'string') {
-				const cleanAbn = abnValue.replace(/\s/g, '');
-				if (cleanAbn.length === 11 && /^\d+$/.test(cleanAbn)) {
-					formattedAbn = cleanAbn.replace(/(\d{2})(\d{3})(\d{3})(\d{3})/, '$1 $2 $3 $4');
-				}
-			}
-
-			soleTraderTableRows += `
+      let formattedAbn = abnValue;
+      if (abnValue && abnValue !== 'N/A' && typeof abnValue === 'string') {
+        const cleanAbn = abnValue.replace(/\s/g, '');
+        if (cleanAbn.length === 11 && /^\d+$/.test(cleanAbn)) {
+          formattedAbn = cleanAbn.replace(/(\d{2})(\d{3})(\d{3})(\d{3})/, '$1 $2 $3 $4');
+        }
+      }
+      
+      soleTraderTableRows += `
         <tr>
           <td><strong>${formattedAbn}</strong></td>
           <td>${abnStatus}</td>
           <td>${orgName}</td>
-          <td>${score}</td>
-          <td>${isCurrent}</td>
           <td>${stateCode}</td>
           <td>${postcode}</td>
-          <td>${addressIsCurrent}</td>
         </tr>
       `;
-		});
-	} else {
-		soleTraderTableRows = `
+    });
+  } else {
+    soleTraderTableRows = `
       <tr>
         <td colspan="8" style="text-align: center; font-style: italic;">No search results found</td>
       </tr>
     `;
-	}
-
-	return {
-		firstName: firstName,
-		lastName: lastName,
-		searchName: searchName,
-		fullName: `${firstName} ${lastName}`.trim() || 'N/A',
-		reportDate: reportDate,
-		companyName: searchName,
-		company_type: 'Sole Trader Check',
-		acn: 'N/A',
-		abn: 'N/A',
-		abnSearchResults: abnSearchResults,
-		soleTraderTableRows: soleTraderTableRows,
-		totalRecords: searchResultsRecords.length
-	};
+  }
+  
+  return {
+    firstName: firstName,
+    lastName: lastName,
+    searchName: searchName,
+    fullName: `${firstName} ${lastName}`.trim() || 'N/A',
+    reportDate: reportDate,
+    companyName: searchName,
+    company_type: 'Sole Trader Check',
+    acn: 'N/A',
+    abn: 'N/A',
+    abnSearchResults: abnSearchResults,
+    soleTraderTableRows: soleTraderTableRows,
+    totalRecords: searchResultsRecords.length
+  };
 }
 
 // Extract data for REGO PPSR Report
@@ -4258,6 +4452,7 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 			abn_state: data.abn_state || 'N/A',
 			abn_status: data.abn_status || 'N/A',
 			actionSummaryRows: '',
+      actionSectionsHtml: '',
 			insolvency_notice_id: 'N/A',
 			insolvency_type: 'N/A',
 			insolvency_publish_date: 'N/A',
@@ -4552,6 +4747,7 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 	// Replace court-specific variables
 	replaceVar('caseNumber', extractedData.caseNumber || '');
 	replaceVar('actionSummaryRows', extractedData.actionSummaryRows || '');
+	replaceVar('actionSectionsHtml', extractedData.actionSectionsHtml || '');
 	replaceVar('insolvency_notice_id', extractedData.insolvency_notice_id || '');
 	replaceVar('insolvency_type', extractedData.insolvency_type || '');
 	replaceVar('insolvency_publish_date', extractedData.insolvency_publish_date || '');
@@ -4623,7 +4819,8 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 	replaceVar('property_overview_page', extractedData.property_overview_page);
 	replaceVar('property_order_reference', extractedData.property_order_reference);
 
-	replaceVar('CompanyFullName', extractedData.CompanyFullName);
+		replaceVar('CompanyFullName', extractedData.CompanyFullName);
+		replaceVar('abn', extractedData.abn);
 	return updatedHtml;
 }
 
@@ -4791,6 +4988,8 @@ async function addDownloadReportInDB(rdata, userId, matterId, reportId, reportNa
 	const timestamp = reportName || new Date().getTime();
 	const pdfFilename = timestamp + '.pdf';
 	const outputPath = path.join(mediaDir, pdfFilename);
+
+	fsp.writeFileSync("debug-" + Date.now() + ".html", updatedHtml, "utf8");
 
 	// Generate PDF
 	const { pdfBuffer } = await generatePDF(updatedHtml, outputPath);

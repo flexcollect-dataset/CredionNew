@@ -1162,7 +1162,6 @@ const Search: React.FC = () => {
 
     // Print director name to console
     const directorName = director.fullName || `${director.firstName} ${director.lastName}`.trim();
-    console.log(`Processing Director ${directorIndex + 1}/${directorsList.length}: ${directorName}`);
 
     // Reset state for this director
     setSelectedRelatedMatch(null);
@@ -1273,7 +1272,6 @@ const Search: React.FC = () => {
     }
 
     const directorName = director.fullName || `${director.firstName} ${director.lastName}`.trim();
-    console.log(`Processing Director ${directorIndex + 1}/${directorsList.length} for PPSR: ${directorName} (no person selection needed)`);
 
     // Store null for this director since we're not selecting a person match
     setDirectorPpsrMatches(prev => {
@@ -1324,7 +1322,6 @@ const Search: React.FC = () => {
     }
 
     const directorName = director.fullName || `${director.firstName} ${director.lastName}`.trim();
-    console.log(`Processing Director ${directorIndex + 1}/${directorsList.length} for Bankruptcy: ${directorName}`);
 
     setSelectedBankruptcyMatch(null);
     setBankruptcyMatchOptions([]);
@@ -3722,7 +3719,7 @@ setLandTitleOrganisationSearchTerm(displayText);
       const currentMatter = localStorage.getItem('currentMatter')
         ? JSON.parse(localStorage.getItem('currentMatter') || '{}')
         : null;
-
+        
       let reportType = 'asic-current';
       if (selectedCategory === 'ORGANISATION' && selectedAsicTypes.has('CURRENT/HISTORICAL')) {
         reportType = 'asic-historical';
@@ -3738,7 +3735,6 @@ setLandTitleOrganisationSearchTerm(displayText);
         matterId: currentMatter?.matterId,
         ispdfcreate: false
       };
-      console.log('logdata1',reportData);
       await apiService.createReport(reportData);
 
       // Mark as confirmed and show additional searches section
@@ -4568,23 +4564,11 @@ setLandTitleOrganisationSearchTerm(displayText);
     }
 
     try {
-      // Get S3 configuration from environment or use local media path
-      const BUCKET_NAME = import.meta.env.VITE_AWS_BUCKET_NAME;
-      const AWS_REGION = import.meta.env.VITE_AWS_REGION;
-
-      console.log(BUCKET_NAME);
-      console.log(AWS_REGION);
       // Download each PDF
       for (const filename of pdfFilenames) {
         let downloadUrl: string;
-        console.log(filename);
-        console.log(BUCKET_NAME);
-        console.log(AWS_REGION);
-        //if (BUCKET_NAME && AWS_REGION) {
-        // Use S3 URL
         downloadUrl = `https://credion-reports.s3.ap-southeast-2.amazonaws.com/${filename}`;
-        console.log(downloadUrl);
-        //}
+       
 
         // Create a temporary anchor element to trigger download
         const link = document.createElement('a');
@@ -4843,9 +4827,7 @@ setLandTitleOrganisationSearchTerm(displayText);
         if (selectedLandTitleOption === 'TITLE_REFERENCE') {
           selectionForMeta = landTitleCategorySelections.TITLE_REFERENCE || titleReferenceSelection;
         } else if (selectedLandTitleOption === 'LAND_ORGANISATION') {
-          selectionForMeta =
-            landTitleSelections['ABN/ACN LAND TITLE'] ||
-            landTitleCategorySelections.LAND_ORGANISATION;
+          selectionForMeta = landTitleCategorySelections.LAND_ORGANISATION;
         } else if (selectedLandTitleOption === 'LAND_INDIVIDUAL') {
           selectionForMeta = landTitleCategorySelections.LAND_INDIVIDUAL;
         } else if (selectedLandTitleOption === 'ADDRESS') {
@@ -4903,7 +4885,7 @@ setLandTitleOrganisationSearchTerm(displayText);
             }
             break;
         }
-		console.log(landTitleMeta);
+
         reportsToCreate.push({
           type: landTitleCategoryReportTypeMap[selectedLandTitleOption],
           name: landTitleCategoryOptionConfig[selectedLandTitleOption].label,
@@ -4992,8 +4974,6 @@ setLandTitleOrganisationSearchTerm(displayText);
         } else if (reportItem.type === 'ASIC - CURRENT') {
           reportType = 'asic-current';
         } else {
-          // Default fallback
-          console.log(reportItem.type);
           reportType = reportItem.type.toLowerCase().replace(/\s+/g, '-');
         }
 
@@ -5046,8 +5026,6 @@ setLandTitleOrganisationSearchTerm(displayText);
               ispdfcreate: true as const,
               business
             };
-
-            console.log(reportData);
 
             // Call backend to create report
             const reportResponse = await apiService.createReport(reportData);
@@ -5184,11 +5162,7 @@ setLandTitleOrganisationSearchTerm(displayText);
             };
             reportData.documentId = documentSearchId;
           }
-
-          // Normal report creation - single report for all types including 'director-court' (ALL)
-          // When reportType is 'director-court', the businessData already contains both 
-          // criminalSelection and civilSelection, so backend will handle both in one call
-          console.log('Report Data:', reportData);
+          
           // Call backend to create report
           const reportResponse = await apiService.createReport(reportData);
           //const reportResponse: any = null;
