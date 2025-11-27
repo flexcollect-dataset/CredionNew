@@ -1160,9 +1160,6 @@ const Search: React.FC = () => {
       return;
     }
 
-    // Print director name to console
-    const directorName = director.fullName || `${director.firstName} ${director.lastName}`.trim();
-
     // Reset state for this director
     setSelectedRelatedMatch(null);
     setRelatedEntityMatchOptions([]);
@@ -1271,8 +1268,6 @@ const Search: React.FC = () => {
       return;
     }
 
-    const directorName = director.fullName || `${director.firstName} ${director.lastName}`.trim();
-
     // Store null for this director since we're not selecting a person match
     setDirectorPpsrMatches(prev => {
       const updated = new Map(prev);
@@ -1320,8 +1315,6 @@ const Search: React.FC = () => {
       handleDirectorBankruptcySearch(directorIndex + 1);
       return;
     }
-
-    const directorName = director.fullName || `${director.firstName} ${director.lastName}`.trim();
 
     setSelectedBankruptcyMatch(null);
     setBankruptcyMatchOptions([]);
