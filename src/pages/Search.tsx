@@ -133,6 +133,9 @@ const Search: React.FC = () => {
   const [isAsicModalOpen, setIsAsicModalOpen] = useState(false);
   const [isCourtModalOpen, setIsCourtModalOpen] = useState(false);
   const [isDocumentModalOpen, setIsDocumentModalOpen] = useState(false);
+  const [isRegoModalOpen, setIsRegoModalOpen] = useState(false);
+  const [regoNumber, setRegoNumber] = useState('');
+  const [regoState, setRegoState] = useState<string>('');
   const [organisationSearchTerm, setOrganisationSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState<ABNSuggestion[]>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
@@ -514,6 +517,7 @@ const Search: React.FC = () => {
   };
 
   const landTitleStateOptions = ['NSW', 'VIC', 'SA', 'WA', 'NT', 'QLD'] as const;
+  const regoStateOptions = ['NSW', 'VIC', 'SA', 'WA', 'NT', 'QLD', 'TAS', 'ACT'] as const;
 
   const landTitleDetailHeadingMap: Record<LandTitleCategoryOption, string> = {
     TITLE_REFERENCE: 'Title Reference',
@@ -3100,6 +3104,40 @@ const Search: React.FC = () => {
     setIsDocumentModalOpen(false);
   }, [documentIdInput, searches]);
 
+  const handleRegoModalCancel = useCallback(() => {
+    setIsRegoModalOpen(false);
+    setRegoNumber('');
+    setRegoState('');
+  }, []);
+
+  const handleRegoModalConfirm = useCallback(() => {
+    const trimmed = regoNumber.trim();
+    if (!trimmed) {
+      alert('Please enter a rego number');
+      return;
+    }
+    if (!regoState) {
+      alert('Please select a state');
+      return;
+    }
+    
+    setSelectedSearches(prev => {
+      const updated = new Set(prev);
+      updated.add('REGO PPSR');
+      // Check if all searches are now selected (excluding ADD DOCUMENT SEARCH and SELECT ALL)
+      const allSelected = searches
+        .filter(s => s !== 'SELECT ALL' && s !== 'ADD DOCUMENT SEARCH')
+        .every(s => updated.has(s));
+      if (allSelected) {
+        updated.add('SELECT ALL');
+      }
+      return updated;
+    });
+    
+    setIsRegoModalOpen(false);
+    // Keep regoNumber and regoState in state for later use
+  }, [regoNumber, regoState, searches]);
+
   // Check if all searches are selected (excluding SELECT ALL)
   const allSearchesSelected = useMemo(() => {
     const individualSearches = searches.filter(s => s !== 'SELECT ALL' && s !== 'ADD DOCUMENT SEARCH');
@@ -3170,20 +3208,44 @@ const Search: React.FC = () => {
         }
         setDocumentSearchId('');
         setDocumentIdInput('');
+        setRegoNumber('');
+        setRegoState('');
+        setIsRegoModalOpen(false);
         setSelectedAdditionalSearches(new Set());
         resetLandTitleSelections();
       } else {
+       
+        const hasRegoPpsr = selectedCategory === 'INDIVIDUAL' && searches.includes('REGO PPSR');
+        
         searches.forEach(s => {
-          if (s !== 'ADD DOCUMENT SEARCH') {
+          if (s !== 'ADD DOCUMENT SEARCH' && !(hasRegoPpsr && s === 'REGO PPSR')) {
             newSelected.add(s);
           }
         });
+        
         if (selectedCategory === 'ORGANISATION' && searches.includes('ASIC')) {
           setIsAsicModalOpen(true);
         }
         if (selectedCategory === 'INDIVIDUAL' && searches.includes('COURT')) {
           setIsCourtModalOpen(true);
         }
+     
+        setSelectedSearches(newSelected);
+        
+        if (hasRegoPpsr) {
+         
+          setIsRegoModalOpen(true);
+        } else {
+        
+          const allSearchesSelected = searches
+            .filter(s => s !== 'SELECT ALL' && s !== 'ADD DOCUMENT SEARCH')
+            .every(s => newSelected.has(s));
+          if (allSearchesSelected) {
+            newSelected.add('SELECT ALL');
+            setSelectedSearches(newSelected);
+          }
+        }
+        return;
       }
     } else {
       if (search === 'ADD DOCUMENT SEARCH') {
@@ -3215,7 +3277,18 @@ const Search: React.FC = () => {
           setSelectedCourtType('ALL');
           setIsCourtModalOpen(false);
         }
+        if (search === 'REGO PPSR') {
+          setRegoNumber('');
+          setRegoState('');
+          setIsRegoModalOpen(false);
+        }
       } else {
+        // Check if REGO PPSR is being selected for INDIVIDUAL - show modal first
+        if (search === 'REGO PPSR' && selectedCategory === 'INDIVIDUAL') {
+          setIsRegoModalOpen(true);
+          return;
+        }
+        
         newSelected.add(search);
         const allSelected = searches
           .filter(s => s !== 'SELECT ALL' && s !== 'ADD DOCUMENT SEARCH')
@@ -3649,7 +3722,7 @@ setLandTitleOrganisationSearchTerm(displayText);
       const currentMatter = localStorage.getItem('currentMatter')
         ? JSON.parse(localStorage.getItem('currentMatter') || '{}')
         : null;
-        
+
       let reportType = 'asic-current';
       if (selectedCategory === 'ORGANISATION' && selectedAsicTypes.has('CURRENT/HISTORICAL')) {
         reportType = 'asic-historical';
@@ -3821,6 +3894,9 @@ setLandTitleOrganisationSearchTerm(displayText);
     setIsCompanyConfirmed(false);
     setDocumentSearchId('');
     setDocumentIdInput('');
+    setRegoNumber('');
+    setRegoState('');
+    setIsRegoModalOpen(false);
 
     // Clear individual details
     setIndividualFirstName('');
@@ -4552,15 +4628,25 @@ setLandTitleOrganisationSearchTerm(displayText);
     setShowCrossIcons(false);
 
     if (selectedCategory === 'INDIVIDUAL') {
-      // Check if name has been confirmed (from search results)
+   
+      const mainSelectedSearches = Array.from(selectedSearches).filter(s => s !== 'SELECT ALL');
+      const additionalSelectedSearches = Array.from(selectedIndividualAdditionalSearches).filter(s => s !== 'SELECT ALL');
+      const allSelectedSearches = [...mainSelectedSearches, ...additionalSelectedSearches];
+      
+
+      const isOnlyRegoPpsr = allSelectedSearches.length === 1 && allSelectedSearches.includes('REGO PPSR');
+      
+      if (!isOnlyRegoPpsr) {
+
       if (!isIndividualNameConfirmed) {
-        // If not confirmed, check if we have name fields filled
+       
         const hasFirstName = individualFirstName.trim() || landTitleIndividualFirstName.trim();
         const hasLastName = individualLastName.trim() || landTitleIndividualLastName.trim();
         
         if (!hasFirstName || !hasLastName) {
           alert('Please enter first name and last name');
           return;
+          }
         }
       }
     }
@@ -4876,6 +4962,8 @@ setLandTitleOrganisationSearchTerm(displayText);
         } else if (reportItem.type === 'ABN/ACN PPSR' || reportItem.type === 'PPSR') {
           // For INDIVIDUAL category, use same type as directors (director-ppsr)
           reportType = selectedCategory === 'INDIVIDUAL' ? 'director-ppsr' : 'ppsr';
+        } else if (reportItem.type === 'REGO PPSR') {
+          reportType = 'rego-ppsr';
         } else if (reportItem.type === 'ASIC') {
           // For INDIVIDUAL category, use same type as directors (director-related)
           reportType = selectedCategory === 'INDIVIDUAL' ? 'director-related' : 'asic-current';
@@ -5050,6 +5138,14 @@ setLandTitleOrganisationSearchTerm(displayText);
             // Add selected person name for land-title-individual reports
             if (reportType === 'land-title-individual' && selectedLandTitleIndividualMatch) {
               (businessData as any).selectedPersonName = selectedLandTitleIndividualMatch;
+            }
+
+            // Add rego number and state for rego-ppsr reports
+            if (reportType === 'rego-ppsr' && regoNumber) {
+              (businessData as any).regoNumber = regoNumber.trim();
+              if (regoState) {
+                (businessData as any).regoState = regoState;
+              }
             }
           }
 
@@ -7740,6 +7836,96 @@ setLandTitleOrganisationSearchTerm(displayText);
               <button
                 type="button"
                 onClick={handleDocumentModalConfirm}
+                className="rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rego Modal */}
+      {isRegoModalOpen && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-gray-900/60 px-4"
+          onClick={handleRegoModalCancel}
+        >
+          <div
+            className="relative w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={handleRegoModalCancel}
+              className="absolute top-4 right-4 text-gray-400 transition-colors duration-200 hover:text-red-600"
+              aria-label="Close modal"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div className="text-center">
+              <h3 className="text-2xl font-bold text-gray-900">Enter Rego</h3>
+            </div>
+
+            <div className="mt-8">
+              <label htmlFor="rego-number-input" className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                REGO NUMBER
+              </label>
+              <input
+                id="rego-number-input"
+                type="text"
+                value={regoNumber}
+                onChange={(event) => setRegoNumber(event.target.value)}
+                className="w-full rounded-xl border-2 border-red-600 px-4 py-3 text-base shadow-sm focus:border-red-600 focus:outline-none focus:ring-2 focus:ring-red-100 transition-all duration-200"
+                placeholder="Enter rego number"
+                autoFocus
+              />
+            </div>
+
+            <div className="mt-6">
+              <label className="block text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
+                AUSTRALIAN STATE <span className="text-red-600">*</span>
+              </label>
+              <div className="grid grid-cols-4 gap-3">
+                {regoStateOptions.map((state) => (
+                  <label
+                    key={state}
+                    className={`
+                      flex items-center justify-center px-4 py-3 rounded-xl border-2 cursor-pointer transition-all duration-200
+                      ${regoState === state
+                        ? 'border-red-600 bg-red-50 text-red-600 font-semibold'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-red-600 hover:bg-red-50'
+                      }
+                    `}
+                  >
+                    <input
+                      type="radio"
+                      name="regoState"
+                      value={state}
+                      checked={regoState === state}
+                      onChange={(e) => setRegoState(e.target.value)}
+                      className="sr-only"
+                    />
+                    <span className="text-sm font-semibold uppercase tracking-wide">{state}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-8 grid grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={handleRegoModalCancel}
+                className="rounded-xl border-2 border-gray-200 bg-white py-3 text-sm font-semibold uppercase tracking-wide text-gray-600 transition-all duration-200 hover:border-gray-300 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleRegoModalConfirm}
                 className="rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
               >
                 Continue

@@ -664,6 +664,56 @@ async function director_ppsr_report(bussiness) {
 	return await fetchPpsrReportData(auSearchIdentifier);
 }
 
+async function rego_ppsr_report(business) {
+	// Get dynamic token for PPSR
+	const ppsrToken = await getToken('ppsr');
+
+	// Extract rego number and state from business object
+	const registrationPlate = business?.regoNumber || '';
+	const registrationPlateState = business?.regoState || '';
+
+	if (!registrationPlate || !registrationPlateState) {
+		throw new Error('Rego number and state are required for REGO PPSR search');
+	}
+
+	// Call vehicle lookup API
+	const apiUrl = 'https://gateway.ppsrcloud.com/api/b2b/auvehicle/lookup-mv-info';
+	const requestData = {
+		registrationPlate: registrationPlate.trim(),
+		registrationPlateState: registrationPlateState.trim(),
+		advanceResultDetails: true
+	};
+
+	const response = await axios.post(apiUrl, requestData, {
+		headers: {
+			'Authorization': `Bearer ${ppsrToken}`,
+			'Content-Type': 'application/json'
+		},
+		timeout: 30000 // 30 second timeout
+	});
+
+
+	const details = response.data?.resource?.details;
+	let ppsrCloudId = null;
+	if (details && Array.isArray(details) && details.length > 0) {
+		ppsrCloudId = details[0]?.ppsrCloudId;
+	}
+
+	if (!ppsrCloudId) {
+		throw new Error('No ppsrCloudId found in response details');
+	}
+
+	const reportData = {
+		status: true,
+		data: {
+			...response.data,
+			uuid: ppsrCloudId
+		}
+	};
+	
+	return reportData;
+}
+
 async function director_bankrupcty_report(bussiness) {
 	reportData = null;
 
@@ -1952,6 +2002,8 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 				reportData = await land_title_individual(business);
 			} else if (type == 'sole-trader-check') {
 				reportData = await sole_trader_check_report(business);
+			}else if(type == 'rego-ppsr'){
+				reportData = await rego_ppsr_report(business);
 			}
 
 			console.log(reportData.data);
