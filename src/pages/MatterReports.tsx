@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FileText, Download, RefreshCw, Bell, Plus, Mail, X } from 'lucide-react';
+import { ArrowLeft, FileText, Download, RefreshCw, Bell, Plus, Mail, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiService } from '../services/api';
 
 interface Report {
@@ -11,6 +11,8 @@ interface Report {
   createdAt: string;
   updatedAt: string;
   downloadUrl: string;
+  reportType: string | null;
+  searchWord: string | null;
 }
 
 const MatterReports: React.FC = () => {
@@ -25,13 +27,23 @@ const MatterReports: React.FC = () => {
   const [emailAddress, setEmailAddress] = useState('');
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [emailError, setEmailError] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [pageSize] = useState(20);
 
   useEffect(() => {
     if (matterId) {
+      setCurrentPage(1); // Reset to first page when matter changes
       loadMatter();
-      loadReports();
     }
   }, [matterId]);
+
+  useEffect(() => {
+    if (matterId) {
+      loadReports();
+    }
+  }, [currentPage, matterId]);
 
   const loadMatter = async () => {
     setIsLoading(true);
@@ -50,9 +62,13 @@ const MatterReports: React.FC = () => {
   const loadReports = async () => {
     setIsLoadingReports(true);
     try {
-      const reportsResponse = await apiService.getMatterReports(Number(matterId));
+      const reportsResponse = await apiService.getMatterReports(Number(matterId), currentPage, pageSize);
       if (reportsResponse.success) {
         setReports(reportsResponse.reports || []);
+        if (reportsResponse.pagination) {
+          setTotalPages(reportsResponse.pagination.totalPages);
+          setTotalCount(reportsResponse.pagination.totalCount);
+        }
       }
     } catch (error) {
       console.error('Error loading reports:', error);
@@ -208,58 +224,140 @@ const MatterReports: React.FC = () => {
           <div className="bg-white rounded-lg shadow-sm border">
             <div className="p-6 border-b">
               <h2 className="text-xl font-semibold text-gray-900">Reports</h2>
-              <p className="text-sm text-gray-600 mt-1">{reports.length} report{reports.length !== 1 ? 's' : ''} found</p>
+              <p className="text-sm text-gray-600 mt-1">
+                {totalCount} report{totalCount !== 1 ? 's' : ''} found
+                {totalPages > 1 && ` (Page ${currentPage} of ${totalPages})`}
+              </p>
             </div>
-            <div className="divide-y">
-              {reports.map((report) => (
-                <div
-                  key={report.id}
-                  className="p-6 hover:bg-gray-50 transition-colors flex items-center justify-between"
-                >
-                  <div className="flex items-center space-x-4 flex-1">
-                    <FileText className="h-6 w-6 text-blue-600" />
-                    <div className="flex-1">
-                      <h3 className="text-lg font-medium text-gray-900">
-                        {report.reportName.replace('.pdf', '')}
-                      </h3>
-                      <p className="text-sm text-gray-500 mt-1">
-                        Created: {formatDate(report.createdAt)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => handleDownload(report)}
-                      className="p-2 hover:bg-blue-50 rounded-lg transition-colors text-blue-600"
-                      title="Download Report"
-                    >
-                      <Download size={20} />
-                    </button>
-                    <button
-                      onClick={() => handleEmailClick(report)}
-                      className="p-2 hover:bg-purple-50 rounded-lg transition-colors text-purple-600"
-                      title="Email Report"
-                    >
-                      <Mail size={20} />
-                    </button>
-                    <button
-                      onClick={() => handleUpdate(report)}
-                      className="p-2 hover:bg-green-50 rounded-lg transition-colors text-green-600"
-                      title="Update Report"
-                    >
-                      <RefreshCw size={20} />
-                    </button>
-                    <button
-                      onClick={() => handleAlert(report)}
-                      className="p-2 hover:bg-yellow-50 rounded-lg transition-colors text-yellow-600"
-                      title="Set Alert"
-                    >
-                      <Bell size={20} />
-                    </button>
-                  </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Created At
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Report Type
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Search Word
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {reports.map((report) => (
+                    <tr key={report.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <FileText className="h-5 w-5 text-blue-600 mr-3" />
+                          <span className="text-sm text-gray-900">
+                            {formatDate(report.createdAt)}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-sm text-gray-900">
+                          {report.reportType || 'N/A'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-sm text-gray-900">
+                          {report.searchWord || 'N/A'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <div className="flex items-center justify-end space-x-2">
+                          <button
+                            onClick={() => handleDownload(report)}
+                            className="p-2 hover:bg-blue-50 rounded-lg transition-colors text-blue-600"
+                            title="Download Report"
+                          >
+                            <Download size={20} />
+                          </button>
+                          <button
+                            onClick={() => handleEmailClick(report)}
+                            className="p-2 hover:bg-purple-50 rounded-lg transition-colors text-purple-600"
+                            title="Email Report"
+                          >
+                            <Mail size={20} />
+                          </button>
+                          <button
+                            onClick={() => handleUpdate(report)}
+                            className="p-2 hover:bg-green-50 rounded-lg transition-colors text-green-600"
+                            title="Update Report"
+                          >
+                            <RefreshCw size={20} />
+                          </button>
+                          <button
+                            onClick={() => handleAlert(report)}
+                            className="p-2 hover:bg-yellow-50 rounded-lg transition-colors text-yellow-600"
+                            title="Set Alert"
+                          >
+                            <Bell size={20} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="p-6 border-t flex items-center justify-between">
+                <div className="text-sm text-gray-600">
+                  Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} reports
                 </div>
-              ))}
-            </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1 transition-colors"
+                  >
+                    <ChevronLeft size={16} />
+                    <span>Previous</span>
+                  </button>
+                  <div className="flex items-center space-x-1">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => setCurrentPage(pageNum)}
+                          className={`px-3 py-2 rounded-lg transition-colors ${
+                            currentPage === pageNum
+                              ? 'bg-blue-600 text-white'
+                              : 'border border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1 transition-colors"
+                  >
+                    <span>Next</span>
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

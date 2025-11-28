@@ -5157,6 +5157,7 @@ setLandTitleOrganisationSearchTerm(displayText);
           }
           
           // Call backend to create report
+          console.log(reportData);
           const reportResponse = await apiService.createReport(reportData);
           //const reportResponse: any = null;
           // Extract PDF filename from response

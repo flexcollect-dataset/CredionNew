@@ -194,14 +194,54 @@ router.get('/:matterId/reports', authenticateToken, async (req, res) => {
       });
     }
 
-    // Get all reports for this matter and user
-    const reports = await UserReport.findAll({
+    // Get pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+
+    // Get total count for pagination
+    const totalCount = await UserReport.count({
       where: {
         matterId: matterId,
         userId: userId
-      },
-      order: [['created_at', 'DESC']],
-      attributes: ['id', 'reportName', 'isPaid', 'reportId', 'createdAt', 'updatedAt']
+      }
+    });
+
+    // Get paginated reports for this matter and user with ApiData join using raw query
+    // Note: user_reports.report_id references api_data.id (not a separate reports table)
+    const { sequelize } = require('../config/db');
+    
+    // First, let's check a sample to see what report_id values we have
+    const sampleCheck = await sequelize.query(`
+      SELECT ur.id, ur.report_id, ur.report_name, ad.id as api_data_id, ad.rtype, ad.search_word
+      FROM user_reports ur
+      LEFT JOIN api_data ad ON ur.report_id = ad.id
+      WHERE ur.matter_id = $1 AND ur.user_id = $2
+      LIMIT 5
+    `, {
+      bind: [parseInt(matterId), parseInt(userId)],
+      type: sequelize.QueryTypes.SELECT
+    });
+    console.log('Sample join check:', JSON.stringify(sampleCheck, null, 2));
+    
+    const reports = await sequelize.query(`
+      SELECT 
+        ur.id,
+        ur.report_name as "reportName",
+        ur.is_paid as "isPaid",
+        ur.report_id as "reportId",
+        ur.created_at as "createdAt",
+        ur.updated_at as "updatedAt",
+        ad.rtype as "reportType",
+        ad.search_word as "searchWord"
+      FROM user_reports ur
+      LEFT JOIN api_data ad ON ur.report_id = ad.id
+      WHERE ur.matter_id = $1 AND ur.user_id = $2
+      ORDER BY ur.created_at DESC
+      LIMIT $3 OFFSET $4
+    `, {
+      bind: [parseInt(matterId), parseInt(userId), limit, offset],
+      type: sequelize.QueryTypes.SELECT
     });
 
     // Generate S3 URLs for each report
@@ -215,12 +255,24 @@ router.get('/:matterId/reports', authenticateToken, async (req, res) => {
       reportId: report.reportId,
       createdAt: report.createdAt,
       updatedAt: report.updatedAt,
+      reportType: report.reportType || null,
+      searchWord: report.searchWord || null,
       downloadUrl: `https://${BUCKET_NAME}.s3.${AWS_REGION}.amazonaws.com/${report.reportName}`
     }));
 
+    const totalPages = Math.ceil(totalCount / limit);
+
     res.json({
       success: true,
-      reports: reportsWithUrls
+      reports: reportsWithUrls,
+      pagination: {
+        page: page,
+        limit: limit,
+        totalCount: totalCount,
+        totalPages: totalPages,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1
+      }
     });
 
   } catch (error) {

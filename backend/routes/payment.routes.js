@@ -445,6 +445,8 @@ function extractSearchWord(business, type) {
 			} else if (business?.criminalSelection?.fullname) {
 				searchWord = business.criminalSelection.fullname;
 			}
+		} else if (type === 'land-title-individual') {
+			searchWord = bussiness?.person?.fullName;
 		}
 
 		// If no selection object found, use fname and lname
@@ -468,6 +470,13 @@ function extractSearchWord(business, type) {
 		return searchWord;
 	}
 
+	if(type === 'land-title-address') {
+		return searchWord = business?.address;
+	}
+
+	if(type === 'land-title-reference') {
+		return searchWord = business?.referenceId;
+	}
 	return null;
 }
 
@@ -1289,6 +1298,7 @@ async function director_property(bussiness) {
 async function land_title_address(ldata) {
 	let cotalityData = null;
 	let titleRefData = null;
+	let titleRefDataArray = [];
 
 	const bearerToken = await getToken('landtitle');
 	const url = 'https://online.globalx.com.au/api/national-property/locator-orders';
@@ -1339,6 +1349,7 @@ async function land_title_address(ldata) {
 		
 		console.log(tdata.data.RealPropertySegment?.[0].IdentityBlock.TitleReference);
 		titleRefData = await createTitleOrder(details.state, tdata.data.RealPropertySegment?.[0].IdentityBlock.TitleReference);
+		titleRefDataArray.push(titleRefData);
 		console.log(titleRefData);
 		if (ldata.addOn === true) {
 			cotalityData = await get_cotality_pid(ldata.address);
@@ -1348,7 +1359,7 @@ async function land_title_address(ldata) {
 			status: true,
 			data: {
 				cotality: cotalityData,
-				titleOrder: titleRefData,
+				titleOrder: titleRefDataArray,
 			}
 		};
 		reportData.data.uuid = "12345678";
@@ -1393,7 +1404,7 @@ async function land_title_reference(ldata) {
 		status: true,
 		data: {
 			cotality: cotalityData,
-			titleOrder: titleRefDataArray.length === 1 ? titleRefDataArray[0] : titleRefDataArray,
+			titleOrder: titleRefDataArray,
 		}
 	};
 	reportData.data.uuid = "12345678";

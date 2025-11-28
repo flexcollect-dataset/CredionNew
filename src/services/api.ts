@@ -210,8 +210,19 @@ class ApiService {
 		return this.request<{ success: boolean; matter: any }>(`/api/matters/${matterId}`);
 	}
 
-	async getMatterReports(matterId: number) {
-		return this.request<{ success: boolean; reports: any[] }>(`/api/matters/${matterId}/reports`);
+	async getMatterReports(matterId: number, page: number = 1, limit: number = 20) {
+		return this.request<{ 
+			success: boolean; 
+			reports: any[];
+			pagination?: {
+				page: number;
+				limit: number;
+				totalCount: number;
+				totalPages: number;
+				hasNextPage: boolean;
+				hasPrevPage: boolean;
+			}
+		}>(`/api/matters/${matterId}/reports?page=${page}&limit=${limit}`);
 	}
 
 	async updateMatter(matterId: number, data: { matterName?: string; description?: string; status?: string }) {
