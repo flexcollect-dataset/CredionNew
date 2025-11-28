@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FileText, Download, RefreshCw, Bell, Plus } from 'lucide-react';
+import { ArrowLeft, FileText, Download, RefreshCw, Bell, Plus, Mail, X } from 'lucide-react';
 import { apiService } from '../services/api';
 
 interface Report {
@@ -20,6 +20,11 @@ const MatterReports: React.FC = () => {
   const [reports, setReports] = useState<Report[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingReports, setIsLoadingReports] = useState(false);
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+  const [emailAddress, setEmailAddress] = useState('');
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [emailError, setEmailError] = useState('');
 
   useEffect(() => {
     if (matterId) {
@@ -71,6 +76,58 @@ const MatterReports: React.FC = () => {
     // TODO: Implement alert functionality
     console.log('Set alert for report:', report);
     alert('Alert functionality coming soon');
+  };
+
+  const handleEmailClick = (report: Report) => {
+    setSelectedReport(report);
+    setEmailAddress('');
+    setEmailError('');
+    setEmailModalOpen(true);
+  };
+
+  const handleCloseEmailModal = () => {
+    setEmailModalOpen(false);
+    setSelectedReport(null);
+    setEmailAddress('');
+    setEmailError('');
+  };
+
+  const handleSendEmail = async () => {
+    if (!selectedReport) return;
+
+    // Validate email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailAddress.trim()) {
+      setEmailError('Please enter an email address');
+      return;
+    }
+    if (!emailRegex.test(emailAddress.trim())) {
+      setEmailError('Please enter a valid email address');
+      return;
+    }
+
+    setIsSendingEmail(true);
+    setEmailError('');
+
+    try {
+      const response = await apiService.sendReports(
+        emailAddress.trim(),
+        [selectedReport.reportName],
+        matter?.matterName
+      );
+
+      if (response.success) {
+        alert(`Report sent successfully to ${emailAddress.trim()}`);
+        handleCloseEmailModal();
+      } else {
+        setEmailError(response.message || 'Failed to send email');
+      }
+    } catch (error: any) {
+      console.error('Error sending email:', error);
+      setEmailError(error.message || 'Failed to send email. Please try again.');
+    } finally {
+      setIsSendingEmail(false);
+    }
   };
 
   const handleAddNewReport = () => {
@@ -179,6 +236,13 @@ const MatterReports: React.FC = () => {
                       <Download size={20} />
                     </button>
                     <button
+                      onClick={() => handleEmailClick(report)}
+                      className="p-2 hover:bg-purple-50 rounded-lg transition-colors text-purple-600"
+                      title="Email Report"
+                    >
+                      <Mail size={20} />
+                    </button>
+                    <button
                       onClick={() => handleUpdate(report)}
                       className="p-2 hover:bg-green-50 rounded-lg transition-colors text-green-600"
                       title="Update Report"
@@ -199,6 +263,82 @@ const MatterReports: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Email Modal */}
+      {emailModalOpen && selectedReport && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={handleCloseEmailModal}
+        >
+          <div 
+            className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-6 border-b">
+              <h2 className="text-xl font-semibold text-gray-900">Email Report</h2>
+              <button
+                onClick={handleCloseEmailModal}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors text-gray-500"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="mb-4">
+                <p className="text-sm text-gray-600 mb-2">
+                  Send <span className="font-medium">{selectedReport.reportName.replace('.pdf', '')}</span> to:
+                </p>
+                <input
+                  type="email"
+                  value={emailAddress}
+                  onChange={(e) => {
+                    setEmailAddress(e.target.value);
+                    setEmailError('');
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !isSendingEmail && emailAddress.trim()) {
+                      handleSendEmail();
+                    }
+                  }}
+                  placeholder="Enter email address"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  disabled={isSendingEmail}
+                  autoFocus
+                />
+                {emailError && (
+                  <p className="text-red-600 text-sm mt-2">{emailError}</p>
+                )}
+              </div>
+              <div className="flex items-center justify-end space-x-3">
+                <button
+                  onClick={handleCloseEmailModal}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                  disabled={isSendingEmail}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSendEmail}
+                  disabled={isSendingEmail || !emailAddress.trim()}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                >
+                  {isSendingEmail ? (
+                    <>
+                      <RefreshCw size={16} className="animate-spin" />
+                      <span>Sending...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Mail size={16} />
+                      <span>Send</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -2922,7 +2922,7 @@ function extractpropertyData(data) {
 	const salesHistoryList = Array.isArray(data?.cotality?.salesHistory?.saleList)
 		? data.cotality.salesHistory.saleList
 		: [];
-	const titleOrder = data?.titleOrder || {};
+	const titleOrder = data?.titleOrder[0] || {};
 	const orderResultBlock = titleOrder.OrderResultBlock || {};
 	const dataSources = Array.isArray(orderResultBlock.DataSources) ? orderResultBlock.DataSources : [];
 	const primaryDataSource = dataSources[0] || {};

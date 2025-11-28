@@ -1331,8 +1331,12 @@ async function land_title_address(ldata) {
 				Accept: 'application/json',
 			},
 		});
-		console.log(orderIdentifier);
-		console.log(tdata.data);
+		
+		// Check if OrderStatus is INVALID
+		if (tdata.data?.OrderResultBlock?.OrderStatus === 'INVALID') {
+			throw new Error('Please enter a complete address, including the level or street number (if applicable). The title references you provided do not match this address.');
+		}
+		
 		console.log(tdata.data.RealPropertySegment?.[0].IdentityBlock.TitleReference);
 		titleRefData = await createTitleOrder(details.state, tdata.data.RealPropertySegment?.[0].IdentityBlock.TitleReference);
 		console.log(titleRefData);
@@ -1356,15 +1360,30 @@ async function land_title_address(ldata) {
 		} else {
 			console.error('❌ Request Error:', err.message);
 		}
+		// Rethrow the error so it can be caught by the calling function
+		throw err;
 	}
 }
 
 async function land_title_reference(ldata) {
 	let cotalityData = null;
-	let titleRefData = null;
+	let titleRefDataArray = [];
 
-	titleRefData = await createTitleOrder('NSW', ldata.referenceId);
-	const loc = titleRefData?.LocationSegment?.[0]?.Address;
+	// Loop through all states
+	const states = ldata.states || ['NSW']; // Default to NSW if states array is not provided
+	for (const state of states) {
+		try {
+			const titleRefData = await createTitleOrder(state, ldata.referenceId);
+			titleRefDataArray.push(titleRefData);
+		} catch (error) {
+			console.error(`Error creating title order for state ${state}:`, error);
+			// Continue with other states even if one fails
+		}
+	}
+
+	// Use the first successful result for cotality data
+	const firstTitleRefData = titleRefDataArray[0];
+	const loc = firstTitleRefData?.LocationSegment?.[0]?.Address;
 	const formattedAddress = loc ? `${loc.StreetNumber} ${loc.StreetName} ${loc.StreetType} ${loc.City} ${loc.State} ${loc.PostCode}` : null;
 	if (ldata.addOn === true) {
 		cotalityData = await get_cotality_pid(formattedAddress);
@@ -1374,7 +1393,7 @@ async function land_title_reference(ldata) {
 		status: true,
 		data: {
 			cotality: cotalityData,
-			titleOrder: titleRefData,
+			titleOrder: titleRefDataArray.length === 1 ? titleRefDataArray[0] : titleRefDataArray,
 		}
 	};
 	reportData.data.uuid = "12345678";
@@ -2078,7 +2097,15 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 		}
 
 		if (ispdfcreate) {
-			pdffilename = await addDownloadReportInDB(reportData, userId, matterId, reportId, `${uuidv4()}`, type, business);
+			// Extract search word and sanitize for filename
+			const searchWord = extractSearchWord(business, type);
+			const sanitizedSearchWord = searchWord 
+				? searchWord.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '')
+				: '';
+			const filename = sanitizedSearchWord 
+				? `${type}_${sanitizedSearchWord}_${uuidv4()}`
+				: `${type}_${uuidv4()}`;
+			pdffilename = await addDownloadReportInDB(reportData, userId, matterId, reportId, filename, type, business);
 			return pdffilename;
 		} else {
 			return {

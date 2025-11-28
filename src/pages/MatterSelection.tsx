@@ -10,7 +10,6 @@ const MatterSelection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [totalMatters, setTotalMatters] = useState(0);
   const [totalReports, setTotalReports] = useState(0);
-  const [totalSpent, setTotalSpent] = useState(0);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
 
   useEffect(() => {
@@ -45,17 +44,11 @@ const MatterSelection: React.FC = () => {
         
         setTotalReports(allReports.length);
         
-        // Calculate total spent: $19 per paid report (based on pricing page)
-        const paidReports = allReports.filter(report => report.isPaid);
-        const calculatedTotal = paidReports.length * 19;
-        setTotalSpent(calculatedTotal);
-        
       } catch (error) {
         console.error('Error fetching stats:', error);
         // Set defaults on error
         setTotalMatters(0);
         setTotalReports(0);
-        setTotalSpent(0);
       } finally {
         setIsLoadingStats(false);
       }
@@ -147,13 +140,6 @@ const MatterSelection: React.FC = () => {
                 {isLoadingStats ? '...' : totalReports}
               </div>
               <div className="text-sm text-gray-600">Reports Generated</div>
-            </div>
-            <div className="w-px h-8 bg-gray-200"></div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900">
-                {isLoadingStats ? '...' : `A$${totalSpent.toFixed(2)}`}
-              </div>
-              <div className="text-sm text-gray-600">Total Spent</div>
             </div>
           </div>
         </div>
