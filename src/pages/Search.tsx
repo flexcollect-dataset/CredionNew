@@ -1474,7 +1474,7 @@ const Search: React.FC = () => {
     const fetchTasks: Promise<void>[] = [];
 
     if (isBankruptcySearch) {
-      setSelectedBankruptcyMatch(null);
+      setSelectedBankruptcyMatches([]);
       setBankruptcyMatchOptions([]);
       setBankruptcyMatchesError(null);
       setIsLoadingBankruptcyMatches(true);
@@ -2136,7 +2136,7 @@ const Search: React.FC = () => {
          } else if (currentDirectorSearchType === 'ppsr') {
            const updatedMatches = new Map(directorPpsrMatches);
            // For PPSR, use first selected related match (keeping single match for now)
-           const firstRelatedMatch = selectedRelatedItems.length > 0 ? selectedRelatedItems[0].relatedMatch : null;
+           const firstRelatedMatch = selectedRelatedItems.length > 0 ? (selectedRelatedItems[0].relatedMatch ?? null) : null;
            updatedMatches.set(currentDirectorIndex, firstRelatedMatch);
            setDirectorPpsrMatches(updatedMatches);
 
@@ -2233,8 +2233,12 @@ const Search: React.FC = () => {
       }
     } else if (individualNameSearchModalType === 'landtitle') {
       // Land title name selection modal - after confirming, open land title summary modal
+      // Get first selected land title item
+      const firstLandTitleItem = selectedLandTitleItems.length > 0 ? selectedLandTitleItems[0] : null;
+      if (!firstLandTitleItem) return;
+      
       // Extract name from displayLabel (format: "FirstName MiddleName LastName")
-      const fullName = displayLabel.trim();
+      const fullName = firstLandTitleItem.displayLabel.trim();
       const nameComponents = fullName.split(/\s+/);
       const firstName = nameComponents.length > 1 ? nameComponents.slice(0, -1).join(' ') : '';
       const lastName = nameComponents.length > 0 ? nameComponents[nameComponents.length - 1] : fullName;
@@ -2248,7 +2252,7 @@ const Search: React.FC = () => {
       });
       
       // Set selected match
-      setSelectedLandTitleIndividualMatch(displayLabel);
+      setSelectedLandTitleIndividualMatch(firstLandTitleItem.displayLabel);
       
       // Open land title summary modal after confirming name selection
       setPendingLandTitleSelection({
@@ -2266,22 +2270,26 @@ const Search: React.FC = () => {
     } else {
       // Land title name selection modal (mock) - after confirming, open land title summary modal
       if (isIndividualLandTitleSearch) {
+        // Get first selected land title item
+        const firstLandTitleItem = selectedLandTitleItems.length > 0 ? selectedLandTitleItems[0] : null;
+        if (!firstLandTitleItem) return;
+        
         // Set confirmed person details for land title flow
         // Extract name parts from displayLabel (format: "FirstName LastName • DOB: ... • State • Suburb")
-        const nameParts = displayLabel.split(' • ');
-        const fullName = nameParts[0] || displayLabel;
+        const nameParts = firstLandTitleItem.displayLabel.split(' • ');
+        const fullName = nameParts[0] || firstLandTitleItem.displayLabel;
         const nameComponents = fullName.trim().split(/\s+/);
         const firstName = nameComponents.length > 1 ? nameComponents.slice(0, -1).join(' ') : '';
         const lastName = nameComponents.length > 0 ? nameComponents[nameComponents.length - 1] : fullName;
         
         // Extract state from displayLabel if available
-        const statePart = nameParts.find(part => part.trim().length === 2 || ['NSW', 'VIC', 'QLD', 'SA', 'WA', 'TAS', 'NT', 'ACT'].includes(part.trim().toUpperCase()));
+        const statePart = nameParts.find((part: string) => part.trim().length === 2 || ['NSW', 'VIC', 'QLD', 'SA', 'WA', 'TAS', 'NT', 'ACT'].includes(part.trim().toUpperCase()));
         const state = statePart ? statePart.trim() : '';
         
         setConfirmedLandTitlePersonDetails({
           firstName: firstName || combineFirstName(landTitleIndividualFirstName, landTitleIndividualMiddleName) || '',
           lastName: lastName || landTitleIndividualLastName.trim(),
-          fullName: displayLabel,
+          fullName: firstLandTitleItem.displayLabel,
           state: state
         });
         
@@ -2415,7 +2423,7 @@ const Search: React.FC = () => {
     
     // Close current modal
     setIsIndividualNameSearchModalOpen(false);
-    setPendingIndividualNameSelection(null);
+    setPendingIndividualNameSelection([]);
     
     // Check what's next and show the next popup
     const isIndividualCourtSearch = selectedCategory === 'INDIVIDUAL' && selectedSearches.has('COURT');
