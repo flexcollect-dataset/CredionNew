@@ -250,7 +250,7 @@ const Search: React.FC = () => {
   >([]);
   const [isLoadingBankruptcyMatches, setIsLoadingBankruptcyMatches] = useState(false);
   const [bankruptcyMatchesError, setBankruptcyMatchesError] = useState<string | null>(null);
-  const [selectedBankruptcyMatch, setSelectedBankruptcyMatch] = useState<BankruptcyMatch | null>(null);
+  const [selectedBankruptcyMatches, setSelectedBankruptcyMatches] = useState<Array<BankruptcyMatch | null>>([]);
   const isIndividualBankruptcySelected =
     selectedCategory === 'INDIVIDUAL' && selectedSearches.has('INDIVIDUAL BANKRUPTCY');
   const [relatedEntityMatchOptions, setRelatedEntityMatchOptions] = useState<
@@ -258,7 +258,7 @@ const Search: React.FC = () => {
   >([]);
   const [isLoadingRelatedMatches, setIsLoadingRelatedMatches] = useState(false);
   const [relatedMatchesError, setRelatedMatchesError] = useState<string | null>(null);
-  const [selectedRelatedMatch, setSelectedRelatedMatch] = useState<DirectorRelatedMatch | null>(null);
+  const [selectedRelatedMatches, setSelectedRelatedMatches] = useState<Array<DirectorRelatedMatch | null>>([]);
   // Court search state - separated into criminal and civil
   const [criminalMatchOptions, setCriminalMatchOptions] = useState<Array<{ label: string; match: any }>>([]);
   const [isLoadingCriminalMatches, setIsLoadingCriminalMatches] = useState(false);
@@ -272,22 +272,22 @@ const Search: React.FC = () => {
   // Modal states for individual name search results
   const [isIndividualNameSearchModalOpen, setIsIndividualNameSearchModalOpen] = useState(false);
   const [individualNameSearchModalType, setIndividualNameSearchModalType] = useState<'bankruptcy' | 'related' | 'criminal' | 'civil' | 'landtitle' | null>(null);
-  const [pendingIndividualNameSelection, setPendingIndividualNameSelection] = useState<{
+  const [pendingIndividualNameSelection, setPendingIndividualNameSelection] = useState<Array<{
     displayLabel: string;
     source: 'bankruptcy' | 'related' | 'criminal' | 'civil' | 'mock' | 'landtitle';
     bankruptcyMatch?: BankruptcyMatch | null;
     relatedMatch?: DirectorRelatedMatch | null;
     criminalMatch?: any | null;
     civilMatch?: any | null;
-  } | null>(null);
+  }>>([]);
   const isIndividualRelatedEntitiesSelected =
     selectedCategory === 'INDIVIDUAL' && selectedSearches.has('INDIVIDUAL RELATED ENTITIES');
   
 
   const [currentDirectorIndex, setCurrentDirectorIndex] = useState<number>(-1);
-  const [directorRelatedMatches, setDirectorRelatedMatches] = useState<Map<number, DirectorRelatedMatch | null>>(new Map());
+  const [directorRelatedMatches, setDirectorRelatedMatches] = useState<Map<number, Array<DirectorRelatedMatch | null>>>(new Map());
   const [directorPpsrMatches, setDirectorPpsrMatches] = useState<Map<number, DirectorRelatedMatch | null>>(new Map());
-  const [directorBankruptcyMatches, setDirectorBankruptcyMatches] = useState<Map<number, BankruptcyMatch | null>>(new Map());
+  const [directorBankruptcyMatches, setDirectorBankruptcyMatches] = useState<Map<number, Array<BankruptcyMatch | null>>>(new Map());
   const [currentDirectorSearchType, setCurrentDirectorSearchType] = useState<'related' | 'ppsr' | 'bankruptcy' | null>(null);
 
   const formatDisplayDate = useCallback((value?: string | null) => {
@@ -337,11 +337,11 @@ const Search: React.FC = () => {
     setLandTitlePersonNamesError(null);
     setIsConfirmPersonNameModalOpen(false);
     setConfirmedLandTitlePersonDetails(null);
-    setSelectedBankruptcyMatch(null);
+    setSelectedBankruptcyMatches([]);
     setBankruptcyMatchOptions([]);
     setBankruptcyMatchesError(null);
     setIsLoadingBankruptcyMatches(false);
-    setSelectedRelatedMatch(null);
+    setSelectedRelatedMatches([]);
     setRelatedEntityMatchOptions([]);
     setRelatedMatchesError(null);
     setIsLoadingRelatedMatches(false);
@@ -367,9 +367,9 @@ const Search: React.FC = () => {
   const courtTypes: CourtTypeOption[] = ['ALL', 'CIVIL COURT', 'CRIMINAL COURT'];
 
   const asicTypePrices: Record<string, number> = {
-    'CURRENT': 25.00,
+    'CURRENT': 29.00,
     'CURRENT/HISTORICAL': 40.00,
-    'COMPANY': 30.00
+    'COMPANY': 39.00
   };
 
   const mockLandTitleIndividualMatches: string[] = [
@@ -382,15 +382,15 @@ const Search: React.FC = () => {
 
   // Base prices for additional searches (per director for director-related searches)
   const additionalSearchBasePrices: Record<string, number> = {
-    'ABN/ACN PPSR': 50,
-    'ASIC - CURRENT': 25,
+    'ABN/ACN PPSR': 20,
+    'ASIC - CURRENT': 29,
     'ABN/ACN LAND TITLE': 100,
-    'DIRECTOR RELATED ENTITIES': 75,
+    'DIRECTOR RELATED ENTITIES': 39,
     'DIRECTOR LAND TITLE': 80,
-    'DIRECTOR PPSR': 50,
-    'DIRECTOR BANKRUPTCY': 90,
-    'ABN/ACN COURT FILES': 60,
-    'ATO': 55
+    'DIRECTOR PPSR': 20,
+    'DIRECTOR BANKRUPTCY': 40,
+    'ABN/ACN COURT FILES': 10,
+    'ATO': 10
   };
 
   const landTitlePricingConfig = {
@@ -593,7 +593,8 @@ const Search: React.FC = () => {
       {
         name: 'DIRECTOR RELATED ENTITIES',
         available: directorCount,
-        price: additionalSearchBasePrices['DIRECTOR RELATED ENTITIES'] * directorCount
+        // Base price per name - actual price calculated in calculateTotal based on selected matches
+        price: additionalSearchBasePrices['DIRECTOR RELATED ENTITIES']
       },
       {
         name: 'DIRECTOR PPSR',
@@ -603,7 +604,8 @@ const Search: React.FC = () => {
       {
         name: 'DIRECTOR BANKRUPTCY',
         available: directorCount,
-        price: additionalSearchBasePrices['DIRECTOR BANKRUPTCY'] * directorCount
+        // Base price per name - actual price calculated in calculateTotal based on selected matches
+        price: additionalSearchBasePrices['DIRECTOR BANKRUPTCY']
       },
       { name: 'ABN/ACN COURT FILES', available: 1, price: additionalSearchBasePrices['ABN/ACN COURT FILES'] },
       { name: 'ATO', price: additionalSearchBasePrices['ATO'] }
@@ -1161,7 +1163,7 @@ const Search: React.FC = () => {
     }
 
     // Reset state for this director
-    setSelectedRelatedMatch(null);
+    setSelectedRelatedMatches([]);
     setRelatedEntityMatchOptions([]);
     setRelatedMatchesError(null);
     setIsLoadingRelatedMatches(true);
@@ -1316,7 +1318,7 @@ const Search: React.FC = () => {
       return;
     }
 
-    setSelectedBankruptcyMatch(null);
+    setSelectedBankruptcyMatches([]);
     setBankruptcyMatchOptions([]);
     setBankruptcyMatchesError(null);
     setIsLoadingBankruptcyMatches(true);
@@ -1529,14 +1531,14 @@ const Search: React.FC = () => {
         })()
       );
     } else {
-      setSelectedBankruptcyMatch(null);
+      setSelectedBankruptcyMatches([]);
       setBankruptcyMatchOptions([]);
       setBankruptcyMatchesError(null);
       setIsLoadingBankruptcyMatches(false);
     }
 
     if (isRelatedEntitiesSearch) {
-      setSelectedRelatedMatch(null);
+      setSelectedRelatedMatches([]);
       setRelatedEntityMatchOptions([]);
       setRelatedMatchesError(null);
       setIsLoadingRelatedMatches(true);
@@ -1603,7 +1605,7 @@ const Search: React.FC = () => {
         })()
       );
     } else {
-      setSelectedRelatedMatch(null);
+      setSelectedRelatedMatches([]);
       setRelatedEntityMatchOptions([]);
       setRelatedMatchesError(null);
       setIsLoadingRelatedMatches(false);
@@ -1904,13 +1906,13 @@ const Search: React.FC = () => {
       return;
     }
 
-    if (isIndividualBankruptcySelected && !selectedBankruptcyMatch) {
-      alert('Please select a bankruptcy record to confirm');
+    if (isIndividualBankruptcySelected && selectedBankruptcyMatches.length === 0) {
+      alert('Please select at least one bankruptcy record to confirm');
       return;
     }
 
-    if (isIndividualRelatedEntitiesSelected && !selectedRelatedMatch) {
-      alert('Please select a related entity record to confirm');
+    if (isIndividualRelatedEntitiesSelected && selectedRelatedMatches.length === 0) {
+      alert('Please select at least one related entity record to confirm');
       return;
     }
 
@@ -1939,8 +1941,8 @@ const Search: React.FC = () => {
   }, [
     isIndividualBankruptcySelected,
     isIndividualRelatedEntitiesSelected,
-    selectedBankruptcyMatch,
-    selectedRelatedMatch,
+    selectedBankruptcyMatches,
+    selectedRelatedMatches,
     selectedLandTitleIndividualMatch,
     selectedCategory,
     selectedLandTitleOption,
@@ -1978,38 +1980,60 @@ const Search: React.FC = () => {
     criminalMatch?: any | null;
     civilMatch?: any | null;
   }) => {
-    setPendingIndividualNameSelection(option);
+    setPendingIndividualNameSelection(prev => {
+      // Check if option is already selected
+      const isSelected = prev.some(
+        item => item.displayLabel === option.displayLabel && item.source === option.source
+      );
+      
+      if (isSelected) {
+        // Remove from selection
+        return prev.filter(
+          item => !(item.displayLabel === option.displayLabel && item.source === option.source)
+        );
+      } else {
+        // Add to selection
+        return [...prev, option];
+      }
+    });
   }, []);
 
   // Handler for confirming selection in individual name search modal
   const handleIndividualNameSearchConfirm = useCallback(() => {
-    if (!pendingIndividualNameSelection) return;
+    if (pendingIndividualNameSelection.length === 0) return;
 
-    const { displayLabel, source, bankruptcyMatch, relatedMatch, criminalMatch, civilMatch } = pendingIndividualNameSelection;
+    // Process all selected items
+    const selectedBankruptcyItems = pendingIndividualNameSelection.filter(item => item.source === 'bankruptcy');
+    const selectedRelatedItems = pendingIndividualNameSelection.filter(item => item.source === 'related');
+    const selectedCriminalItems = pendingIndividualNameSelection.filter(item => item.source === 'criminal');
+    const selectedCivilItems = pendingIndividualNameSelection.filter(item => item.source === 'civil');
+    const selectedLandTitleItems = pendingIndividualNameSelection.filter(item => item.source === 'landtitle' || item.source === 'mock');
     
-    setSelectedLandTitleIndividualMatch(displayLabel);
-    
-    // Only set the match for the current source, preserve other matches
-    if (source === 'bankruptcy') {
-      setSelectedBankruptcyMatch(bankruptcyMatch || null);
-      // Don't clear other matches - preserve them for multiple selections
-    } else if (source === 'related') {
-      setSelectedRelatedMatch(relatedMatch || null);
-      // Don't clear other matches - preserve them for multiple selections
-    } else if (source === 'criminal') {
-      setSelectedCriminalMatch(criminalMatch || null);
-      // Don't clear other matches - preserve them for multiple selections
-    } else if (source === 'civil') {
-      setSelectedCivilMatch(civilMatch || null);
-      // Don't clear other matches - preserve them for multiple selections
-    } else {
-      // For other sources, only clear if explicitly needed
-      // Don't clear matches for bankruptcy, related, criminal, or civil
+    // Store multiple matches for each type
+    if (selectedBankruptcyItems.length > 0) {
+      const bankruptcyMatches = selectedBankruptcyItems.map(item => item.bankruptcyMatch || null);
+      setSelectedBankruptcyMatches(bankruptcyMatches);
+    }
+    if (selectedRelatedItems.length > 0) {
+      const relatedMatches = selectedRelatedItems.map(item => item.relatedMatch || null);
+      setSelectedRelatedMatches(relatedMatches);
+    }
+    if (selectedCriminalItems.length > 0) {
+      const criminalMatch = selectedCriminalItems[0]?.criminalMatch || null;
+      setSelectedCriminalMatch(criminalMatch);
+    }
+    if (selectedCivilItems.length > 0) {
+      const civilMatch = selectedCivilItems[0]?.civilMatch || null;
+      setSelectedCivilMatch(civilMatch);
+    }
+    if (selectedLandTitleItems.length > 0) {
+      const firstLandTitleItem = selectedLandTitleItems[0];
+      setSelectedLandTitleIndividualMatch(firstLandTitleItem.displayLabel);
     }
 
     // Close current modal
     setIsIndividualNameSearchModalOpen(false);
-    setPendingIndividualNameSelection(null);
+    setPendingIndividualNameSelection([]);
 
     const isIndividualCourtSearch = selectedCategory === 'INDIVIDUAL' && 
       (selectedSearches.has('COURT') || selectedIndividualAdditionalSearches.has('COURT'));
@@ -2019,11 +2043,10 @@ const Search: React.FC = () => {
     if (individualNameSearchModalType === 'bankruptcy') {
       // Check if this is a director bankruptcy
       if (selectedCategory === 'ORGANISATION' && currentDirectorIndex >= 0 && currentDirectorSearchType === 'bankruptcy') {
-        // Director bankruptcy - store the match directly from pendingSelection (full match object or null if fallback name selected)
-        // Use bankruptcyMatch from pendingIndividualNameSelection, not from state (state update is async)
-        const matchToStore = source === 'bankruptcy' ? (bankruptcyMatch ?? null) : null;
+        // Director bankruptcy - store all selected matches as an array
+        const matchesToStore = selectedBankruptcyItems.map(item => item.bankruptcyMatch ?? null);
         const updatedMatches = new Map(directorBankruptcyMatches);
-        updatedMatches.set(currentDirectorIndex, matchToStore);
+        updatedMatches.set(currentDirectorIndex, matchesToStore);
         setDirectorBankruptcyMatches(updatedMatches);
 
         const nextIndex = currentDirectorIndex + 1;
@@ -2088,11 +2111,10 @@ const Search: React.FC = () => {
       
       if (selectedCategory === 'ORGANISATION' && currentDirectorIndex >= 0) {
          if (currentDirectorSearchType === 'related') {
-           // Director related - store the match directly from pendingSelection (full match object or null if fallback name selected)
-           // Use relatedMatch from pendingIndividualNameSelection, not from state (state update is async)
-           const matchToStore = source === 'related' ? (relatedMatch ?? null) : null;
+           // Director related - store all selected matches as an array
+           const matchesToStore = selectedRelatedItems.map(item => item.relatedMatch ?? null);
            const updatedMatches = new Map(directorRelatedMatches);
-           updatedMatches.set(currentDirectorIndex, matchToStore);
+           updatedMatches.set(currentDirectorIndex, matchesToStore);
            setDirectorRelatedMatches(updatedMatches);
 
            const nextIndex = currentDirectorIndex + 1;
@@ -2113,7 +2135,9 @@ const Search: React.FC = () => {
            return;
          } else if (currentDirectorSearchType === 'ppsr') {
            const updatedMatches = new Map(directorPpsrMatches);
-           updatedMatches.set(currentDirectorIndex, selectedRelatedMatch);
+           // For PPSR, use first selected related match (keeping single match for now)
+           const firstRelatedMatch = selectedRelatedItems.length > 0 ? selectedRelatedItems[0].relatedMatch : null;
+           updatedMatches.set(currentDirectorIndex, firstRelatedMatch);
            setDirectorPpsrMatches(updatedMatches);
 
            const nextIndex = currentDirectorIndex + 1;
@@ -2134,7 +2158,9 @@ const Search: React.FC = () => {
            return;
          } else if (currentDirectorSearchType === 'bankruptcy') {
            const updatedMatches = new Map(directorBankruptcyMatches);
-           updatedMatches.set(currentDirectorIndex, selectedBankruptcyMatch);
+           // Store all selected bankruptcy matches as an array
+           const matchesToStore = selectedBankruptcyItems.map(item => item.bankruptcyMatch ?? null);
+           updatedMatches.set(currentDirectorIndex, matchesToStore);
            setDirectorBankruptcyMatches(updatedMatches);
 
            const nextIndex = currentDirectorIndex + 1;
@@ -2235,7 +2261,7 @@ const Search: React.FC = () => {
       });
       setIsLandTitleIndividualSummaryModalOpen(true);
       setIsIndividualNameSearchModalOpen(false);
-      setPendingIndividualNameSelection(null);
+      setPendingIndividualNameSelection([]);
       setIndividualNameSearchModalType(null);
     } else {
       // Land title name selection modal (mock) - after confirming, open land title summary modal
@@ -2273,7 +2299,7 @@ const Search: React.FC = () => {
         setIndividualNameSearchModalType(null);
       }
     }
-  }, [pendingIndividualNameSelection, individualNameSearchModalType, isIndividualBankruptcySelected, isIndividualRelatedEntitiesSelected, isLoadingRelatedMatches, relatedEntityMatchOptions, selectedCategory, selectedSearches, selectedCourtType, currentDirectorIndex, directorsList, directorRelatedMatches, selectedRelatedMatch, handleDirectorRelatedEntitySearch, selectedAdditionalSearches]);
+    }, [pendingIndividualNameSelection, individualNameSearchModalType, isIndividualBankruptcySelected, isIndividualRelatedEntitiesSelected, isLoadingRelatedMatches, relatedEntityMatchOptions, selectedCategory, selectedSearches, selectedCourtType, currentDirectorIndex, directorsList, directorRelatedMatches, directorBankruptcyMatches, handleDirectorRelatedEntitySearch, selectedAdditionalSearches, directorsList.length]);
 
   // Handler for closing individual name search modal (called when user clicks Cancel or X)
   // Note: This is NOT called when user confirms - handleIndividualNameSearchConfirm handles that
@@ -2315,8 +2341,8 @@ const Search: React.FC = () => {
         updated.delete('INDIVIDUAL BANKRUPTCY');
         return updated;
       });
-      // Also clear any previous bankruptcy match
-      setSelectedBankruptcyMatch(null);
+      // Also clear any previous bankruptcy matches
+      setSelectedBankruptcyMatches([]);
       setBankruptcyMatchOptions([]);
       } else if (individualNameSearchModalType === 'related') {
       
@@ -2366,8 +2392,8 @@ const Search: React.FC = () => {
         updated.delete('INDIVIDUAL RELATED ENTITIES');
         return updated;
       });
-      // Also clear any previous related match
-      setSelectedRelatedMatch(null);
+      // Also clear any previous related matches
+      setSelectedRelatedMatches([]);
       setRelatedEntityMatchOptions([]);
     } else if (individualNameSearchModalType === 'criminal') {
       // Clear criminal match but don't remove COURT from searches (civil might still be needed)
@@ -3152,21 +3178,21 @@ const Search: React.FC = () => {
 
   const searchPrices: SearchPrices = {
     'ASIC': 50.00,
-    'COURT': 60.00,
-    'ATO': 55.00,
-    'ABN/ACN PPSR': 50.00,
-    'PPSR': 50.00,
-    'ADD DOCUMENT SEARCH': 35.00,
+    'COURT': 10.00,
+    'ATO': 10.00,
+    'ABN/ACN PPSR': 20.00,
+    'PPSR': 20.00,
+    'ADD DOCUMENT SEARCH': 33.00,
     'BANKRUPTCY': 90.00,
     'LAND TITLE': 80.00,
-    'INDIVIDUAL RELATED ENTITIES': 50.00,
-    'INDIVIDUAL BANKRUPTCY': 90.00,
-    'INDIVIDUAL COURT': 60.00,
+    'INDIVIDUAL RELATED ENTITIES': 39.00,
+    'INDIVIDUAL BANKRUPTCY': 40.00,
+    'INDIVIDUAL COURT': 10.00,
     'INDIVIDUAL LAND TITLE': 80.00,
-    'INDIVIDUAL PPSR': 50.00,
-    'REGO PPSR': 50.00,
-    'SOLE TRADER CHECK': 50.00,
-    'UNCLAIMED MONEY': 50.00,
+    'INDIVIDUAL PPSR': 20.00,
+    'REGO PPSR': 22.00,
+    'SOLE TRADER CHECK': 0.00,
+    'UNCLAIMED MONEY': 0.00,
     'LAND_TITLE_TITLE_REFERENCE': titleReferenceDetailPricing[titleReferenceSelection.detail],
     'LAND_TITLE_ORGANISATION': landTitleCategoryOptionConfig.LAND_ORGANISATION.price,
     'LAND_TITLE_INDIVIDUAL': landTitleCategoryOptionConfig.LAND_INDIVIDUAL.price,
@@ -3303,28 +3329,72 @@ const Search: React.FC = () => {
 
     // Add main searches
     selectedSearches.forEach(search => {
-      if (search !== 'SELECT ALL') {
-        const priceKey = search === 'INDIVIDUAL PPSR' ? 'ABN/ACN PPSR' : search;
-        if (priceKey in searchPrices) {
-          total += searchPrices[priceKey as keyof SearchPrices];
+      if (search !== 'SELECT ALL' && search !== 'ASIC') {
+        // Skip COURT for INDIVIDUAL category - it will be handled separately based on selectedCourtType
+        if (selectedCategory === 'INDIVIDUAL' && search === 'COURT') {
+          return;
+        }
+        // For individual bankruptcy and related entities in main searches, charge per selected name
+        if (selectedCategory === 'INDIVIDUAL' && search === 'INDIVIDUAL BANKRUPTCY') {
+          const matchCount = selectedBankruptcyMatches.length > 0 ? selectedBankruptcyMatches.length : 1;
+          total += searchPrices['INDIVIDUAL BANKRUPTCY'] * matchCount;
+        } else if (selectedCategory === 'INDIVIDUAL' && search === 'INDIVIDUAL RELATED ENTITIES') {
+          const matchCount = selectedRelatedMatches.length > 0 ? selectedRelatedMatches.length : 1;
+          total += searchPrices['INDIVIDUAL RELATED ENTITIES'] * matchCount;
+        } else {
+          const priceKey = search === 'INDIVIDUAL PPSR' ? 'ABN/ACN PPSR' : search;
+          if (priceKey in searchPrices) {
+            total += searchPrices[priceKey as keyof SearchPrices];
+          }
         }
       }
     });
 
-    // Add ASIC type prices
+    // Add ASIC type prices (only when specific ASIC types are selected)
     selectedAsicTypes.forEach(type => {
       if (type !== 'SELECT ALL' && type in asicTypePrices) {
         total += asicTypePrices[type];
       }
     });
 
+    // Add individual court price based on selected court type
+    if (selectedCategory === 'INDIVIDUAL' && selectedSearches.has('COURT')) {
+      if (selectedCourtType === 'ALL') {
+        total += 20.00; // $20 for all court searches
+      } else if (selectedCourtType === 'CIVIL COURT' || selectedCourtType === 'CRIMINAL COURT') {
+        total += 10.00; // $10 for individual court type
+      }
+    }
+
     // Add additional searches for ORGANISATION
     if (selectedCategory === 'ORGANISATION') {
       selectedAdditionalSearches.forEach(search => {
         if (search !== 'SELECT ALL') {
-          const option = additionalSearchOptions.find(o => o.name === search);
-          if (option && option.price) {
-            total += option.price;
+          // For director searches, charge per selected name
+          if (search === 'DIRECTOR BANKRUPTCY') {
+            // Count total number of selected bankruptcy matches across all directors
+            let totalMatches = 0;
+            directorBankruptcyMatches.forEach((matches) => {
+              totalMatches += matches.length;
+            });
+            // If no matches selected yet, charge per director (fallback)
+            const matchCount = totalMatches > 0 ? totalMatches : directorsList.length;
+            total += additionalSearchBasePrices['DIRECTOR BANKRUPTCY'] * matchCount;
+          } else if (search === 'DIRECTOR RELATED ENTITIES') {
+            // Count total number of selected related matches across all directors
+            let totalMatches = 0;
+            directorRelatedMatches.forEach((matches) => {
+              totalMatches += matches.length;
+            });
+            // If no matches selected yet, charge per director (fallback)
+            const matchCount = totalMatches > 0 ? totalMatches : directorsList.length;
+            total += additionalSearchBasePrices['DIRECTOR RELATED ENTITIES'] * matchCount;
+          } else {
+            // For other searches, use the option price as is
+            const option = additionalSearchOptions.find(o => o.name === search);
+            if (option && option.price) {
+              total += option.price;
+            }
           }
         }
       });
@@ -3334,9 +3404,22 @@ const Search: React.FC = () => {
     if (selectedCategory === 'INDIVIDUAL') {
       selectedIndividualAdditionalSearches.forEach(search => {
         if (search !== 'SELECT ALL') {
-          const priceKey = search === 'INDIVIDUAL PPSR' ? 'ABN/ACN PPSR' : search;
-          if (priceKey in searchPrices) {
-            total += searchPrices[priceKey as keyof SearchPrices];
+          // Skip COURT in additional searches - it's already handled above
+          if (search === 'COURT') {
+            return;
+          }
+          // For individual bankruptcy and related entities, charge per selected name
+          if (search === 'INDIVIDUAL BANKRUPTCY') {
+            const matchCount = selectedBankruptcyMatches.length > 0 ? selectedBankruptcyMatches.length : 1;
+            total += searchPrices['INDIVIDUAL BANKRUPTCY'] * matchCount;
+          } else if (search === 'INDIVIDUAL RELATED ENTITIES') {
+            const matchCount = selectedRelatedMatches.length > 0 ? selectedRelatedMatches.length : 1;
+            total += searchPrices['INDIVIDUAL RELATED ENTITIES'] * matchCount;
+          } else {
+            const priceKey = search === 'INDIVIDUAL PPSR' ? 'ABN/ACN PPSR' : search;
+            if (priceKey in searchPrices) {
+              total += searchPrices[priceKey as keyof SearchPrices];
+            }
           }
         }
       });
@@ -4996,20 +5079,34 @@ setLandTitleOrganisationSearchTerm(displayText);
               dob: director.dob || ''
             };
 
-            // Always pass the full API match response for director reports
-            // This allows backend to handle individual and director reports the same way
+            // Get all matches for this director (now supports multiple selections)
+            let matchesToProcess: Array<BankruptcyMatch | null> | Array<DirectorRelatedMatch | null> = [];
             if (reportType === 'director-bankruptcy') {
-              const bankruptcyMatch = directorBankruptcyMatches.get(directorIndex);
-              // Only include the property if there's an actual value (not null/undefined)
-              if (bankruptcyMatch != null) {
-                business.bankruptcySelection = bankruptcyMatch;
-              }
+              const bankruptcyMatches = directorBankruptcyMatches.get(directorIndex) || [];
+              matchesToProcess = bankruptcyMatches;
             } else if (reportType === 'director-related') {
-              const relatedMatch = directorRelatedMatches.get(directorIndex);
-              // Only include the property if there's an actual value (not null/undefined)
-              if (relatedMatch != null) {
-                business.directorRelatedSelection = relatedMatch;
-              }
+              const relatedMatches = directorRelatedMatches.get(directorIndex) || [];
+              matchesToProcess = relatedMatches;
+            } else {
+              // For other types, create one report (no multiple selection yet)
+              matchesToProcess = [null];
+            }
+
+            // If no matches selected, create one report with no match
+            if (matchesToProcess.length === 0) {
+              matchesToProcess = [null];
+            }
+
+            // Create a report for each selected match
+            for (const match of matchesToProcess) {
+              const businessWithMatch: any = { ...business };
+              
+              // Always pass the full API match response for director reports
+              // This allows backend to handle individual and director reports the same way
+              if (reportType === 'director-bankruptcy' && match != null) {
+                businessWithMatch.bankruptcySelection = match;
+              } else if (reportType === 'director-related' && match != null) {
+                businessWithMatch.directorRelatedSelection = match;
             }
 
             const reportData: any = {
@@ -5017,10 +5114,11 @@ setLandTitleOrganisationSearchTerm(displayText);
               userId: user?.userId || 0,
               matterId: currentMatter?.matterId,
               ispdfcreate: true as const,
-              business
+                business: businessWithMatch
             };
 
             // Call backend to create report
+            //console.log(reportData);
             const reportResponse = await apiService.createReport(reportData);
             //const reportResponse: any = null;
             // Extract PDF filename from response
@@ -5035,6 +5133,7 @@ setLandTitleOrganisationSearchTerm(displayText);
               reportResponse,
               pdfFilename: pdfFilename || undefined
             });
+            }
           }
         } else {
           let businessData = reportData.business ? { ...reportData.business } : undefined;
@@ -5077,102 +5176,186 @@ setLandTitleOrganisationSearchTerm(displayText);
               isCompany: 'INDIVIDUAL'
             };
 
+            // For individual reports, we need to create one report per selected match
+            // Get matches to process
+            let individualMatchesToProcess: Array<BankruptcyMatch | null> | Array<DirectorRelatedMatch | null> = [];
+            if (reportType === 'director-bankruptcy') {
+              individualMatchesToProcess = selectedBankruptcyMatches;
+            } else if (reportType === 'director-related') {
+              individualMatchesToProcess = selectedRelatedMatches;
+            } else {
+              // For other types, create one report (no multiple selection yet)
+              individualMatchesToProcess = [null];
+            }
+
+            // If no matches selected, create one report with no match
+            if (individualMatchesToProcess.length === 0) {
+              individualMatchesToProcess = [null];
+            }
+
+            // Create a report for each selected match
+            for (const match of individualMatchesToProcess) {
+              const businessDataWithMatch = { ...businessData };
+
             // Only include bankruptcySelection if it has a value (not null/undefined)
-            if (reportType === 'director-bankruptcy' && selectedBankruptcyMatch != null) {
-              (businessData as any).bankruptcySelection = selectedBankruptcyMatch;
+              if (reportType === 'director-bankruptcy' && match != null) {
+                (businessDataWithMatch as any).bankruptcySelection = match;
             }
             // Only include directorRelatedSelection if it has a value (not null/undefined)
-            if (reportType === 'director-related' && selectedRelatedMatch != null) {
-              (businessData as any).directorRelatedSelection = selectedRelatedMatch;
+              if (reportType === 'director-related' && match != null) {
+                (businessDataWithMatch as any).directorRelatedSelection = match;
             }
             // Handle court data - pass criminal and/or civil matches based on report type
             if (reportType === 'director-court-criminal') {
               // Only pass criminal selection for criminal reports
               if (selectedCriminalMatch) {
-                (businessData as any).criminalSelection = selectedCriminalMatch;
+                  (businessDataWithMatch as any).criminalSelection = selectedCriminalMatch;
               }
             } else if (reportType === 'director-court-civil') {
               // Only pass civil selection for civil reports
               if (selectedCivilMatch) {
-                (businessData as any).civilSelection = selectedCivilMatch;
+                  (businessDataWithMatch as any).civilSelection = selectedCivilMatch;
               }
             } else if (reportType === 'director-court') {
               // For 'director-court' (ALL), pass both if they exist
               if (selectedCriminalMatch) {
-                (businessData as any).criminalSelection = selectedCriminalMatch;
+                  (businessDataWithMatch as any).criminalSelection = selectedCriminalMatch;
               }
               if (selectedCivilMatch) {
-                (businessData as any).civilSelection = selectedCivilMatch;
+                  (businessDataWithMatch as any).civilSelection = selectedCivilMatch;
               }
             }
 
             // Add selected person name for land-title-individual reports
             if (reportType === 'land-title-individual' && selectedLandTitleIndividualMatch) {
-              (businessData as any).selectedPersonName = selectedLandTitleIndividualMatch;
+                (businessDataWithMatch as any).selectedPersonName = selectedLandTitleIndividualMatch;
             }
 
             // Add rego number and state for rego-ppsr reports
             if (reportType === 'rego-ppsr' && regoNumber) {
-              (businessData as any).regoNumber = regoNumber.trim();
+                (businessDataWithMatch as any).regoNumber = regoNumber.trim();
               if (regoState) {
-                (businessData as any).regoState = regoState;
-              }
+                  (businessDataWithMatch as any).regoState = regoState;
             }
           }
 
-          if (reportItem.meta) {
-            const meta = reportItem.meta as Record<string, unknown> & {
-              address?: string;
-              addressDetails?: LandTitleAddressDetails;
-              landTitleSelection?: LandTitleSelection;
-              person?: any;
-              organisation?: any;
-              states?: string[];
-              referenceId?: string;
-              option?: string;
-              addOn?: boolean;
-              detail?: string;
-              summary?: boolean;
-              searchTerm?: string;
-            };
+              // Handle meta data
+              let finalBusinessData = businessDataWithMatch;
+              if (reportItem.meta) {
+                const meta = reportItem.meta as Record<string, unknown> & {
+                  address?: string;
+                  addressDetails?: LandTitleAddressDetails;
+                  landTitleSelection?: LandTitleSelection;
+                  person?: any;
+                  organisation?: any;
+                  states?: string[];
+                  referenceId?: string;
+                  option?: string;
+                  addOn?: boolean;
+                  detail?: string;
+                  summary?: boolean;
+                  searchTerm?: string;
+                };
 
-            // Merge all meta fields into businessData
-            // This includes: person, organisation, states, referenceId, option, addOn, detail, summary, searchTerm, address, addressDetails, landTitleSelection, etc.
-            businessData = {
-              ...(businessData || {}),
-              ...meta
-            };
+                // Merge all meta fields into businessData
+                // This includes: person, organisation, states, referenceId, option, addOn, detail, summary, searchTerm, address, addressDetails, landTitleSelection, etc.
+                finalBusinessData = {
+                  ...finalBusinessData,
+                  ...meta
+                };
+              }
+
+              const reportDataForMatch: any = {
+                type: reportType,
+                userId: user?.userId || 0,
+                matterId: currentMatter?.matterId,
+                ispdfcreate: true as const
+              };
+
+              if (finalBusinessData) {
+                reportDataForMatch.business = finalBusinessData;
+              }
+
+              if (reportItem.type === 'ADD DOCUMENT SEARCH' && documentSearchId) {
+                reportDataForMatch.business = {
+                  ...(reportDataForMatch.business || {}),
+                  documentId: documentSearchId
+                };
+                reportDataForMatch.documentId = documentSearchId;
+              }
+              
+              // Call backend to create report
+              console.log(reportDataForMatch);
+              const reportResponse = await apiService.createReport(reportDataForMatch);
+              //const reportResponse: any = null;
+              // Extract PDF filename from response
+              // The response always has the filename in the 'report' property and always ends with .pdf
+              const pdfFilename = (reportResponse as any)?.report;
+
+              if (pdfFilename && typeof pdfFilename === 'string') {
+                // Add PDF filename to the array
+                setPdfFilenames(prev => [...prev, pdfFilename]);
+              }
+
+              createdReports.push({
+                reportResponse,
+                pdfFilename: pdfFilename || undefined
+              });
+            }
+          } else {
+            // For non-individual reports or reports without multiple selection, use original logic
+            if (reportItem.meta) {
+              const meta = reportItem.meta as Record<string, unknown> & {
+                address?: string;
+                addressDetails?: LandTitleAddressDetails;
+                landTitleSelection?: LandTitleSelection;
+                person?: any;
+                organisation?: any;
+                states?: string[];
+                referenceId?: string;
+                option?: string;
+                addOn?: boolean;
+                detail?: string;
+                summary?: boolean;
+                searchTerm?: string;
+              };
+
+              // Merge all meta fields into businessData
+              businessData = {
+                ...(businessData || {}),
+                ...meta
+              };
+            }
+
+            if (businessData) {
+              reportData.business = businessData;
+            }
+
+            if (reportItem.type === 'ADD DOCUMENT SEARCH' && documentSearchId) {
+              reportData.business = {
+                ...(reportData.business || {}),
+                documentId: documentSearchId
+              };
+              reportData.documentId = documentSearchId;
+            }
+            
+            // Call backend to create report
+            console.log(reportData);
+            const reportResponse = await apiService.createReport(reportData);
+            //const reportResponse: any = null;
+            // Extract PDF filename from response
+            const pdfFilename = (reportResponse as any)?.report;
+
+            if (pdfFilename && typeof pdfFilename === 'string') {
+              // Add PDF filename to the array
+              setPdfFilenames(prev => [...prev, pdfFilename]);
+            }
+
+            createdReports.push({
+              reportResponse,
+              pdfFilename: pdfFilename || undefined
+            });
           }
-
-          if (businessData) {
-            reportData.business = businessData;
-          }
-
-          if (reportItem.type === 'ADD DOCUMENT SEARCH' && documentSearchId) {
-            reportData.business = {
-              ...(reportData.business || {}),
-              documentId: documentSearchId
-            };
-            reportData.documentId = documentSearchId;
-          }
-          
-          // Call backend to create report
-          console.log(reportData);
-          const reportResponse = await apiService.createReport(reportData);
-          //const reportResponse: any = null;
-          // Extract PDF filename from response
-          // The response always has the filename in the 'report' property and always ends with .pdf
-          const pdfFilename = (reportResponse as any)?.report;
-
-          if (pdfFilename && typeof pdfFilename === 'string') {
-            // Add PDF filename to the array
-            setPdfFilenames(prev => [...prev, pdfFilename]);
-          }
-
-          createdReports.push({
-            reportResponse,
-            pdfFilename: pdfFilename || undefined
-          });
         }
       }
 
@@ -6360,25 +6543,25 @@ setLandTitleOrganisationSearchTerm(displayText);
                   )}
 
                   {/* Selected Persons for Individual Reports - Display under search button */}
-                  {selectedCategory === 'INDIVIDUAL' && (selectedBankruptcyMatch || selectedRelatedMatch || selectedCriminalMatch || selectedCivilMatch) && (
+                  {selectedCategory === 'INDIVIDUAL' && (selectedBankruptcyMatches.length > 0 || selectedRelatedMatches.length > 0 || selectedCriminalMatch || selectedCivilMatch) && (
                     <div className="mt-4 space-y-3">
                       {/* Bankruptcy - Main Searches */}
-                      {selectedSearches.has('INDIVIDUAL BANKRUPTCY') && selectedBankruptcyMatch && (
-                        <div className="rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
-                          INDIVIDUAL BANKRUPTCY: {selectedBankruptcyMatch.debtor?.givenNames || ''} {selectedBankruptcyMatch.debtor?.surname || ''}
-                          {selectedBankruptcyMatch.debtor?.dateOfBirth && ` • DOB: ${selectedBankruptcyMatch.debtor.dateOfBirth}`}
-                          {selectedBankruptcyMatch.debtor?.addressSuburb && ` • ${selectedBankruptcyMatch.debtor.addressSuburb}`}
+                      {selectedSearches.has('INDIVIDUAL BANKRUPTCY') && selectedBankruptcyMatches.length > 0 && selectedBankruptcyMatches.map((match, index) => match && (
+                        <div key={index} className="rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
+                          INDIVIDUAL BANKRUPTCY: {match.debtor?.givenNames || ''} {match.debtor?.surname || ''}
+                          {match.debtor?.dateOfBirth && ` • DOB: ${match.debtor.dateOfBirth}`}
+                          {match.debtor?.addressSuburb && ` • ${match.debtor.addressSuburb}`}
                         </div>
-                      )}
+                      ))}
                       {/* Related Entities - Main Searches */}
-                      {selectedSearches.has('INDIVIDUAL RELATED ENTITIES') && selectedRelatedMatch && (
-                        <div className="rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
-                          INDIVIDUAL RELATED ENTITIES: {selectedRelatedMatch.name || 'Selected Person'}
-                          {selectedRelatedMatch.dob && ` • DOB: ${selectedRelatedMatch.dob}`}
-                          {selectedRelatedMatch.state && ` • ${selectedRelatedMatch.state}`}
-                          {selectedRelatedMatch.suburb && ` • ${selectedRelatedMatch.suburb}`}
+                      {selectedSearches.has('INDIVIDUAL RELATED ENTITIES') && selectedRelatedMatches.length > 0 && selectedRelatedMatches.map((match, index) => match && (
+                        <div key={index} className="rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
+                          INDIVIDUAL RELATED ENTITIES: {match.name || 'Selected Person'}
+                          {match.dob && ` • DOB: ${match.dob}`}
+                          {match.state && ` • ${match.state}`}
+                          {match.suburb && ` • ${match.suburb}`}
                         </div>
-                      )}
+                      ))}
                       {/* Criminal Court - Main Searches */}
                       {selectedSearches.has('COURT') && selectedCriminalMatch && (selectedCourtType === 'ALL' || selectedCourtType === 'CRIMINAL COURT') && (
                         <div className="rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
@@ -6396,22 +6579,22 @@ setLandTitleOrganisationSearchTerm(displayText);
                         </div>
                       )}
                       {/* Bankruptcy - Additional Searches */}
-                      {selectedIndividualAdditionalSearches.has('INDIVIDUAL BANKRUPTCY') && selectedBankruptcyMatch && (
-                        <div className="rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
-                          INDIVIDUAL BANKRUPTCY: {selectedBankruptcyMatch.debtor?.givenNames || ''} {selectedBankruptcyMatch.debtor?.surname || ''}
-                          {selectedBankruptcyMatch.debtor?.dateOfBirth && ` • DOB: ${selectedBankruptcyMatch.debtor.dateOfBirth}`}
-                          {selectedBankruptcyMatch.debtor?.addressSuburb && ` • ${selectedBankruptcyMatch.debtor.addressSuburb}`}
+                      {selectedIndividualAdditionalSearches.has('INDIVIDUAL BANKRUPTCY') && selectedBankruptcyMatches.length > 0 && selectedBankruptcyMatches.map((match, index) => match && (
+                        <div key={index} className="rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
+                          INDIVIDUAL BANKRUPTCY: {match.debtor?.givenNames || ''} {match.debtor?.surname || ''}
+                          {match.debtor?.dateOfBirth && ` • DOB: ${match.debtor.dateOfBirth}`}
+                          {match.debtor?.addressSuburb && ` • ${match.debtor.addressSuburb}`}
                         </div>
-                      )}
+                      ))}
                       {/* Related Entities - Additional Searches */}
-                      {selectedIndividualAdditionalSearches.has('INDIVIDUAL RELATED ENTITIES') && selectedRelatedMatch && (
-                        <div className="rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
-                          INDIVIDUAL RELATED ENTITIES: {selectedRelatedMatch.name || 'Selected Person'}
-                          {selectedRelatedMatch.dob && ` • DOB: ${selectedRelatedMatch.dob}`}
-                          {selectedRelatedMatch.state && ` • ${selectedRelatedMatch.state}`}
-                          {selectedRelatedMatch.suburb && ` • ${selectedRelatedMatch.suburb}`}
+                      {selectedIndividualAdditionalSearches.has('INDIVIDUAL RELATED ENTITIES') && selectedRelatedMatches.length > 0 && selectedRelatedMatches.map((match, index) => match && (
+                        <div key={index} className="rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
+                          INDIVIDUAL RELATED ENTITIES: {match.name || 'Selected Person'}
+                          {match.dob && ` • DOB: ${match.dob}`}
+                          {match.state && ` • ${match.state}`}
+                          {match.suburb && ` • ${match.suburb}`}
                         </div>
-                      )}
+                      ))}
                       {/* Criminal Court - Additional Searches */}
                       {selectedIndividualAdditionalSearches.has('COURT') && selectedCriminalMatch && (selectedCourtType === 'ALL' || selectedCourtType === 'CRIMINAL COURT') && (
                         <div className="rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
@@ -6515,10 +6698,26 @@ setLandTitleOrganisationSearchTerm(displayText);
                                             setIsIndividualNameConfirmed(false);
                                     // Only set the match for the current source, preserve other matches
                                     if (option.source === 'bankruptcy') {
-                                      setSelectedBankruptcyMatch(option.bankruptcyMatch || null);
+                                      // For multiple selection, add to array instead of replacing
+                                      setSelectedBankruptcyMatches(prev => {
+                                        const exists = prev.some(m => m === (option.bankruptcyMatch || null));
+                                        if (exists) {
+                                          return prev.filter(m => m !== (option.bankruptcyMatch || null));
+                                        } else {
+                                          return [...prev, option.bankruptcyMatch || null];
+                                        }
+                                      });
                                       // Don't clear related match - preserve it for multiple selections
                                     } else if (option.source === 'related') {
-                                      setSelectedRelatedMatch(option.relatedMatch || null);
+                                      // For multiple selection, add to array instead of replacing
+                                      setSelectedRelatedMatches(prev => {
+                                        const exists = prev.some(m => m === (option.relatedMatch || null));
+                                        if (exists) {
+                                          return prev.filter(m => m !== (option.relatedMatch || null));
+                                        } else {
+                                          return [...prev, option.relatedMatch || null];
+                                        }
+                                      });
                                       // Don't clear bankruptcy match - preserve it for multiple selections
                                     } else {
                                       // For other sources, only clear if needed
@@ -6581,7 +6780,7 @@ setLandTitleOrganisationSearchTerm(displayText);
 
             )}
 
-            {selectedCategory === 'INDIVIDUAL' && (isIndividualNameConfirmed || selectedLandTitleIndividualMatch || selectedBankruptcyMatch || selectedRelatedMatch || selectedCriminalMatch || selectedCivilMatch) && (
+            {selectedCategory === 'INDIVIDUAL' && (isIndividualNameConfirmed || selectedLandTitleIndividualMatch || selectedBankruptcyMatches.length > 0 || selectedRelatedMatches.length > 0 || selectedCriminalMatch || selectedCivilMatch) && (
               <div ref={additionalCardRef} className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
                 <h2 className="text-[32px] font-bold text-center mb-10 text-gray-900 tracking-tight">
                   Select <span className="text-red-600 relative after:content-[''] after:absolute after:bottom-[-5px] after:left-0 after:right-0 after:h-[3px] after:bg-red-600 after:opacity-20">Enrichment Options</span>
@@ -7924,36 +8123,72 @@ setLandTitleOrganisationSearchTerm(displayText);
           ) : (
             <div className="space-y-0">
               {Array.from(selectedSearches)
-                .filter(search => search !== 'SELECT ALL')
-                .map((search, index) => (
-                  <div
-                    key={search}
-                    className="flex justify-between items-start py-3 border-b border-gray-100 last:border-b-0 animate-fadeIn"
-                    style={{ animationDelay: `${index * 50}ms` }}
-                  >
-                    <div className="flex-1 text-[13px] font-medium text-gray-600 pr-4 leading-relaxed">
-                      {search === 'LAND_TITLE_TITLE_REFERENCE' && isTitleReferenceSelectionConfirmed ? (
-                        <span className="inline-flex items-center gap-2">
-                          <span>{getSearchDisplayName(search)}</span>
-                          {(() => {
-                            const detail = titleReferenceSelection.detail;
-                            const count = confirmedTitleReferenceAvailability[detail];
-                            return typeof count === 'number' ? (
+                .filter(search => search !== 'SELECT ALL' && search !== 'ASIC')
+                .map((search, index) => {
+                  // Calculate price for individual court based on selectedCourtType
+                  let displayPrice = 0;
+                  let matchCount = 1;
+                  let basePrice = 0;
+                  let showMultiplier = false;
+                  
+                  if (selectedCategory === 'INDIVIDUAL' && search === 'COURT') {
+                    if (selectedCourtType === 'ALL') {
+                      displayPrice = 20.00;
+                    } else if (selectedCourtType === 'CIVIL COURT' || selectedCourtType === 'CRIMINAL COURT') {
+                      displayPrice = 10.00;
+                    }
+                  } else if (selectedCategory === 'INDIVIDUAL' && search === 'INDIVIDUAL BANKRUPTCY') {
+                    basePrice = searchPrices['INDIVIDUAL BANKRUPTCY'] || 0;
+                    matchCount = selectedBankruptcyMatches.length > 0 ? selectedBankruptcyMatches.length : 1;
+                    displayPrice = basePrice * matchCount;
+                    showMultiplier = matchCount > 1;
+                  } else if (selectedCategory === 'INDIVIDUAL' && search === 'INDIVIDUAL RELATED ENTITIES') {
+                    basePrice = searchPrices['INDIVIDUAL RELATED ENTITIES'] || 0;
+                    matchCount = selectedRelatedMatches.length > 0 ? selectedRelatedMatches.length : 1;
+                    displayPrice = basePrice * matchCount;
+                    showMultiplier = matchCount > 1;
+                  } else {
+                    const priceKey = search === 'INDIVIDUAL PPSR' ? 'ABN/ACN PPSR' : search;
+                    displayPrice = searchPrices[priceKey as keyof SearchPrices] || searchPrices[search as keyof SearchPrices] || 0;
+                  }
+                  
+                  return (
+                    <div
+                      key={search}
+                      className="flex justify-between items-start py-3 border-b border-gray-100 last:border-b-0 animate-fadeIn"
+                      style={{ animationDelay: `${index * 50}ms` }}
+                    >
+                      <div className="flex-1 text-[13px] font-medium text-gray-600 pr-4 leading-relaxed">
+                        {search === 'LAND_TITLE_TITLE_REFERENCE' && isTitleReferenceSelectionConfirmed ? (
+                          <span className="inline-flex items-center gap-2">
+                            <span>{getSearchDisplayName(search)}</span>
+                            {(() => {
+                              const detail = titleReferenceSelection.detail;
+                              const count = confirmedTitleReferenceAvailability[detail];
+                              return typeof count === 'number' ? (
+                                <span className="inline-flex min-w-[20px] items-center justify-center rounded-full bg-red-100 px-2 text-[11px] font-semibold leading-tight text-red-600">
+                                  {count}
+                                </span>
+                              ) : null;
+                            })()}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-2">
+                            {getSearchDisplayName(search)}
+                            {showMultiplier && (
                               <span className="inline-flex min-w-[20px] items-center justify-center rounded-full bg-red-100 px-2 text-[11px] font-semibold leading-tight text-red-600">
-                                {count}
+                                ×{matchCount}
                               </span>
-                            ) : null;
-                          })()}
-                        </span>
-                      ) : (
-                        getSearchDisplayName(search)
-                      )}
+                            )}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm font-semibold text-gray-800 whitespace-nowrap">
+                        ${displayPrice.toFixed(2)}
+                      </div>
                     </div>
-                    <div className="text-sm font-semibold text-gray-800 whitespace-nowrap">
-                      ${(searchPrices[search as keyof SearchPrices] || searchPrices[search === 'INDIVIDUAL PPSR' ? 'ABN/ACN PPSR' : search as keyof SearchPrices] || 0).toFixed(2)}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
 
               {/* Show selected ASIC types if any */}
               {selectedCategory === 'ORGANISATION' && selectedAsicTypeList.length > 0 && (
@@ -7982,6 +8217,29 @@ setLandTitleOrganisationSearchTerm(displayText);
                     .filter(search => search !== 'SELECT ALL')
                     .map((search, index) => {
                       const option = additionalSearchOptions.find(o => o.name === search);
+                      let displayPrice = option?.price || 0;
+                      let matchCount = 1;
+                      let showMultiplier = false;
+                      
+                      // Calculate price based on selected matches for director searches
+                      if (search === 'DIRECTOR BANKRUPTCY') {
+                        let totalMatches = 0;
+                        directorBankruptcyMatches.forEach((matches) => {
+                          totalMatches += matches.length;
+                        });
+                        matchCount = totalMatches > 0 ? totalMatches : directorsList.length;
+                        displayPrice = additionalSearchBasePrices['DIRECTOR BANKRUPTCY'] * matchCount;
+                        showMultiplier = matchCount > 1;
+                      } else if (search === 'DIRECTOR RELATED ENTITIES') {
+                        let totalMatches = 0;
+                        directorRelatedMatches.forEach((matches) => {
+                          totalMatches += matches.length;
+                        });
+                        matchCount = totalMatches > 0 ? totalMatches : directorsList.length;
+                        displayPrice = additionalSearchBasePrices['DIRECTOR RELATED ENTITIES'] * matchCount;
+                        showMultiplier = matchCount > 1;
+                      }
+                      
                       return (
                         <div
                           key={search}
@@ -7989,11 +8247,18 @@ setLandTitleOrganisationSearchTerm(displayText);
                           style={{ animationDelay: `${(selectedSearches.size + selectedAsicTypes.size + index) * 50}ms` }}
                         >
                           <div className="flex-1 text-[13px] font-medium text-gray-600 pr-4 leading-relaxed">
-                            {getAdditionalSearchLabel(search)}
-                            {option?.available && ` (${option.available})`}
+                            <span className="inline-flex items-center gap-2">
+                              {getAdditionalSearchLabel(search)}
+                              {option?.available && !showMultiplier && ` (${option.available})`}
+                              {showMultiplier && (
+                                <span className="inline-flex min-w-[20px] items-center justify-center rounded-full bg-red-100 px-2 text-[11px] font-semibold leading-tight text-red-600">
+                                  ×{matchCount}
+                                </span>
+                              )}
+                            </span>
                           </div>
                           <div className="text-sm font-semibold text-gray-800 whitespace-nowrap">
-                            ${option?.price.toFixed(2)}
+                            ${displayPrice.toFixed(2)}
                           </div>
                         </div>
                       );
@@ -8007,8 +8272,33 @@ setLandTitleOrganisationSearchTerm(displayText);
                   {Array.from(selectedIndividualAdditionalSearches)
                     .filter(search => search !== 'SELECT ALL')
                     .map((search, index) => {
-                      const priceKey = search === 'INDIVIDUAL PPSR' ? 'ABN/ACN PPSR' : search;
-                      const price = searchPrices[priceKey as keyof SearchPrices] || 0;
+                      // Calculate price for individual court based on selectedCourtType
+                      let price = 0;
+                      let matchCount = 1;
+                      let basePrice = 0;
+                      let showMultiplier = false;
+                      
+                      if (search === 'COURT') {
+                        if (selectedCourtType === 'ALL') {
+                          price = 20.00;
+                        } else if (selectedCourtType === 'CIVIL COURT' || selectedCourtType === 'CRIMINAL COURT') {
+                          price = 10.00;
+                        }
+                      } else if (search === 'INDIVIDUAL BANKRUPTCY') {
+                        basePrice = searchPrices['INDIVIDUAL BANKRUPTCY'] || 0;
+                        matchCount = selectedBankruptcyMatches.length > 0 ? selectedBankruptcyMatches.length : 1;
+                        price = basePrice * matchCount;
+                        showMultiplier = matchCount > 1;
+                      } else if (search === 'INDIVIDUAL RELATED ENTITIES') {
+                        basePrice = searchPrices['INDIVIDUAL RELATED ENTITIES'] || 0;
+                        matchCount = selectedRelatedMatches.length > 0 ? selectedRelatedMatches.length : 1;
+                        price = basePrice * matchCount;
+                        showMultiplier = matchCount > 1;
+                      } else {
+                        const priceKey = search === 'INDIVIDUAL PPSR' ? 'ABN/ACN PPSR' : search;
+                        price = searchPrices[priceKey as keyof SearchPrices] || 0;
+                      }
+                      
                       return (
                         <div
                           key={search}
@@ -8016,7 +8306,14 @@ setLandTitleOrganisationSearchTerm(displayText);
                           style={{ animationDelay: `${(selectedSearches.size + index) * 50}ms` }}
                         >
                           <div className="flex-1 text-[13px] font-medium text-gray-600 pr-4 leading-relaxed">
-                            {getSearchDisplayName(search)}
+                            <span className="inline-flex items-center gap-2">
+                              {getSearchDisplayName(search)}
+                              {showMultiplier && (
+                                <span className="inline-flex min-w-[20px] items-center justify-center rounded-full bg-red-100 px-2 text-[11px] font-semibold leading-tight text-red-600">
+                                  ×{matchCount}
+                                </span>
+                              )}
+                            </span>
                           </div>
                           <div className="text-sm font-semibold text-gray-800 whitespace-nowrap">
                             ${price.toFixed(2)}
@@ -8452,8 +8749,9 @@ setLandTitleOrganisationSearchTerm(displayText);
 
                 return options.length > 0 ? (
                   options.map(option => {
-                    const isSelected = pendingIndividualNameSelection?.displayLabel === option.displayLabel && 
-                                      pendingIndividualNameSelection?.source === option.source;
+                    const isSelected = pendingIndividualNameSelection.some(
+                      item => item.displayLabel === option.displayLabel && item.source === option.source
+                    );
                     const isSeparator = option.key.includes('separator');
                     
                     if (isSeparator) {
@@ -8471,13 +8769,22 @@ setLandTitleOrganisationSearchTerm(displayText);
                         key={option.key}
                         type="button"
                         onClick={() => handleIndividualNameSearchSelect(option)}
-                        className={`w-full rounded-xl border-2 px-4 py-3 text-left text-sm font-semibold uppercase tracking-wide transition-all duration-200 ${
+                        className={`w-full rounded-xl border-2 px-4 py-3 text-left transition-all duration-200 flex items-center gap-3 ${
                           isSelected
                             ? 'border-red-600 bg-red-50 text-red-700'
                             : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'
                         }`}
                       >
-                        {option.displayLabel}
+                        <div className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center ${
+                          isSelected ? 'border-red-600 bg-red-600' : 'border-gray-300 bg-white'
+                        }`}>
+                          {isSelected && (
+                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                        <span className="text-sm font-semibold uppercase tracking-wide flex-1">{option.displayLabel}</span>
                       </button>
                     );
                   })
@@ -8505,10 +8812,12 @@ setLandTitleOrganisationSearchTerm(displayText);
               <button
                 type="button"
                 onClick={handleIndividualNameSearchConfirm}
-                disabled={!pendingIndividualNameSelection}
+                disabled={pendingIndividualNameSelection.length === 0}
                 className="flex-1 rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Confirm Selection
+                {pendingIndividualNameSelection.length === 0 
+                  ? 'Confirm Selection' 
+                  : `Confirm ${pendingIndividualNameSelection.length} Selection${pendingIndividualNameSelection.length > 1 ? 's' : ''}`}
               </button>
             </div>
           </div>
