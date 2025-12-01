@@ -5030,6 +5030,8 @@ setLandTitleOrganisationSearchTerm(displayText);
           reportType = selectedCategory === 'INDIVIDUAL' ? 'director-ppsr' : 'ppsr';
         } else if (reportItem.type === 'REGO PPSR') {
           reportType = 'rego-ppsr';
+        } else if (reportItem.type === 'UNCLAIMED MONEY') {
+          reportType = 'unclaimed-money';
         } else if (reportItem.type === 'ASIC') {
           // For INDIVIDUAL category, use same type as directors (director-related)
           reportType = selectedCategory === 'INDIVIDUAL' ? 'director-related' : 'asic-current';

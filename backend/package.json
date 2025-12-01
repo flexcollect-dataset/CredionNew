@@ -12,6 +12,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.922.0",
     "@azure/identity": "^4.5.0",
+    "@google/generative-ai": "^0.24.1",
     "@stripe/react-stripe-js": "^5.2.0",
     "@stripe/stripe-js": "^8.1.0",
     "axios": "^1.12.2",

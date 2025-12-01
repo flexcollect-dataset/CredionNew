@@ -13,6 +13,7 @@ const { replaceVariables, convertWithVariables, addDownloadReportInDB, ensureMed
 const UserReport = require('../models/UserReport');
 const { sequelize } = require('../config/db');
 const { apiClients, getToken } = require("./apiClients.js");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // Middleware to check if user is authenticated
 const authenticateSession = (req, res, next) => {
@@ -1256,6 +1257,164 @@ async function sole_trader_check_report(business) {
 	}
 }
 
+async function unclaimed_money_report(business) {
+	console.log('UNCLAIMED MONEY REPORT FUNCTION CALLED');
+	try {
+		// Get first name and last name from business object
+		const firstName = business?.fname || business?.firstName || '';
+		const lastName = business?.lname || business?.lastName || '';
+
+		if (!firstName || !lastName) {
+			console.error('Missing first name or last name for unclaimed money search');
+			return {
+				status: false,
+				data: {
+					uuid: null,
+					error: 'First name and last name are required for unclaimed money search'
+				}
+			};
+		}
+
+		// Build account name (full name) for the initial API call
+		const accountName = `${firstName} ${lastName}`.trim();
+		const encodedAccountName = encodeURIComponent(accountName);
+		const initialApiUrl = `https://moneysmart.gov.au/api/UnclaimedMoneyService/Simple?accountName=${encodedAccountName}`;
+
+		// First API call to get names from MoneySmart
+		let staticNames = [];
+		const allResults = [];
+
+		try {
+			const initialResponse = await axios.get(initialApiUrl, {
+				headers: {
+					'Accept': 'application/json'
+				},
+				timeout: 30000
+			});
+
+			// Extract names from the initial response
+			if (initialResponse.data && Array.isArray(initialResponse.data)) {
+				initialResponse.data.forEach(item => {
+					if (item.accountName || item.name) {
+						const name = item.accountName || item.name;
+						if (!staticNames.includes(name)) {
+							staticNames.push(name);
+						}
+					}
+				});
+				allResults.push(...initialResponse.data);
+			} else if (initialResponse.data) {
+				if (initialResponse.data.accountName || initialResponse.data.name) {
+					staticNames.push(initialResponse.data.accountName || initialResponse.data.name);
+				}
+				allResults.push(initialResponse.data);
+			}
+		} catch (error) {
+			console.error('Error fetching initial data from MoneySmart:', error.message);
+			// Continue even if initial call fails, use the original account name
+			staticNames = [accountName];
+		}
+
+		// If no names extracted, use the original account name
+		if (staticNames.length === 0) {
+			staticNames = [accountName];
+		}
+
+		// Call Google Gemini API to analyze and get related unclaimed money information
+		const genAI = new GoogleGenerativeAI('AIzaSyD1VmH7wuQVqxld5LeKjF79eRq1gqVrNFA');
+		const model = genAI.getGenerativeModel({ 
+			model: 'gemini-2.0-flash',
+			generationConfig: {
+				responseMimeType: 'application/json'
+			}
+		});
+
+		// Create prompt for Gemini
+		const prompt = `Analyze the following unclaimed money search results and extract related unclaimed money information. 
+
+Names found in search results:
+${staticNames.join(', ')}
+
+Raw search results data:
+${JSON.stringify(allResults, null, 2)}
+
+Please analyze this data and provide a structured JSON response with the following information:
+1. All unique account names found
+2. Total number of unclaimed money records
+3. Summary of amounts (if available)
+4. Sources/types of unclaimed money (if available)
+5. Any relevant details or patterns
+
+Return the response as a JSON object with this structure:
+{
+  "accountNames": ["array of unique names"],
+  "totalRecords": number,
+  "summary": {
+    "totalAmount": number or null,
+    "sources": ["array of source types"],
+    "details": ["array of relevant details"]
+  },
+  "records": [array of detailed record objects]
+}`;
+
+		let geminiResponse = null;
+		try {
+			console.log('=== GEMINI AI REQUEST ===');
+			console.log('Names being analyzed:', staticNames);
+			console.log('Raw search results:', JSON.stringify(allResults, null, 2));
+			console.log('Prompt:', prompt);
+			console.log('Calling Gemini API...');
+			
+			const result = await model.generateContent(prompt);
+			const responseText = result.response.text();
+			
+			console.log('=== GEMINI AI RAW RESPONSE ===');
+			console.log(responseText);
+			
+			geminiResponse = JSON.parse(responseText);
+			
+			console.log('=== GEMINI AI PARSED RESPONSE ===');
+			console.log(JSON.stringify(geminiResponse, null, 2));
+		} catch (error) {
+			console.error('=== ERROR CALLING GEMINI API ===');
+			console.error('Error details:', error);
+			console.error('Error message:', error.message);
+			console.error('Error stack:', error.stack);
+			// Continue without Gemini analysis if it fails
+		}
+
+		// Generate a unique UUID for this report
+		const reportUuid = `unclaimed-money-${Date.now()}-${uuidv4().substring(0, 8)}`;
+
+		// Structure the report data
+		const reportData = {
+			status: true,
+			data: {
+				uuid: reportUuid,
+				searchNames: staticNames,
+				unclaimedMoneyData: allResults,
+				geminiAnalysis: geminiResponse,
+				searchDate: new Date().toISOString()
+			}
+		};
+
+		return reportData;
+
+	} catch (error) {
+		console.error('Error fetching unclaimed money data:', error);
+		
+		// Return error response in same format
+		return {
+			status: false,
+			data: {
+				uuid: null,
+				error: error.message || 'Failed to fetch unclaimed money data',
+				accountName: `${business?.fname || ''} ${business?.lname || ''}`.trim()
+			}
+		};
+	}
+}
+
 async function property(abn, cname, ldata) {
 	let cotalityData = null;
 	let titleRefData = null;
@@ -1878,7 +2037,7 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 			} else {
 				existingReport = await checkExistingReportData(abn, type);
 			}
-		} else if (business?.isCompany == "INDIVIDUAL" && type == "sole-trader-check") {
+		} else if (business?.isCompany == "INDIVIDUAL" && (type == "sole-trader-check" || type == "unclaimed-money")) {
 			// For individual reports, check by search_word (person's name) instead of ABN
 			const searchWord = extractSearchWord(business, type);
 			if (searchWord) {
@@ -2047,6 +2206,8 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 				reportData = await sole_trader_check_report(business);
 			}else if(type == 'rego-ppsr'){
 				reportData = await rego_ppsr_report(business);
+			} else if(type == 'unclaimed-money'){
+				reportData = await unclaimed_money_report(business);
 			}
 
 			if (!existingReport && reportData && reportData.status !== false && reportData.data) {

@@ -4430,6 +4430,8 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 		extractedData = extractLandTitleIndividualData(data, bussiness);
 	} else if (reportype === 'sole-trader-check') {
 		extractedData = extractSoleTraderCheckData(data, bussiness);
+	} else if (reportype === 'unclaimed-money') {
+		extractedData = extractSoleTraderCheckData(data, bussiness);
 	} else if (reportype === 'rego-ppsr') {
 		extractedData = extractRegoPpsrData(data, bussiness);
 	} else {
@@ -4964,6 +4966,8 @@ async function addDownloadReportInDB(rdata, userId, matterId, reportId, reportNa
 		templateName = 'sole-trader-check-report.html';
 	} else if (reportype == "rego-ppsr") {
 		templateName = 'rego-ppsr.html';
+	} else if (reportype == "unclaimed-money") {
+		templateName = 'sole-trader-check-report.html';
 	} else {
 		throw new Error(`Unknown report type: ${reportype}`);
 	}
