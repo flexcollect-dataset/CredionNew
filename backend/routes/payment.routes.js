@@ -2079,8 +2079,6 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 			reportData = {
 				data: rdataObj
 			};
-
-
 		} else {
 			if (type == "asic-current" || type == "court" || type == "ato") {
 				const apiUrl = 'https://alares.com.au/api/reports/create';

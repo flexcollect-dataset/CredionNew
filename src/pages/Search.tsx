@@ -4686,6 +4686,7 @@ setLandTitleOrganisationSearchTerm(displayText);
   }
   // Process reports handler
   const handleProcessReports = async () => {
+    
     // Validation checks
     if (selectedCategory === 'ORGANISATION' && !isCompanyConfirmed) {
       alert('Please select and confirm a company first');
@@ -5062,7 +5063,7 @@ setLandTitleOrganisationSearchTerm(displayText);
         } else {
           reportType = reportItem.type.toLowerCase().replace(/\s+/g, '-');
         }
-
+console.log('called1');
         // Create report data
         const user = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user") || '{}') : null;
         const currentMatter = localStorage.getItem('currentMatter') ? JSON.parse(localStorage.getItem('currentMatter') || '{}') : null;
@@ -5146,6 +5147,7 @@ setLandTitleOrganisationSearchTerm(displayText);
             }
           }
         } else {
+          console.log('called2');
           let businessData = reportData.business ? { ...reportData.business } : undefined;
 
           // Handle land-title-organisation reports - get business data from meta or state
@@ -5312,60 +5314,61 @@ setLandTitleOrganisationSearchTerm(displayText);
                 pdfFilename: pdfFilename || undefined
               });
             }
-          } else {
-            // For non-individual reports or reports without multiple selection, use original logic
-            if (reportItem.meta) {
-              const meta = reportItem.meta as Record<string, unknown> & {
-                address?: string;
-                addressDetails?: LandTitleAddressDetails;
-                landTitleSelection?: LandTitleSelection;
-                person?: any;
-                organisation?: any;
-                states?: string[];
-                referenceId?: string;
-                option?: string;
-                addOn?: boolean;
-                detail?: string;
-                summary?: boolean;
-                searchTerm?: string;
-              };
-
-              // Merge all meta fields into businessData
-              businessData = {
-                ...(businessData || {}),
-                ...meta
-              };
-            }
-
-            if (businessData) {
-              reportData.business = businessData;
-            }
-
-            if (reportItem.type === 'ADD DOCUMENT SEARCH' && documentSearchId) {
-              reportData.business = {
-                ...(reportData.business || {}),
-                documentId: documentSearchId
-              };
-              reportData.documentId = documentSearchId;
-            }
-            
-            // Call backend to create report
-            console.log(reportData);
-            const reportResponse = await apiService.createReport(reportData);
-            //const reportResponse: any = null;
-            // Extract PDF filename from response
-            const pdfFilename = (reportResponse as any)?.report;
-
-            if (pdfFilename && typeof pdfFilename === 'string') {
-              // Add PDF filename to the array
-              setPdfFilenames(prev => [...prev, pdfFilename]);
-            }
-
-            createdReports.push({
-              reportResponse,
-              pdfFilename: pdfFilename || undefined
-            });
           }
+          
+          // For non-individual reports or reports without multiple selection, use original logic
+          if (reportItem.meta) {
+            const meta = reportItem.meta as Record<string, unknown> & {
+              address?: string;
+              addressDetails?: LandTitleAddressDetails;
+              landTitleSelection?: LandTitleSelection;
+              person?: any;
+              organisation?: any;
+              states?: string[];
+              referenceId?: string;
+              option?: string;
+              addOn?: boolean;
+              detail?: string;
+              summary?: boolean;
+              searchTerm?: string;
+            };
+
+            // Merge all meta fields into businessData
+            businessData = {
+              ...(businessData || {}),
+              ...meta
+            };
+          }
+
+          if (businessData) {
+            reportData.business = businessData;
+          }
+
+          if (reportItem.type === 'ADD DOCUMENT SEARCH' && documentSearchId) {
+            reportData.business = {
+              ...(reportData.business || {}),
+              documentId: documentSearchId
+            };
+            reportData.documentId = documentSearchId;
+          }
+          
+
+          // Call backend to create report
+          console.log(reportData);
+          const reportResponse = await apiService.createReport(reportData);
+          //const reportResponse: any = null;
+          // Extract PDF filename from response
+          const pdfFilename = (reportResponse as any)?.report;
+
+          if (pdfFilename && typeof pdfFilename === 'string') {
+            // Add PDF filename to the array
+            setPdfFilenames(prev => [...prev, pdfFilename]);
+          }
+
+          createdReports.push({
+            reportResponse,
+            pdfFilename: pdfFilename || undefined
+          });
         }
       }
 
