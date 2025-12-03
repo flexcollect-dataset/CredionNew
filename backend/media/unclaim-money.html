@@ -2,7 +2,7 @@
 <html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
     
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Credion Sole Trader Check Report -  ${fullName}</title>
+    <title>Credion Unclaimed Money Report -  ${fullName}</title>
     <style>
         * {
             margin: 0;
@@ -474,26 +474,26 @@
                 </div>
                 
             <div style="font-size: 32px; font-weight: 600; color: #0F172A; line-height: 1.2; margin-bottom: 40px;">
-                    Sole Trader Check Report
+                    Unclaimed Money Report
                 </div>
                 
             <div style="font-size: 11px; color: #94A3B8; line-height: 1.8;">
-                Report Date: 20 October 2025
+                Report Date: ${reportDate}
             </div>
             
             <div style="margin-top: auto; padding-top: 120px;">
                 <div style="border-top: 1px solid #E2E8F0; padding-top: 16px;">
                     <div style="font-size: 9px; color: #CBD5E1; text-align: center;">
-                        Federal Court of Australia Records
+                        Australian Securities & Investments Commission
                     </div>
                 </div>
             </div>
         </div>
         
-        <!-- PAGE 2: SOLE TRADER SEARCH RESULTS -->
+        <!-- PAGE 2: UNCLAIMED MONEY SEARCH RESULTS -->
         <div class="page" style="padding-top: 72px; overflow: visible;">
           
-            <div class="page-title">Sole Trader Search Results</div>
+            <div class="page-title">Unclaimed Money Search Results</div>
             
             <div class="stats-grid">
                 <div class="stat-box">
@@ -514,20 +514,21 @@
                 </div>
             </div>
             
-            <div class="section-title">ABN Search Results</div>
-            <table style="font-size: 9px;">
+            <div class="section-title">Unclaimed Money Results</div>
+            <table style="font-size: 8px;">
                 <thead>
                     <tr>
-                        <th>ABN</th>
-                        <th>ABN Status</th>
+                        <th>Account Name</th>
                         <th>Business Name</th>
-                        <th>State</th>
-                        <th>Postcode</th>
-                        
+                        <th>Amount</th>
+                        <th>status</th>
+                        <th>Address</th>
+                        <th>SourceEntity</th>
+                        <th>Reference Number</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${soleTraderTableRows}
+                    ${unclaimedMoneyTableRows}
                 </tbody>
             </table>
         </div>
