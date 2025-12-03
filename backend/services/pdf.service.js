@@ -9,24 +9,24 @@ const UserReport = require('../models/UserReport');
 // Create media directory if it doesn't exist
 const mediaDir = path.join(__dirname, '../media');
 async function ensureMediaDir() {
-	try {
-		await fs.access(mediaDir);
-	} catch {
-		await fs.mkdir(mediaDir, { recursive: true });
-	}
+  try {
+    await fs.access(mediaDir);
+  } catch {
+    await fs.mkdir(mediaDir, { recursive: true });
+  }
 }
 
 // Helper function to format ACN
 function fmtAcn(acnVal) {
-	if (!acnVal) return '';
-	const s = ('' + acnVal).replace(/\D/g, '');
-	return s.length === 9 ? s.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3') : acnVal;
+  if (!acnVal) return '';
+  const s = ('' + acnVal).replace(/\D/g, '');
+  return s.length === 9 ? s.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3') : acnVal;
 }
 
 // Helper function to format dates
 function fmtDate(date) {
-	if (!date) return 'N/A';
-	return moment(date).format('DD MMM YYYY');
+  if (!date) return 'N/A';
+  return moment(date).format('DD MMM YYYY');
 }
 
 /**
@@ -45,10 +45,10 @@ function extractSearchWord(business, type) {
 	// Determine if this is an organization or individual based on report type
 	const isLandTitleOrg = type === 'land-title-organisation';
 	const isLandTitleIndividual = type === 'land-title-individual';
-	const isOrganization = isLandTitleOrg ||
-		(business?.isCompany === "ORGANISATION" && !isLandTitleIndividual);
-	const isIndividual = isLandTitleIndividual ||
-		(business?.isCompany === "INDIVIDUAL" && !isLandTitleOrg);
+	const isOrganization = isLandTitleOrg || 
+	                     (business?.isCompany === "ORGANISATION" && !isLandTitleIndividual);
+	const isIndividual = isLandTitleIndividual || 
+	                    (business?.isCompany === "INDIVIDUAL" && !isLandTitleOrg);
 
 	if (isOrganization) {
 		// For organizations, use company name
@@ -81,7 +81,7 @@ function extractSearchWord(business, type) {
 			const firstName = business?.fname || business?.firstName || '';
 			const middleName = business?.mname || business?.middleName || '';
 			const lastName = business?.lname || business?.lastName || '';
-
+			
 			const nameParts = [firstName, middleName, lastName].filter(part => part && part.trim());
 			searchWord = nameParts.length > 0 ? nameParts.join(' ').trim() : null;
 		}
@@ -93,68 +93,68 @@ function extractSearchWord(business, type) {
 }
 
 function fmtDateTime(date) {
-	if (!date) return 'N/A';
-	return `${moment(date).format('DD MMM YYYY')}<br>${moment(date).format('h:mma')}`;
+  if (!date) return 'N/A';
+  return `${moment(date).format('DD MMM YYYY')}<br>${moment(date).format('h:mma')}`;
 }
 
 // Extract data for ATO Report
 function extractAtoData(data) {
-	const entity = data.entity || {};
-	const current_tax_debt = data.current_tax_debt || {};
+  const entity = data.entity || {};
+  const current_tax_debt = data.current_tax_debt || {};
 
 	const taxDebtAmount = current_tax_debt.amount ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(current_tax_debt.amount) : 'N/A';
 	const taxDebtUpdatedAt = current_tax_debt.ato_updated_at ? moment.utc(current_tax_debt.ato_updated_at).format('MMMM D, YYYY, [at] h:mm:ss A') : 'N/A';
 	const taxDebtUpdatedLine = taxDebtAmount !== 'N/A' ? `<div style="font-size: 10px; color: #64748B;">Outstanding/Updated as of ${taxDebtUpdatedAt} AEDT</div>` : '';
-
-	return {
-		company_type: 'ato',
-		acn: data.acn || entity.acn || 'N/A',
-		abn: data.abn || entity.abn || 'N/A',
-		companyName: entity.name || 'N/A',
-		entity_abn: entity.abn || 'N/A',
-		entity_acn: entity.acn || 'N/A',
-		entity_name: entity.name || 'N/A',
-		entity_review_date: entity.review_date ? moment(entity.review_date).format('DD/MM/YYYY') : 'N/A',
-		entity_registered_in: entity.registered_in || 'N/A',
-		entity_abr_gst_status: entity.abr_gst_status || 'N/A',
-		entity_document_number: entity.document_number || 'N/A',
-		entity_organisation_type: entity.organisation_type || 'N/A',
-		entity_asic_date_of_registration: entity.asic_date_of_registration ? moment(entity.asic_date_of_registration).format('DD/MM/YYYY') : 'N/A',
-		abn_state: data.abn_state || 'N/A',
-		abn_status: data.abn_status || 'N/A',
+  
+  return {
+    company_type: 'ato',
+    acn: data.acn || entity.acn || 'N/A',
+    abn: data.abn || entity.abn || 'N/A',
+    companyName: entity.name || 'N/A',
+    entity_abn: entity.abn || 'N/A',
+    entity_acn: entity.acn || 'N/A',
+    entity_name: entity.name || 'N/A',
+    entity_review_date: entity.review_date ? moment(entity.review_date).format('DD/MM/YYYY') : 'N/A',
+    entity_registered_in: entity.registered_in || 'N/A',
+    entity_abr_gst_status: entity.abr_gst_status || 'N/A',
+    entity_document_number: entity.document_number || 'N/A',
+    entity_organisation_type: entity.organisation_type || 'N/A',
+    entity_asic_date_of_registration: entity.asic_date_of_registration ? moment(entity.asic_date_of_registration).format('DD/MM/YYYY') : 'N/A',
+    abn_state: data.abn_state || 'N/A',
+    abn_status: data.abn_status || 'N/A',
 		current_tax_debt_amount: taxDebtAmount,
 		current_tax_debt_ato_updated_at: taxDebtUpdatedAt,
 		current_tax_debt_updated_line: taxDebtUpdatedLine,
-		// ATO reports don't need court/insolvency data
-		actionSummaryRows: '',
+    // ATO reports don't need court/insolvency data
+    actionSummaryRows: '',
 		actionSectionsHtml: '',
-		insolvency_notice_id: 'N/A',
-		insolvency_type: 'N/A',
-		insolvency_publish_date: 'N/A',
-		insolvency_status: 'N/A',
-		insolvency_appointee: 'N/A',
-		insolvency_parties_rows: '',
-		insolvency_court: 'N/A',
-		case_case_id: 'N/A',
-		case_source: 'N/A',
-		case_jurisdiction: 'N/A',
-		case_type: 'N/A',
-		case_status: 'N/A',
-		case_location: 'N/A',
-		case_most_recent_event: 'N/A',
-		case_notification_date: 'N/A',
-		case_next_event: 'N/A',
-		orders_rows: '',
-		case_parties_rows: '',
-		hearings_rows: '',
-		documents_rows: '',
-		caseNumber: 'N/A'
-	};
+    insolvency_notice_id: 'N/A',
+    insolvency_type: 'N/A',
+    insolvency_publish_date: 'N/A',
+    insolvency_status: 'N/A',
+    insolvency_appointee: 'N/A',
+    insolvency_parties_rows: '',
+    insolvency_court: 'N/A',
+    case_case_id: 'N/A',
+    case_source: 'N/A',
+    case_jurisdiction: 'N/A',
+    case_type: 'N/A',
+    case_status: 'N/A',
+    case_location: 'N/A',
+    case_most_recent_event: 'N/A',
+    case_notification_date: 'N/A',
+    case_next_event: 'N/A',
+    orders_rows: '',
+    case_parties_rows: '',
+    hearings_rows: '',
+    documents_rows: '',
+    caseNumber: 'N/A'
+  };
 }
 
 // Extract data for Court Report
 function extractCourtData(data) {
-	const entity = data.entity || {};
+  const entity = data.entity || {};
 
 	// Get all cases - handle both array and object formats
 	let allCases = [];
@@ -167,13 +167,13 @@ function extractCourtData(data) {
 	}
 
 	// Extract case number from first case if available
-	let caseNumber = 'N/A';
+  let caseNumber = 'N/A';
 	if (allCases.length > 0) {
 		caseNumber = allCases[0].case_number || allCases[0].case_name || 'N/A';
 	}
 
 	// Action summary rows - only if cases exist
-	let actionSummaryRows = '';
+  let actionSummaryRows = '';
 	let actionSectionsHtml = '';
 
 	if (allCases.length === 0) {
@@ -182,7 +182,7 @@ function extractCourtData(data) {
 		actionSectionsHtml = '<div style="text-align: center; padding: 40px; color: #64748B; font-size: 14px;">No data available</div>';
 	} else {
 		// Generate action summary table rows
-		let rowIndex = 1;
+  let rowIndex = 1;
 		allCases.forEach((caseItem, index) => {
 			const date = caseItem.notification_time || caseItem.most_recent_event || caseItem.created_at;
 			actionSummaryRows += `<tr><td>${rowIndex++}</td><td>${fmtDate(date)}<br><span style="font-size: 9px; color: #64748B;">(${moment(date).fromNow(true)} ago)</span></td><td>${caseItem.match_on || caseItem.name || 'N/A'}</td><td>${caseItem.court_name || caseItem.source || 'N/A'}</td><td>${caseItem.case_type || caseItem.type || 'N/A'}</td><td>${caseItem.case_number || caseItem.case_name || 'N/A'}</td></tr>`;
@@ -250,7 +250,7 @@ function extractCourtData(data) {
 			}
 
 			// Parties
-			let case_parties_rows = '';
+  let case_parties_rows = '';
 			if (Array.isArray(caseItem.parties) && caseItem.parties.length > 0) {
 				caseItem.parties.forEach(p => {
 					const repName = p.representative_firm || p.representative_name || '';
@@ -262,7 +262,7 @@ function extractCourtData(data) {
 			}
 
 			// Hearings
-			let hearings_rows = '';
+  let hearings_rows = '';
 			if (Array.isArray(caseItem.hearings) && caseItem.hearings.length > 0) {
 				// Sort hearings by datetime (most recent first)
 				const sortedHearings = [...caseItem.hearings].sort((a, b) => {
@@ -289,7 +289,7 @@ function extractCourtData(data) {
 			}
 
 			// Documents
-			let documents_rows = '';
+  let documents_rows = '';
 			if (Array.isArray(caseItem.documents) && caseItem.documents.length > 0) {
 				// Sort documents by datetime (most recent first)
 				const sortedDocuments = [...caseItem.documents].sort((a, b) => {
@@ -444,76 +444,76 @@ function extractCourtData(data) {
 
         </div>
       `;
-		});
-	}
-
-	return {
-		company_type: 'court',
-		acn: data.acn || entity.acn || 'N/A',
-		abn: data.abn || entity.abn || 'N/A',
-		companyName: entity.name || 'N/A',
-		entity_abn: entity.abn || 'N/A',
-		entity_acn: entity.acn || 'N/A',
-		entity_name: entity.name || 'N/A',
-		entity_review_date: entity.review_date ? moment(entity.review_date).format('DD/MM/YYYY') : 'N/A',
-		entity_registered_in: entity.registered_in || 'N/A',
-		entity_abr_gst_status: entity.abr_gst_status || 'N/A',
-		entity_document_number: entity.document_number || 'N/A',
-		entity_organisation_type: entity.organisation_type || 'N/A',
-		entity_asic_date_of_registration: entity.asic_date_of_registration ? moment(entity.asic_date_of_registration).format('DD/MM/YYYY') : 'N/A',
-		abn_state: data.abn_state || 'N/A',
-		abn_status: data.abn_status || 'N/A',
-		actionSummaryRows,
+    });
+  }
+  
+  return {
+    company_type: 'court',
+    acn: data.acn || entity.acn || 'N/A',
+    abn: data.abn || entity.abn || 'N/A',
+    companyName: entity.name || 'N/A',
+    entity_abn: entity.abn || 'N/A',
+    entity_acn: entity.acn || 'N/A',
+    entity_name: entity.name || 'N/A',
+    entity_review_date: entity.review_date ? moment(entity.review_date).format('DD/MM/YYYY') : 'N/A',
+    entity_registered_in: entity.registered_in || 'N/A',
+    entity_abr_gst_status: entity.abr_gst_status || 'N/A',
+    entity_document_number: entity.document_number || 'N/A',
+    entity_organisation_type: entity.organisation_type || 'N/A',
+    entity_asic_date_of_registration: entity.asic_date_of_registration ? moment(entity.asic_date_of_registration).format('DD/MM/YYYY') : 'N/A',
+    abn_state: data.abn_state || 'N/A',
+    abn_status: data.abn_status || 'N/A',
+    actionSummaryRows,
 		actionSectionsHtml,
-		caseNumber,
-		current_tax_debt_amount: 'N/A',
+    caseNumber,
+    current_tax_debt_amount: 'N/A',
 		current_tax_debt_ato_updated_at: 'N/A',
 		current_tax_debt_updated_line: ''
-	};
+  };
 }
 
 // Extract data for ASIC Current Report
 function extractAsicCurrentData(data) {
-	const entity = data.entity || {};
-	const rdata = data.rdata || data;
-
-	const entityData = rdata.entity || entity;
-	const formattedAcn = entityData.acn ? fmtAcn(entityData.acn) : 'N/A';
-	const formattedAbn = entityData.abn ? entityData.abn.replace(/\D/g, '').replace(/(\d{2})(\d{3})(\d{3})(\d{3})/, '$1 $2 $3 $4') : 'N/A';
-
-	const currentDate = moment();
-	const reportDate = currentDate.format('DD MMMM YYYY');
-	const reportDateWithTime = `${currentDate.format('DD MMM YYYY')}, ${currentDate.format('h:mma')}`;
-
-	const asicRegistrationDate = entityData.asic_date_of_registration
-		? moment(entityData.asic_date_of_registration).format('DD/MM/YYYY')
-		: 'N/A';
-
-	// Format review date
-	const reviewDate = entityData.review_date
-		? moment(entityData.review_date).format('DD/MM/YYYY')
-		: 'N/A';
-
-	// Extract tax debt information
-	let taxDebtAmount = 'N/A';
-	let taxDebtUpdatedAt = 'N/A';
-	let taxDebtSection = ''; // HTML for tax debt section
-
-	if (rdata.current_tax_debt && rdata.current_tax_debt.amount !== null && rdata.current_tax_debt.amount !== undefined) {
-		const amount = parseFloat(rdata.current_tax_debt.amount);
-		taxDebtAmount = new Intl.NumberFormat('en-AU', {
-			style: 'currency',
-			currency: 'AUD',
-			minimumFractionDigits: 2,
-			maximumFractionDigits: 2
-		}).format(amount);
-
-		if (rdata.current_tax_debt.ato_updated_at) {
-			taxDebtUpdatedAt = moment.utc(rdata.current_tax_debt.ato_updated_at).format('DD/MM/YYYY [at] h:mm:ss A');
-		}
-
-		// Generate tax debt section HTML
-		taxDebtSection = `
+  const entity = data.entity || {};
+  const rdata = data.rdata || data; 
+  
+  const entityData = rdata.entity || entity;
+  const formattedAcn = entityData.acn ? fmtAcn(entityData.acn) : 'N/A';
+  const formattedAbn = entityData.abn ? entityData.abn.replace(/\D/g, '').replace(/(\d{2})(\d{3})(\d{3})(\d{3})/, '$1 $2 $3 $4') : 'N/A';
+  
+  const currentDate = moment();
+  const reportDate = currentDate.format('DD MMMM YYYY');
+  const reportDateWithTime = `${currentDate.format('DD MMM YYYY')}, ${currentDate.format('h:mma')}`;
+  
+  const asicRegistrationDate = entityData.asic_date_of_registration 
+    ? moment(entityData.asic_date_of_registration).format('DD/MM/YYYY') 
+    : 'N/A';
+  
+  // Format review date
+  const reviewDate = entityData.review_date 
+    ? moment(entityData.review_date).format('DD/MM/YYYY') 
+    : 'N/A';
+  
+  // Extract tax debt information
+  let taxDebtAmount = 'N/A';
+  let taxDebtUpdatedAt = 'N/A';
+  let taxDebtSection = ''; // HTML for tax debt section
+  
+  if (rdata.current_tax_debt && rdata.current_tax_debt.amount !== null && rdata.current_tax_debt.amount !== undefined) {
+    const amount = parseFloat(rdata.current_tax_debt.amount);
+    taxDebtAmount = new Intl.NumberFormat('en-AU', {
+      style: 'currency',
+      currency: 'AUD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(amount);
+    
+    if (rdata.current_tax_debt.ato_updated_at) {
+      taxDebtUpdatedAt = moment.utc(rdata.current_tax_debt.ato_updated_at).format('DD/MM/YYYY [at] h:mm:ss A');
+    }
+    
+    // Generate tax debt section HTML
+    taxDebtSection = `
             <div style="margin-top: 60px;">
                 <div class="card" style="border: 2px solid #CBD5E1; background: #F8FAFC;">
                     <div style="font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 16px; display: flex; align-items: center;">
@@ -3260,27 +3260,27 @@ function extractLandTitleOrganisationData(data, bussiness) {
 	const currentCount = data?.currentCount || 0;
 	const historicalCount = data?.historicalCount || 0;
 	const allCount = data?.allCount || 0;
-
+	
 	const detail = bussiness?.landTitleSelection?.detail || 'ALL';
 	const addOn = bussiness?.landTitleSelection?.addOn || false;
 	const CompanyFullName = bussiness?.Name || 'N/A';
 	const Abn = bussiness?.Abn || 'N/A';
 
-
+	
 	// Get title references from business
 	const titleReferencesRaw = bussiness?.landTitleSelection?.titleReferences || {};
 	let titleReferences = { current: [], historical: [] };
-
+	
 	if (Array.isArray(titleReferencesRaw)) {
 		titleReferences.current = titleReferencesRaw;
 	} else if (titleReferencesRaw.current && Array.isArray(titleReferencesRaw.current)) {
 		titleReferences = titleReferencesRaw;
 	}
-
+	
 	// Determine which title orders to show based on detail
 	let currentTitleOrders = [];
 	let historicalTitleOrders = [];
-
+	
 	if (detail === 'CURRENT') {
 		// Only show current
 		currentTitleOrders = titleOrders.filter((order) => {
@@ -3304,7 +3304,7 @@ function extractLandTitleOrganisationData(data, bussiness) {
 			return titleReferences.historical && titleReferences.historical.some(tr => tr.titleReference === titleRef);
 		});
 	}
-
+	
 	const escapeHtml = (value) => {
 		if (value === null || value === undefined) {
 			return '';
@@ -3316,19 +3316,19 @@ function extractLandTitleOrganisationData(data, bussiness) {
 			.replace(/"/g, '&quot;')
 			.replace(/'/g, '&#39;');
 	};
-
+	
 	const formatDate = (value, format = 'DD MMMM YYYY') => {
 		if (!value) return 'N/A';
 		const m = moment(value);
 		return m.isValid() ? m.format(format) : 'N/A';
 	};
-
+	
 	const formatDateTime = (value, format = 'DD MMMM YYYY, h:mma') => {
 		if (!value) return 'N/A';
 		const m = moment(value);
 		return m.isValid() ? m.format(format) : 'N/A';
 	};
-
+	
 	const formatCurrency = (value) => {
 		if (value === null || value === undefined || value === '') {
 			return 'N/A';
@@ -3347,25 +3347,25 @@ function extractLandTitleOrganisationData(data, bussiness) {
 			return String(value);
 		}
 	};
-
+	
 	// Current date for report
 	const reportDate = new Date().toLocaleDateString('en-GB', {
 		day: 'numeric',
 		month: 'long',
 		year: 'numeric'
 	});
-
+	
 	// Generate Executive Summary section
 	const showExecutiveSummary = detail !== 'SUMMARY';
 	let executiveSummaryHtml = '';
-
+	
 	if (showExecutiveSummary) {
 		const primaryProperty = currentTitleOrders[0];
 		const primaryAddress = primaryProperty?.RealPropertySegment?.[0]?.IdentityBlock?.AddressString || 'N/A';
-		const estimatedValue = primaryProperty?.cotality?.propertyData?.avmEstimate
-			? formatCurrency(primaryProperty.cotality.propertyData.avmEstimate)
+		const estimatedValue = primaryProperty?.cotality?.propertyData?.avmEstimate 
+			? formatCurrency(primaryProperty.cotality.propertyData.avmEstimate) 
 			: 'N/A';
-
+		
 		executiveSummaryHtml = `
     <div class="card">
       <div class="data-grid" style="grid-template-columns: repeat(4, 1fr);">
@@ -3376,12 +3376,12 @@ function extractLandTitleOrganisationData(data, bussiness) {
       </div>
     </div>`;
 	}
-
+	
 	// Generate Title Search Information sections
 	const showTitleSearchInfo = detail !== 'SUMMARY';
 	let currentTitleSearchHtml = '';
 	let historicalTitleSearchHtml = '';
-
+	
 	if (showTitleSearchInfo) {
 		// Current Title Search Information
 		if (currentTitleOrders.length > 0) {
@@ -3392,7 +3392,7 @@ function extractLandTitleOrganisationData(data, bussiness) {
 				const registryBlock = realPropertySegment.RegistryBlock || {};
 				const dataSources = Array.isArray(orderResultBlock.DataSources) ? orderResultBlock.DataSources : [];
 				const primaryDataSource = dataSources[0] || {};
-
+				
 				const titleRef = identityBlock.TitleReference || 'N/A';
 				const addressString = identityBlock.AddressString || 'N/A';
 				const searchDate = formatDateTime(orderResultBlock.OrderCompletedDateTime);
@@ -3402,7 +3402,7 @@ function extractLandTitleOrganisationData(data, bussiness) {
 				const transferRef = registryBlock.Ownership?.Dealings?.[0]?.Reference || 'N/A';
 				const folio = registryBlock.Folio || 'N/A';
 				const volume = registryBlock.Volume || 'N/A';
-
+				
 				const plans = Array.isArray(registryBlock.Plans) ? registryBlock.Plans : [];
 				const scheduleRows = plans.length
 					? plans.map((plan) => {
@@ -3411,7 +3411,7 @@ function extractLandTitleOrganisationData(data, bussiness) {
 						return `<tr><td>${escapeHtml(parcelDesc)}</td><td>${escapeHtml(planRef)}</td></tr>`;
 					}).join('')
 					: '<tr><td colspan="2" style="text-align:center; padding: 12px; color: #94A3B8;">No parcel information available</td></tr>';
-
+				
 				const interests = Array.isArray(registryBlock.Interests) ? registryBlock.Interests : [];
 				const encumbrancesList = interests.length
 					? interests.map((interest) => {
@@ -3419,7 +3419,7 @@ function extractLandTitleOrganisationData(data, bussiness) {
 						return `<li>${escapeHtml(desc)}</li>`;
 					}).join('')
 					: '<li style="color:#94A3B8;">No encumbrances recorded</li>';
-
+				
 				return `
       <div class="card" style="margin-bottom: 20px;">
         <div class="card-header">Property Title Details - ${escapeHtml(titleRef)}</div>
@@ -3448,12 +3448,12 @@ function extractLandTitleOrganisationData(data, bussiness) {
         <ol class="text-sm" style="margin-left:18px; line-height:1.8;">${encumbrancesList}</ol>
       </div>`;
 			}).join('');
-
+			
 			currentTitleSearchHtml = `
     <div class="section-title">Title Search Information - Current Ownership</div>
     ${titleSearchSections}`;
 		}
-
+		
 		// Historical Title Search Information
 		if (historicalTitleOrders.length > 0 && (detail === 'ALL' || detail === 'PAST')) {
 			const titleSearchSections = historicalTitleOrders.map((order) => {
@@ -3463,13 +3463,13 @@ function extractLandTitleOrganisationData(data, bussiness) {
 				const registryBlock = realPropertySegment.RegistryBlock || {};
 				const dataSources = Array.isArray(orderResultBlock.DataSources) ? orderResultBlock.DataSources : [];
 				const primaryDataSource = dataSources[0] || {};
-
+				
 				const titleRef = identityBlock.TitleReference || 'N/A';
 				const searchDate = formatDateTime(orderResultBlock.OrderCompletedDateTime);
 				const editionDate = formatDate(primaryDataSource.EditionIssuedDateTime);
 				const folio = registryBlock.Folio || 'N/A';
 				const volume = registryBlock.Volume || 'N/A';
-
+				
 				const plans = Array.isArray(registryBlock.Plans) ? registryBlock.Plans : [];
 				const scheduleRows = plans.length
 					? plans.map((plan) => {
@@ -3478,7 +3478,7 @@ function extractLandTitleOrganisationData(data, bussiness) {
 						return `<tr><td>${escapeHtml(parcelDesc)}</td><td>${escapeHtml(planRef)}</td></tr>`;
 					}).join('')
 					: '<tr><td colspan="2" style="text-align:center; padding: 12px; color: #94A3B8;">No parcel information available</td></tr>';
-
+				
 				const interests = Array.isArray(registryBlock.Interests) ? registryBlock.Interests : [];
 				const encumbrancesList = interests.length
 					? interests.map((interest) => {
@@ -3486,7 +3486,7 @@ function extractLandTitleOrganisationData(data, bussiness) {
 						return `<li>${escapeHtml(desc)}</li>`;
 					}).join('')
 					: '<li style="color:#94A3B8;">No encumbrances recorded</li>';
-
+				
 				return `
       <div class="card" style="margin-bottom: 20px;">
         <div class="card-header">Property Title Details - ${escapeHtml(titleRef)}</div>
@@ -3512,17 +3512,17 @@ function extractLandTitleOrganisationData(data, bussiness) {
         <ol class="text-sm" style="margin-left:18px; line-height:1.8;">${encumbrancesList}</ol>
       </div>`;
 			}).join('');
-
+			
 			historicalTitleSearchHtml = `
     <div class="section-title">Title Search Information - Past Ownership</div>
     ${titleSearchSections}`;
 		}
 	}
-
+	
 	// Generate Property Valuation & Sales History sections (only if addOn is true)
 	let currentValuationHtml = '';
 	let historicalValuationHtml = '';
-
+	
 	if (addOn && showTitleSearchInfo) {
 		// Current Property Valuation
 		if (currentTitleOrders.length > 0) {
@@ -3531,7 +3531,7 @@ function extractLandTitleOrganisationData(data, bussiness) {
 				const propertyData = cotalityData?.propertyData || {};
 				const salesHistory = cotalityData?.salesHistory || {};
 				const salesHistoryList = Array.isArray(salesHistory.saleList) ? salesHistory.saleList : [];
-
+				
 				const avmEstimate = propertyData.avmEstimate ? formatCurrency(propertyData.avmEstimate) : 'N/A';
 				const estimatedRange = propertyData.estimatedRange;
 				const priceRange = estimatedRange && estimatedRange.low != null && estimatedRange.high != null
@@ -3539,7 +3539,7 @@ function extractLandTitleOrganisationData(data, bussiness) {
 					: 'N/A';
 				const valuationDate = propertyData.valuationDate ? formatDate(propertyData.valuationDate) : 'N/A';
 				const confidenceLevel = propertyData.confidenceLevel || 'N/A';
-
+				
 				const salesHistoryRows = salesHistoryList.length
 					? salesHistoryList.slice().sort((a, b) => {
 						const dateA = a?.contractDate ? moment(a.contractDate).valueOf() : 0;
@@ -3552,9 +3552,9 @@ function extractLandTitleOrganisationData(data, bussiness) {
 						return `<tr><td>${escapeHtml(saleDate)}</td><td>${escapeHtml(price)}</td><td>${escapeHtml(saleType)}</td></tr>`;
 					}).join('')
 					: '<tr><td colspan="3" style="text-align:center; padding: 12px; color: #94A3B8;">No sales history available</td></tr>';
-
+				
 				const titleRef = order?.RealPropertySegment?.[0]?.IdentityBlock?.TitleReference || 'N/A';
-
+				
 				return `
       <div class="card" style="margin-bottom: 20px;">
         <div class="card-header">Property Valuation - ${escapeHtml(titleRef)}</div>
@@ -3578,12 +3578,12 @@ function extractLandTitleOrganisationData(data, bussiness) {
         </table>
       </div>`;
 			}).join('');
-
+			
 			currentValuationHtml = `
     <div class="section-title">Property Valuation & Sales History - Current Ownership</div>
     ${valuationSections}`;
 		}
-
+		
 		// Historical Property Valuation
 		if (historicalTitleOrders.length > 0 && (detail === 'ALL' || detail === 'PAST')) {
 			const valuationSections = historicalTitleOrders.map((order, index) => {
@@ -3591,7 +3591,7 @@ function extractLandTitleOrganisationData(data, bussiness) {
 				const propertyData = cotalityData?.propertyData || {};
 				const salesHistory = cotalityData?.salesHistory || {};
 				const salesHistoryList = Array.isArray(salesHistory.saleList) ? salesHistory.saleList : [];
-
+				
 				const avmEstimate = propertyData.avmEstimate ? formatCurrency(propertyData.avmEstimate) : 'N/A';
 				const estimatedRange = propertyData.estimatedRange;
 				const priceRange = estimatedRange && estimatedRange.low != null && estimatedRange.high != null
@@ -3599,7 +3599,7 @@ function extractLandTitleOrganisationData(data, bussiness) {
 					: 'N/A';
 				const valuationDate = propertyData.valuationDate ? formatDate(propertyData.valuationDate) : 'N/A';
 				const confidenceLevel = propertyData.confidenceLevel || 'N/A';
-
+				
 				const salesHistoryRows = salesHistoryList.length
 					? salesHistoryList.slice().sort((a, b) => {
 						const dateA = a?.contractDate ? moment(a.contractDate).valueOf() : 0;
@@ -3612,9 +3612,9 @@ function extractLandTitleOrganisationData(data, bussiness) {
 						return `<tr><td>${escapeHtml(saleDate)}</td><td>${escapeHtml(price)}</td><td>${escapeHtml(saleType)}</td></tr>`;
 					}).join('')
 					: '<tr><td colspan="3" style="text-align:center; padding: 12px; color: #94A3B8;">No sales history available</td></tr>';
-
+				
 				const titleRef = order?.RealPropertySegment?.[0]?.IdentityBlock?.TitleReference || 'N/A';
-
+				
 				return `
       <div class="card" style="margin-bottom: 20px;">
         <div class="card-header">Property Valuation - ${escapeHtml(titleRef)}</div>
@@ -3638,17 +3638,17 @@ function extractLandTitleOrganisationData(data, bussiness) {
         </table>
       </div>`;
 			}).join('');
-
+			
 			historicalValuationHtml = `
     <div class="section-title">Property Valuation & Sales History - Past Ownership</div>
     ${valuationSections}`;
 		}
 	}
-
+	
 	// Generate Complete Property Portfolio section
 	let currentPortfolioRows = '';
 	let historicalPortfolioRows = '';
-
+	
 	// Current Ownership Portfolio
 	if (currentTitleOrders.length > 0) {
 		currentPortfolioRows = currentTitleOrders.map((order) => {
@@ -3656,17 +3656,17 @@ function extractLandTitleOrganisationData(data, bussiness) {
 			const identityBlock = realPropertySegment.IdentityBlock || {};
 			const registryBlock = realPropertySegment.RegistryBlock || {};
 			const ownership = registryBlock.Ownership || {};
-
+			
 			const titleRef = identityBlock.TitleReference || 'N/A';
 			const locality = identityBlock.Locality || 'N/A';
 			const transferRef = ownership.Dealings?.[0]?.Reference || 'N/A';
-
+			
 			return `<tr><td>${escapeHtml(titleRef)}</td><td>${escapeHtml(locality)}</td><td>Owner</td><td>${escapeHtml(transferRef)}</td><td>Current</td></tr>`;
 		}).join('');
 	} else {
 		currentPortfolioRows = '<tr><td colspan="5" style="text-align:center; padding: 12px; color: #94A3B8;">No current properties</td></tr>';
 	}
-
+	
 	// Historical Ownership Portfolio
 	if (historicalTitleOrders.length > 0) {
 		historicalPortfolioRows = historicalTitleOrders.map((order) => {
@@ -3674,23 +3674,23 @@ function extractLandTitleOrganisationData(data, bussiness) {
 			const identityBlock = realPropertySegment.IdentityBlock || {};
 			const registryBlock = realPropertySegment.RegistryBlock || {};
 			const ownership = registryBlock.Ownership || {};
-
+			
 			const titleRef = identityBlock.TitleReference || 'N/A';
 			const locality = identityBlock.Locality || 'N/A';
 			const transferRef = ownership.Dealings?.[0]?.Reference || 'N/A';
-
+			
 			return `<tr><td>${escapeHtml(titleRef)}</td><td>${escapeHtml(locality)}</td><td>Owner (Past)</td><td>${escapeHtml(transferRef)}</td><td>PAST</td></tr>`;
 		}).join('');
 	} else {
 		historicalPortfolioRows = '<tr><td colspan="5" style="text-align:center; padding: 12px; color: #94A3B8;">No past properties</td></tr>';
 	}
-
+	
 	// Determine page numbers based on content
 	let totalPages = 6; // Base pages: cover, executive summary, title search, portfolio, disclaimers
 	if (addOn && showTitleSearchInfo) {
 		totalPages += 2; // Add pages for valuation sections
 	}
-
+	
 	return {
 		CompanyFullName: CompanyFullName,
 		abn: Abn,
@@ -3724,102 +3724,102 @@ function extractLandTitleOrganisationData(data, bussiness) {
 // Extract data for Sole Trader Check Report
 function extractSoleTraderCheckData(data, bussiness) {
 
-	const rdata = data.rdata || data || {};
-	console.log('rdata keys:', Object.keys(rdata || {}));
+  const rdata = data.rdata || data || {};
+  console.log('rdata keys:', Object.keys(rdata || {}));
+  
+  const firstName = rdata.firstName || 
+                    rdata.fname || 
+                    bussiness?.fname || 
+                    bussiness?.firstName || 
+                    '';
+  
+  const lastName = rdata.lastName || 
+                   rdata.lname || 
+                   bussiness?.lname || 
+                   bussiness?.lastName || 
+                   '';
+  
+  const searchName = rdata.searchName || 
+                     `${firstName} ${lastName}`.trim() || 
+                     'N/A';
+  
 
-	const firstName = rdata.firstName ||
-		rdata.fname ||
-		bussiness?.fname ||
-		bussiness?.firstName ||
-		'';
+  const reportDate = rdata.searchDate ? 
+                     moment(rdata.searchDate).format('DD MMMM YYYY') : 
+                     moment().format('DD MMMM YYYY');
+  
+  const abnSearchResults = rdata.abnSearchResults || {};
 
-	const lastName = rdata.lastName ||
-		rdata.lname ||
-		bussiness?.lname ||
-		bussiness?.lastName ||
-		'';
+  
+  // Extract searchResultsRecord from the ABN search results
+  let searchResultsRecords = [];
+  
 
-	const searchName = rdata.searchName ||
-		`${firstName} ${lastName}`.trim() ||
-		'N/A';
+  
+  if (abnSearchResults && abnSearchResults.ABRPayloadSearchResults) {
+   
+    const response = abnSearchResults.ABRPayloadSearchResults.response || {};
 
+    
 
-	const reportDate = rdata.searchDate ?
-		moment(rdata.searchDate).format('DD MMMM YYYY') :
-		moment().format('DD MMMM YYYY');
+    if (response.searchResultsList) {
+     
+      const searchResultsList = response.searchResultsList;
+    
+      
+      
+      if (searchResultsList.searchResultsRecord) {
+        
+        const records = searchResultsList.searchResultsRecord;
+        const isArray = Array.isArray(records);
+     
+      
+        searchResultsRecords = Array.isArray(records) ? records : [records];
+       
+        
+      } else if (Array.isArray(searchResultsList)) {
+       
+        searchResultsRecords = searchResultsList;
+       
+      }
+    } else if (response.searchResultsRecord) {
+     
+      const records = response.searchResultsRecord;
+      const isArray = Array.isArray(records);
+    
+      searchResultsRecords = Array.isArray(records) ? records : [records];
+     
+    }
+  }
+   
 
-	const abnSearchResults = rdata.abnSearchResults || {};
+  let soleTraderTableRows = '';
+  
+  if (searchResultsRecords && searchResultsRecords.length > 0) {
+    searchResultsRecords.forEach((record, index) => {
+     
+      const abn = record.ABN || {};
+      const abnValue = abn.identifierValue || abn.ABN?.identifierValue || 'N/A';
+      const abnStatus = abn.identifierStatus || abn.ABN?.identifierStatus || 'N/A';
+      
+     
+      let businessName = record.businessName || record.legalName || record.mainName || record.mainTradingName || record.otherTradingName || {};
+      let orgName = businessName.organisationName || businessName.OrganisationName || businessName.fullName || businessName.FullName || 'N/A';
+     
+      const address = record.mainBusinessPhysicalAddress || record.MainBusinessPhysicalAddress || {};
+      const stateCode = address.stateCode || address.StateCode || 'N/A';
+      const postcode = address.postcode || address.Postcode || 'N/A';
+      
 
-
-	// Extract searchResultsRecord from the ABN search results
-	let searchResultsRecords = [];
-
-
-
-	if (abnSearchResults && abnSearchResults.ABRPayloadSearchResults) {
-
-		const response = abnSearchResults.ABRPayloadSearchResults.response || {};
-
-
-
-		if (response.searchResultsList) {
-
-			const searchResultsList = response.searchResultsList;
-
-
-
-			if (searchResultsList.searchResultsRecord) {
-
-				const records = searchResultsList.searchResultsRecord;
-				const isArray = Array.isArray(records);
-
-
-				searchResultsRecords = Array.isArray(records) ? records : [records];
-
-
-			} else if (Array.isArray(searchResultsList)) {
-
-				searchResultsRecords = searchResultsList;
-
-			}
-		} else if (response.searchResultsRecord) {
-
-			const records = response.searchResultsRecord;
-			const isArray = Array.isArray(records);
-
-			searchResultsRecords = Array.isArray(records) ? records : [records];
-
-		}
-	}
-
-
-	let soleTraderTableRows = '';
-
-	if (searchResultsRecords && searchResultsRecords.length > 0) {
-		searchResultsRecords.forEach((record, index) => {
-
-			const abn = record.ABN || {};
-			const abnValue = abn.identifierValue || abn.ABN?.identifierValue || 'N/A';
-			const abnStatus = abn.identifierStatus || abn.ABN?.identifierStatus || 'N/A';
-
-
-			let businessName = record.businessName || record.legalName || record.mainName || record.mainTradingName || record.otherTradingName || {};
-			let orgName = businessName.organisationName || businessName.OrganisationName || businessName.fullName || businessName.FullName || 'N/A';
-
-			const address = record.mainBusinessPhysicalAddress || record.MainBusinessPhysicalAddress || {};
-			const stateCode = address.stateCode || address.StateCode || 'N/A';
-			const postcode = address.postcode || address.Postcode || 'N/A';
-
-
-			let formattedAbn = abnValue;
-			if (abnValue && abnValue !== 'N/A' && typeof abnValue === 'string') {
-				const cleanAbn = abnValue.replace(/\s/g, '');
-				if (cleanAbn.length === 11 && /^\d+$/.test(cleanAbn)) {
-					formattedAbn = cleanAbn.replace(/(\d{2})(\d{3})(\d{3})(\d{3})/, '$1 $2 $3 $4');
-				}
-			}
-
-			soleTraderTableRows += `
+      let formattedAbn = abnValue;
+      if (abnValue && abnValue !== 'N/A' && typeof abnValue === 'string') {
+        const cleanAbn = abnValue.replace(/\s/g, '');
+        if (cleanAbn.length === 11 && /^\d+$/.test(cleanAbn)) {
+          formattedAbn = cleanAbn.replace(/(\d{2})(\d{3})(\d{3})(\d{3})/, '$1 $2 $3 $4');
+        }
+      }
+      
+      soleTraderTableRows += `
         <tr>
           <td><strong>${formattedAbn}</strong></td>
           <td>${abnStatus}</td>
@@ -3828,39 +3828,49 @@ function extractSoleTraderCheckData(data, bussiness) {
           <td>${postcode}</td>
         </tr>
       `;
-		});
-	} else {
-		soleTraderTableRows = `
+    });
+  } else {
+    soleTraderTableRows = `
       <tr>
         <td colspan="8" style="text-align: center; font-style: italic;">No search results found</td>
       </tr>
     `;
-	}
-
-	return {
-		firstName: firstName,
-		lastName: lastName,
-		searchName: searchName,
-		fullName: `${firstName} ${lastName}`.trim() || 'N/A',
-		reportDate: reportDate,
-		companyName: searchName,
-		company_type: 'Sole Trader Check',
-		acn: 'N/A',
-		abn: 'N/A',
-		abnSearchResults: abnSearchResults,
-		soleTraderTableRows: soleTraderTableRows,
-		totalRecords: searchResultsRecords.length
-	};
+  }
+  
+  return {
+    firstName: firstName,
+    lastName: lastName,
+    searchName: searchName,
+    fullName: `${firstName} ${lastName}`.trim() || 'N/A',
+    reportDate: reportDate,
+    companyName: searchName,
+    company_type: 'Sole Trader Check',
+    acn: 'N/A',
+    abn: 'N/A',
+    abnSearchResults: abnSearchResults,
+    soleTraderTableRows: soleTraderTableRows,
+    totalRecords: searchResultsRecords.length
+  };
 }
 
 // Extract data for REGO PPSR Report
 function extractRegoPpsrData(data, business) {
+	// Handle new data structure with both API responses
+	// Data now contains: { lookupResponse: {...}, submitMvResponse: {...}, uuid: ..., vin: ... }
 	const rdata = data.rdata || data || {};
-	const resource = rdata.resource || {};
+	
+	// Check if we have the new structure with lookupResponse
+	let lookupData = rdata;
+	if (rdata.lookupResponse) {
+		lookupData = rdata.lookupResponse;
+	}
+	
+	const resource = lookupData.resource || {};
 	const details = Array.isArray(resource.details) && resource.details.length > 0 ? resource.details[0] : {};
 
 	// Extract vehicle details from response
-	const vin = details.vin || 'N/A';
+	// Use VIN from top level if available (from new structure), otherwise from details
+	const vin = rdata.vin || details.vin || 'N/A';
 	const registrationPlate = details.registrationPlate || business?.regoNumber || 'N/A';
 	const registrationState = details.registrationState || business?.regoState || 'N/A';
 	const make = details.make || 'N/A';
@@ -3869,9 +3879,45 @@ function extractRegoPpsrData(data, business) {
 	const bodyType = details.bodyType || 'N/A';
 	const vehicleType = details.vehicleType || 'N/A';
 	const engineNumber = details.engineNumber || 'N/A';
-	const ppsrCloudId = details.ppsrCloudId || rdata.uuid || 'N/A';
+	// Use uuid from top level if available (from new structure), otherwise from details
+	const ppsrCloudId = rdata.uuid || details.ppsrCloudId || 'N/A';
 	const isStolen = details.isStolen || false;
 	const isWrittenOff = details.isWrittenOff || false;
+
+	// Extract registration status details
+	const registrationStatusObj = details.registrationStatus || {};
+	const registrationStatus = registrationStatusObj.registrationStatus || 'N/A';
+	const registrationExpiryDate = registrationStatusObj.registrationExpiryDate || null;
+	
+	// Format registration expiry date if available
+	let registrationExpiry = 'N/A';
+	if (registrationExpiryDate) {
+		try {
+			registrationExpiry = moment(registrationExpiryDate).format('DD MMM YYYY');
+		} catch (e) {
+			registrationExpiry = registrationExpiryDate;
+		}
+	}
+
+	// Extract compliance plate and year of manufacture
+	const compliancePlate = details.compliancePlate || 'N/A';
+	const yearOfManufacture = details.yearOfManufacture || 'N/A';
+
+	// Format compliance plate as date if it's in YYYY-MM format
+	let complianceDate = compliancePlate;
+	if (compliancePlate && compliancePlate !== 'N/A' && compliancePlate.match(/^\d{4}-\d{2}$/)) {
+		try {
+			complianceDate = moment(compliancePlate + '-01').format('MMMM YYYY');
+		} catch (e) {
+			complianceDate = compliancePlate;
+		}
+	}
+
+	// Extract stolen records array
+	const stolenRecords = Array.isArray(details.stolen) ? details.stolen : [];
+	
+	// Extract written-off records array
+	const writtenOffRecords = Array.isArray(details.writtenOff) ? details.writtenOff : [];
 
 	// Generate vehicle make/model string
 	const vehicleMakeModel = `${make} ${model}`.trim() || 'N/A';
@@ -3884,24 +3930,342 @@ function extractRegoPpsrData(data, business) {
 	// Generate certificate and search numbers from ppsrCloudId or timestamp
 	const timestamp = Date.now();
 	const certificateNumber = ppsrCloudId !== 'N/A' ? `${ppsrCloudId.replace(/-/g, '').substring(0, 16)}` : `${timestamp}0001`;
-	const searchNumber = ppsrCloudId !== 'N/A' ? `${ppsrCloudId.replace(/-/g, '').substring(0, 12)}` : `${timestamp}`;
+	let searchNumber = ppsrCloudId !== 'N/A' ? `${ppsrCloudId.replace(/-/g, '').substring(0, 12)}` : `${timestamp}`;
 
 	// PPSR Status - for now, default to "Current" since we don't have this in the response
 	const ppsrStatus = 'Current';
 	const ppsrStatusBadge = `<span class="status-badge status-current">${ppsrStatus}</span>`;
 
-	// Stolen/Written-off status messages
-	const stolenStatusMessage = isStolen
-		? '• Recorded as stolen.'
-		: '• Not recorded as stolen.';
+	// Format stolen status message with details if available
+	let stolenStatusMessage = '• Not recorded as stolen.';
+	if (isStolen && stolenRecords.length > 0) {
+		const stolenDetails = stolenRecords.map(stolen => {
+			const type = stolen.type || 'N/A';
+			const jurisdiction = stolen.jurisdiction || 'N/A';
+			const reportedDate = stolen.reportedDate ? moment(stolen.reportedDate).format('DD MMM YYYY') : 'N/A';
+			const summary = stolen.summary || '';
+			return `• Recorded as stolen (${type}, ${jurisdiction}) - Reported: ${reportedDate}${summary ? ` - ${summary}` : ''}`;
+		}).join('<br>');
+		stolenStatusMessage = stolenDetails;
+	} else if (isStolen) {
+		stolenStatusMessage = '• Recorded as stolen.';
+	}
 
-	const writtenOffStatusMessage = isWrittenOff
-		? '• Recorded as written-off.'
-		: '• Not recorded as written-off.';
+	// Format written-off status message with details if available
+	let writtenOffStatusMessage = '• Not recorded as written-off.';
+	if (isWrittenOff && writtenOffRecords.length > 0) {
+		const writtenOffDetails = writtenOffRecords.map(written => {
+			const typeCode = written.typeCode || 'N/A';
+			const incidentCode = written.incidentCode || 'N/A';
+			const jurisdiction = written.jurisdiction || 'N/A';
+			const incidentDate = written.incidentRecordedDate ? moment(written.incidentRecordedDate).format('DD MMM YYYY') : 'N/A';
+			const damageCodes = written.damageCdoes || written.damageCodes || 'N/A';
+			return `• Recorded as written-off (${typeCode}, ${incidentCode}, ${jurisdiction}) - Recorded: ${incidentDate}${damageCodes !== 'N/A' ? ` - Damage: ${damageCodes}` : ''}`;
+		}).join('<br>');
+		writtenOffStatusMessage = writtenOffDetails;
+	} else if (isWrittenOff) {
+		writtenOffStatusMessage = '• Recorded as written-off.';
+	}
 
-	// Fields that may not be in the basic response - set to N/A for now
-	const registrationExpiry = 'N/A';
-	const complianceDate = 'N/A';
+	// Helper function to escape HTML
+	const escapeHtml = (value) => {
+		if (value === null || value === undefined) {
+			return '';
+		}
+		return String(value)
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
+	};
+
+	// Extract data from submitMvResponse if available
+	let submitMvResource = null;
+	if (rdata.submitMvResponse && rdata.submitMvResponse.resource) {
+		submitMvResource = rdata.submitMvResponse.resource;
+		// Use searchNumber from submitMvResponse if available
+		if (submitMvResource.searchNumber) {
+			searchNumber = submitMvResource.searchNumber;
+		}
+	}
+
+	// Extract registrations from submit-mv response
+	const registrations = submitMvResource && Array.isArray(submitMvResource.registrations) 
+		? submitMvResource.registrations 
+		: [];
+
+	// Generate dynamic HTML for PPSR Registrations sections
+	let ppsrRegistrationsHtml = '';
+	let securedPartiesHtml = '';
+	let registrationHistoryRows = '';
+
+	if (registrations.length > 0) {
+		// Sort registrations by registrationChangeTime (most recent first) for history
+		const sortedRegistrations = [...registrations].sort((a, b) => {
+			const dateA = a.registrationChangeTime ? moment(a.registrationChangeTime).valueOf() : 0;
+			const dateB = b.registrationChangeTime ? moment(b.registrationChangeTime).valueOf() : 0;
+			return dateB - dateA;
+		});
+
+		// Generate registration history table rows (only unique change numbers)
+		const historyMap = new Map();
+		sortedRegistrations.forEach(reg => {
+			const changeNumber = reg.changeNumber;
+			if (changeNumber && !historyMap.has(changeNumber)) {
+				const changeTime = reg.registrationChangeTimeWithOffset || reg.registrationChangeTime;
+				let formattedTime = 'N/A';
+				if (changeTime) {
+					try {
+						formattedTime = moment(changeTime).format('DD/MM/YYYY HH:mm:ss (Canberra Time)');
+					} catch (e) {
+						formattedTime = changeTime;
+					}
+				}
+				
+				// Determine change type (simplified - could be enhanced)
+				const changeType = 'Transfer'; // Default, can be determined from other fields if needed
+				
+				historyMap.set(changeNumber, {
+					changeNumber: changeNumber,
+					type: changeType,
+					dateTime: formattedTime
+				});
+			}
+		});
+
+		// Generate history table rows
+		const historyEntries = Array.from(historyMap.values()).slice(0, 10); // Limit to 10 most recent
+		registrationHistoryRows = historyEntries.map(entry => `
+			<tr>
+				<td>${escapeHtml(entry.changeNumber)}</td>
+				<td>${escapeHtml(entry.type)}</td>
+				<td>${escapeHtml(entry.dateTime)}</td>
+			</tr>
+		`).join('');
+
+		if (registrationHistoryRows === '') {
+			registrationHistoryRows = '<tr><td colspan="3" style="text-align: center;">No registration history available.</td></tr>';
+		}
+
+		// Sort by registrationChangeTime (most recent first) and show only the first registration
+		const sortedRegistrationsForDisplay = [...registrations].sort((a, b) => {
+			const dateA = a.registrationChangeTime ? moment(a.registrationChangeTime).valueOf() : 0;
+			const dateB = b.registrationChangeTime ? moment(b.registrationChangeTime).valueOf() : 0;
+			return dateB - dateA;
+		}).slice(0, 1); // Show only the first (most recent) registration
+
+		sortedRegistrationsForDisplay.forEach((registration, index) => {
+			const regNumber = registration.registrationNumber || 'N/A';
+			const changeNum = registration.changeNumber || 'N/A';
+			const collateralType = registration.collateralType || 'N/A';
+			const collateralClass = registration.collateralClassType || 'N/A';
+			const isPmsi = registration.isPmsi || false;
+			const areProceedsClaimed = registration.areProceedsClaimed || false;
+			const proceedsDesc = registration.proceedsClaimedDescription || '';
+			const isTransitional = registration.isTransitional || false;
+
+			// Format dates
+			let startDate = 'N/A';
+			let endDate = 'N/A';
+			let lastChanged = 'N/A';
+
+			if (registration.registrationStartTimeWithOffset) {
+				try {
+					startDate = moment(registration.registrationStartTimeWithOffset).format('DD/MM/YYYY HH:mm:ss');
+				} catch (e) {
+					startDate = registration.registrationStartTimeWithOffset;
+				}
+			}
+
+			if (registration.registrationEndTimeWithOffset) {
+				try {
+					endDate = moment(registration.registrationEndTimeWithOffset).format('DD/MM/YYYY HH:mm:ss');
+				} catch (e) {
+					endDate = registration.registrationEndTimeWithOffset;
+				}
+			}
+
+			if (registration.registrationChangeTimeWithOffset) {
+				try {
+					lastChanged = moment(registration.registrationChangeTimeWithOffset).format('DD/MM/YYYY HH:mm:ss');
+				} catch (e) {
+					lastChanged = registration.registrationChangeTimeWithOffset;
+				}
+			}
+
+			// Determine status
+			const now = moment();
+			const endMoment = registration.registrationEndTimeWithOffset ? moment(registration.registrationEndTimeWithOffset) : null;
+			const status = endMoment && endMoment.isAfter(now) ? 'Current' : 'Expired';
+			const statusBadge = status === 'Current' 
+				? '<span class="status-badge status-current">Current</span>'
+				: '<span class="status-badge" style="background: #FEE2E2; color: #991B1B;">Expired</span>';
+
+			// Generate registration kind
+			const registrationKind = collateralType === 'Consumer' ? 'Consumer Property' : 'Security Interest';
+
+			// Generate PPSR Registration section HTML
+			ppsrRegistrationsHtml += `
+			<div class="card primary">
+				<div class="card-header">${registrationKind.toUpperCase()} - ${escapeHtml(regNumber)}</div>
+				<div class="data-grid">
+					<div class="data-item">
+						<div class="data-label">Registration Number</div>
+						<div class="data-value">${escapeHtml(regNumber)}</div>
+					</div>
+					<div class="data-item">
+						<div class="data-label">Change Number</div>
+						<div class="data-value">${escapeHtml(changeNum)}</div>
+					</div>
+					<div class="data-item">
+						<div class="data-label">Registration Kind</div>
+						<div class="data-value">${escapeHtml(registrationKind)}</div>
+					</div>
+					<div class="data-item">
+						<div class="data-label">Status</div>
+						<div class="data-value">${statusBadge}</div>
+					</div>
+					<div class="data-item">
+						<div class="data-label">Start Date</div>
+						<div class="data-value">${escapeHtml(startDate)}</div>
+					</div>
+					<div class="data-item">
+						<div class="data-label">End Date</div>
+						<div class="data-value">${escapeHtml(endDate)}</div>
+					</div>
+					<div class="data-item">
+						<div class="data-label">Last Changed</div>
+						<div class="data-value">${escapeHtml(lastChanged)}</div>
+					</div>
+					<div class="data-item">
+						<div class="data-label">Transitional</div>
+						<div class="data-value">${isTransitional ? 'Yes' : 'No'}</div>
+					</div>
+					<div class="data-item">
+						<div class="data-label">Collateral Type</div>
+						<div class="data-value">${escapeHtml(collateralType)}</div>
+					</div>
+					<div class="data-item">
+						<div class="data-label">Collateral Class</div>
+						<div class="data-value">${escapeHtml(collateralClass)}</div>
+					</div>
+					<div class="data-item">
+						<div class="data-label">PMSI</div>
+						<div class="data-value">${isPmsi ? 'Yes' : 'No'}</div>
+					</div>
+					<div class="data-item">
+						<div class="data-label">Proceeds</div>
+						<div class="data-value">${areProceedsClaimed ? escapeHtml(proceedsDesc || 'All present and after acquired property') : 'No'}</div>
+					</div>
+				</div>
+			</div>`;
+
+			// Generate Secured Parties HTML for this registration
+			const securedParties = Array.isArray(registration.securedParties) ? registration.securedParties : [];
+			
+			if (securedParties.length > 0) {
+				securedParties.forEach((party, partyIndex) => {
+					const partyName = party.organisationName || 
+						(party.individualGivenNames && party.individualFamilyName 
+							? `${party.individualGivenNames} ${party.individualFamilyName}`.trim()
+							: 'N/A');
+					
+					const orgNumber = party.organisationNumber || 'N/A';
+					const orgNumberType = party.organisationNumberType || '';
+					
+					// Format address
+					const addressForService = registration.addressForService || {};
+					const physicalAddress = addressForService.physicalAddress || addressForService.mailingAddress || {};
+					const mailingAddress = addressForService.mailingAddress || {};
+					
+					// Build address HTML with line breaks
+					const addressParts = [
+						physicalAddress.line1,
+						physicalAddress.line2,
+						physicalAddress.line3,
+						physicalAddress.locality,
+						physicalAddress.state,
+						physicalAddress.postcode
+					].filter(part => part && part.trim());
+					
+					const addressHtml = addressParts.length > 0
+						? addressParts.map(part => escapeHtml(part)).join('<br>')
+						: 'N/A';
+
+					const email = addressForService.emailAddress || 'N/A';
+					const contactName = addressForService.addressee || 'N/A';
+
+					// Get ACN if available
+					let acn = 'N/A';
+					if (orgNumberType === 'ACN' && orgNumber) {
+						acn = orgNumber;
+					}
+
+					securedPartiesHtml += `
+					<div class="card">
+						<div class="card-header">${escapeHtml(partyName)}</div>
+						<div class="data-grid">
+							${party.organisationName ? `
+							<div class="data-item">
+								<div class="data-label">Organisation Name</div>
+								<div class="data-value">${escapeHtml(partyName)}</div>
+							</div>
+							${orgNumberType === 'ACN' && orgNumber ? `
+							<div class="data-item">
+								<div class="data-label">ACN</div>
+								<div class="data-value">${escapeHtml(orgNumber)}</div>
+							</div>
+							` : ''}
+							` : `
+							<div class="data-item">
+								<div class="data-label">Individual Name</div>
+								<div class="data-value">${escapeHtml(partyName)}</div>
+							</div>
+							`}
+							<div class="data-item">
+								<div class="data-label">Contact Name</div>
+								<div class="data-value">${escapeHtml(contactName)}</div>
+							</div>
+							<div class="data-item">
+								<div class="data-label">Email</div>
+								<div class="data-value">${escapeHtml(email)}</div>
+							</div>
+							<div class="data-item">
+								<div class="data-label">Physical Address</div>
+								<div class="data-value">${addressHtml}</div>
+							</div>
+						</div>
+					</div>`;
+				});
+			}
+		});
+	}
+
+	// If no registrations, provide default/empty HTML
+	if (ppsrRegistrationsHtml === '') {
+		ppsrRegistrationsHtml = `
+			<div class="card primary">
+				<div class="card-header">No PPSR Registrations Found</div>
+				<div style="padding: 20px; text-align: center; color: #64748B;">
+					No security interests registered on this vehicle.
+				</div>
+			</div>`;
+	}
+
+	if (securedPartiesHtml === '') {
+		securedPartiesHtml = `
+			<div class="card">
+				<div class="card-header">No Secured Parties</div>
+				<div style="padding: 20px; text-align: center; color: #64748B;">
+					No secured parties found.
+				</div>
+			</div>`;
+	}
+
+	if (registrationHistoryRows === '') {
+		registrationHistoryRows = '<tr><td colspan="3" style="text-align: center;">No registration history available.</td></tr>';
+	}
 
 	return {
 		reportDate: reportDate,
@@ -3909,6 +4273,7 @@ function extractRegoPpsrData(data, business) {
 		vin: vin,
 		registrationPlate: registrationPlate,
 		registrationState: registrationState,
+		registrationStatus: registrationStatus,
 		make: make,
 		model: model,
 		vehicleMakeModel: vehicleMakeModel,
@@ -3916,14 +4281,21 @@ function extractRegoPpsrData(data, business) {
 		bodyType: bodyType,
 		vehicleType: vehicleType,
 		engineNumber: engineNumber,
+		yearOfManufacture: yearOfManufacture,
 		certificateNumber: certificateNumber,
 		searchNumber: searchNumber,
 		ppsrStatusBadge: ppsrStatusBadge,
 		registrationExpiry: registrationExpiry,
 		complianceDate: complianceDate,
+		compliancePlate: compliancePlate,
 		stolenStatusMessage: stolenStatusMessage,
-		writtenOffStatusMessage: writtenOffStatusMessage
-	};
+		writtenOffStatusMessage: writtenOffStatusMessage,
+		stolenRecords: stolenRecords,
+		writtenOffRecords: writtenOffRecords,
+		ppsrRegistrationsHtml: ppsrRegistrationsHtml,
+		securedPartiesHtml: securedPartiesHtml,
+		registrationHistoryRows: registrationHistoryRows
+  };
 }
 
 // Extract data for Land Title Individual Report
@@ -3933,25 +4305,25 @@ function extractLandTitleIndividualData(data, bussiness) {
 	const currentCount = data?.currentCount || 0;
 	const historicalCount = data?.historicalCount || 0;
 	const allCount = data?.allCount || 0;
-
+	
 	const detail = bussiness?.landTitleSelection?.detail || 'ALL';
 	const addOn = bussiness?.landTitleSelection?.addOn || false;
 	const personFullName = bussiness?.person?.fullName || 'N/A';
-
+	
 	// Get title references from business
 	const titleReferencesRaw = bussiness?.landTitleSelection?.titleReferences || {};
 	let titleReferences = { current: [], historical: [] };
-
+	
 	if (Array.isArray(titleReferencesRaw)) {
 		titleReferences.current = titleReferencesRaw;
 	} else if (titleReferencesRaw.current && Array.isArray(titleReferencesRaw.current)) {
 		titleReferences = titleReferencesRaw;
 	}
-
+	
 	// Determine which title orders to show based on detail
 	let currentTitleOrders = [];
 	let historicalTitleOrders = [];
-
+	
 	if (detail === 'CURRENT') {
 		// Only show current
 		currentTitleOrders = titleOrders.filter((order) => {
@@ -3975,7 +4347,7 @@ function extractLandTitleIndividualData(data, bussiness) {
 			return titleReferences.historical && titleReferences.historical.some(tr => tr.titleReference === titleRef);
 		});
 	}
-
+	
 	const escapeHtml = (value) => {
 		if (value === null || value === undefined) {
 			return '';
@@ -3987,19 +4359,19 @@ function extractLandTitleIndividualData(data, bussiness) {
 			.replace(/"/g, '&quot;')
 			.replace(/'/g, '&#39;');
 	};
-
+	
 	const formatDate = (value, format = 'DD MMMM YYYY') => {
 		if (!value) return 'N/A';
 		const m = moment(value);
 		return m.isValid() ? m.format(format) : 'N/A';
 	};
-
+	
 	const formatDateTime = (value, format = 'DD MMMM YYYY, h:mma') => {
 		if (!value) return 'N/A';
 		const m = moment(value);
 		return m.isValid() ? m.format(format) : 'N/A';
 	};
-
+	
 	const formatCurrency = (value) => {
 		if (value === null || value === undefined || value === '') {
 			return 'N/A';
@@ -4018,25 +4390,25 @@ function extractLandTitleIndividualData(data, bussiness) {
 			return String(value);
 		}
 	};
-
+	
 	// Current date for report
 	const reportDate = new Date().toLocaleDateString('en-GB', {
 		day: 'numeric',
 		month: 'long',
 		year: 'numeric'
 	});
-
+	
 	// Generate Executive Summary section
 	const showExecutiveSummary = detail !== 'SUMMARY';
 	let executiveSummaryHtml = '';
-
+	
 	if (showExecutiveSummary) {
 		const primaryProperty = currentTitleOrders[0];
 		const primaryAddress = primaryProperty?.RealPropertySegment?.[0]?.IdentityBlock?.AddressString || 'N/A';
-		const estimatedValue = primaryProperty?.cotality?.propertyData?.avmEstimate
-			? formatCurrency(primaryProperty.cotality.propertyData.avmEstimate)
+		const estimatedValue = primaryProperty?.cotality?.propertyData?.avmEstimate 
+			? formatCurrency(primaryProperty.cotality.propertyData.avmEstimate) 
 			: 'N/A';
-
+		
 		executiveSummaryHtml = `
     <div class="card">
       <div class="data-grid" style="grid-template-columns: repeat(4, 1fr);">
@@ -4047,12 +4419,12 @@ function extractLandTitleIndividualData(data, bussiness) {
       </div>
     </div>`;
 	}
-
+	
 	// Generate Title Search Information sections
 	const showTitleSearchInfo = detail !== 'SUMMARY';
 	let currentTitleSearchHtml = '';
 	let historicalTitleSearchHtml = '';
-
+	
 	if (showTitleSearchInfo) {
 		// Current Title Search Information
 		if (currentTitleOrders.length > 0) {
@@ -4063,7 +4435,7 @@ function extractLandTitleIndividualData(data, bussiness) {
 				const registryBlock = realPropertySegment.RegistryBlock || {};
 				const dataSources = Array.isArray(orderResultBlock.DataSources) ? orderResultBlock.DataSources : [];
 				const primaryDataSource = dataSources[0] || {};
-
+				
 				const titleRef = identityBlock.TitleReference || 'N/A';
 				const addressString = identityBlock.AddressString || 'N/A';
 				const searchDate = formatDateTime(orderResultBlock.OrderCompletedDateTime);
@@ -4073,7 +4445,7 @@ function extractLandTitleIndividualData(data, bussiness) {
 				const transferRef = registryBlock.Ownership?.Dealings?.[0]?.Reference || 'N/A';
 				const folio = registryBlock.Folio || 'N/A';
 				const volume = registryBlock.Volume || 'N/A';
-
+				
 				const plans = Array.isArray(registryBlock.Plans) ? registryBlock.Plans : [];
 				const scheduleRows = plans.length
 					? plans.map((plan) => {
@@ -4082,7 +4454,7 @@ function extractLandTitleIndividualData(data, bussiness) {
 						return `<tr><td>${escapeHtml(parcelDesc)}</td><td>${escapeHtml(planRef)}</td></tr>`;
 					}).join('')
 					: '<tr><td colspan="2" style="text-align:center; padding: 12px; color: #94A3B8;">No parcel information available</td></tr>';
-
+				
 				const interests = Array.isArray(registryBlock.Interests) ? registryBlock.Interests : [];
 				const encumbrancesList = interests.length
 					? interests.map((interest) => {
@@ -4090,7 +4462,7 @@ function extractLandTitleIndividualData(data, bussiness) {
 						return `<li>${escapeHtml(desc)}</li>`;
 					}).join('')
 					: '<li style="color:#94A3B8;">No encumbrances recorded</li>';
-
+				
 				return `
       <div class="card" style="margin-bottom: 20px;">
         <div class="card-header">Property Title Details - ${escapeHtml(titleRef)}</div>
@@ -4119,12 +4491,12 @@ function extractLandTitleIndividualData(data, bussiness) {
         <ol class="text-sm" style="margin-left:18px; line-height:1.8;">${encumbrancesList}</ol>
       </div>`;
 			}).join('');
-
+			
 			currentTitleSearchHtml = `
     <div class="section-title">Title Search Information - Current Ownership</div>
     ${titleSearchSections}`;
 		}
-
+		
 		// Historical Title Search Information
 		if (historicalTitleOrders.length > 0 && (detail === 'ALL' || detail === 'PAST')) {
 			const titleSearchSections = historicalTitleOrders.map((order) => {
@@ -4134,13 +4506,13 @@ function extractLandTitleIndividualData(data, bussiness) {
 				const registryBlock = realPropertySegment.RegistryBlock || {};
 				const dataSources = Array.isArray(orderResultBlock.DataSources) ? orderResultBlock.DataSources : [];
 				const primaryDataSource = dataSources[0] || {};
-
+				
 				const titleRef = identityBlock.TitleReference || 'N/A';
 				const searchDate = formatDateTime(orderResultBlock.OrderCompletedDateTime);
 				const editionDate = formatDate(primaryDataSource.EditionIssuedDateTime);
 				const folio = registryBlock.Folio || 'N/A';
 				const volume = registryBlock.Volume || 'N/A';
-
+				
 				const plans = Array.isArray(registryBlock.Plans) ? registryBlock.Plans : [];
 				const scheduleRows = plans.length
 					? plans.map((plan) => {
@@ -4149,7 +4521,7 @@ function extractLandTitleIndividualData(data, bussiness) {
 						return `<tr><td>${escapeHtml(parcelDesc)}</td><td>${escapeHtml(planRef)}</td></tr>`;
 					}).join('')
 					: '<tr><td colspan="2" style="text-align:center; padding: 12px; color: #94A3B8;">No parcel information available</td></tr>';
-
+				
 				const interests = Array.isArray(registryBlock.Interests) ? registryBlock.Interests : [];
 				const encumbrancesList = interests.length
 					? interests.map((interest) => {
@@ -4157,7 +4529,7 @@ function extractLandTitleIndividualData(data, bussiness) {
 						return `<li>${escapeHtml(desc)}</li>`;
 					}).join('')
 					: '<li style="color:#94A3B8;">No encumbrances recorded</li>';
-
+				
 				return `
       <div class="card" style="margin-bottom: 20px;">
         <div class="card-header">Property Title Details - ${escapeHtml(titleRef)}</div>
@@ -4183,17 +4555,17 @@ function extractLandTitleIndividualData(data, bussiness) {
         <ol class="text-sm" style="margin-left:18px; line-height:1.8;">${encumbrancesList}</ol>
       </div>`;
 			}).join('');
-
+			
 			historicalTitleSearchHtml = `
     <div class="section-title">Title Search Information - Past Ownership</div>
     ${titleSearchSections}`;
 		}
 	}
-
+	
 	// Generate Property Valuation & Sales History sections (only if addOn is true)
 	let currentValuationHtml = '';
 	let historicalValuationHtml = '';
-
+	
 	if (addOn && showTitleSearchInfo) {
 		// Current Property Valuation
 		if (currentTitleOrders.length > 0) {
@@ -4202,7 +4574,7 @@ function extractLandTitleIndividualData(data, bussiness) {
 				const propertyData = cotalityData?.propertyData || {};
 				const salesHistory = cotalityData?.salesHistory || {};
 				const salesHistoryList = Array.isArray(salesHistory.saleList) ? salesHistory.saleList : [];
-
+				
 				const avmEstimate = propertyData.avmEstimate ? formatCurrency(propertyData.avmEstimate) : 'N/A';
 				const estimatedRange = propertyData.estimatedRange;
 				const priceRange = estimatedRange && estimatedRange.low != null && estimatedRange.high != null
@@ -4210,7 +4582,7 @@ function extractLandTitleIndividualData(data, bussiness) {
 					: 'N/A';
 				const valuationDate = propertyData.valuationDate ? formatDate(propertyData.valuationDate) : 'N/A';
 				const confidenceLevel = propertyData.confidenceLevel || 'N/A';
-
+				
 				const salesHistoryRows = salesHistoryList.length
 					? salesHistoryList.slice().sort((a, b) => {
 						const dateA = a?.contractDate ? moment(a.contractDate).valueOf() : 0;
@@ -4223,9 +4595,9 @@ function extractLandTitleIndividualData(data, bussiness) {
 						return `<tr><td>${escapeHtml(saleDate)}</td><td>${escapeHtml(price)}</td><td>${escapeHtml(saleType)}</td></tr>`;
 					}).join('')
 					: '<tr><td colspan="3" style="text-align:center; padding: 12px; color: #94A3B8;">No sales history available</td></tr>';
-
+				
 				const titleRef = order?.RealPropertySegment?.[0]?.IdentityBlock?.TitleReference || 'N/A';
-
+				
 				return `
       <div class="card" style="margin-bottom: 20px;">
         <div class="card-header">Property Valuation - ${escapeHtml(titleRef)}</div>
@@ -4249,12 +4621,12 @@ function extractLandTitleIndividualData(data, bussiness) {
         </table>
       </div>`;
 			}).join('');
-
+			
 			currentValuationHtml = `
     <div class="section-title">Property Valuation & Sales History - Current Ownership</div>
     ${valuationSections}`;
 		}
-
+		
 		// Historical Property Valuation
 		if (historicalTitleOrders.length > 0 && (detail === 'ALL' || detail === 'PAST')) {
 			const valuationSections = historicalTitleOrders.map((order, index) => {
@@ -4262,7 +4634,7 @@ function extractLandTitleIndividualData(data, bussiness) {
 				const propertyData = cotalityData?.propertyData || {};
 				const salesHistory = cotalityData?.salesHistory || {};
 				const salesHistoryList = Array.isArray(salesHistory.saleList) ? salesHistory.saleList : [];
-
+				
 				const avmEstimate = propertyData.avmEstimate ? formatCurrency(propertyData.avmEstimate) : 'N/A';
 				const estimatedRange = propertyData.estimatedRange;
 				const priceRange = estimatedRange && estimatedRange.low != null && estimatedRange.high != null
@@ -4270,7 +4642,7 @@ function extractLandTitleIndividualData(data, bussiness) {
 					: 'N/A';
 				const valuationDate = propertyData.valuationDate ? formatDate(propertyData.valuationDate) : 'N/A';
 				const confidenceLevel = propertyData.confidenceLevel || 'N/A';
-
+				
 				const salesHistoryRows = salesHistoryList.length
 					? salesHistoryList.slice().sort((a, b) => {
 						const dateA = a?.contractDate ? moment(a.contractDate).valueOf() : 0;
@@ -4283,9 +4655,9 @@ function extractLandTitleIndividualData(data, bussiness) {
 						return `<tr><td>${escapeHtml(saleDate)}</td><td>${escapeHtml(price)}</td><td>${escapeHtml(saleType)}</td></tr>`;
 					}).join('')
 					: '<tr><td colspan="3" style="text-align:center; padding: 12px; color: #94A3B8;">No sales history available</td></tr>';
-
+				
 				const titleRef = order?.RealPropertySegment?.[0]?.IdentityBlock?.TitleReference || 'N/A';
-
+				
 				return `
       <div class="card" style="margin-bottom: 20px;">
         <div class="card-header">Property Valuation - ${escapeHtml(titleRef)}</div>
@@ -4309,17 +4681,17 @@ function extractLandTitleIndividualData(data, bussiness) {
         </table>
       </div>`;
 			}).join('');
-
+			
 			historicalValuationHtml = `
     <div class="section-title">Property Valuation & Sales History - Past Ownership</div>
     ${valuationSections}`;
 		}
 	}
-
+	
 	// Generate Complete Property Portfolio section
 	let currentPortfolioRows = '';
 	let historicalPortfolioRows = '';
-
+	
 	// Current Ownership Portfolio
 	if (currentTitleOrders.length > 0) {
 		currentPortfolioRows = currentTitleOrders.map((order) => {
@@ -4327,17 +4699,17 @@ function extractLandTitleIndividualData(data, bussiness) {
 			const identityBlock = realPropertySegment.IdentityBlock || {};
 			const registryBlock = realPropertySegment.RegistryBlock || {};
 			const ownership = registryBlock.Ownership || {};
-
+			
 			const titleRef = identityBlock.TitleReference || 'N/A';
 			const locality = identityBlock.Locality || 'N/A';
 			const transferRef = ownership.Dealings?.[0]?.Reference || 'N/A';
-
+			
 			return `<tr><td>${escapeHtml(titleRef)}</td><td>${escapeHtml(locality)}</td><td>Owner</td><td>${escapeHtml(transferRef)}</td><td>Current</td></tr>`;
 		}).join('');
 	} else {
 		currentPortfolioRows = '<tr><td colspan="5" style="text-align:center; padding: 12px; color: #94A3B8;">No current properties</td></tr>';
 	}
-
+	
 	// Historical Ownership Portfolio
 	if (historicalTitleOrders.length > 0) {
 		historicalPortfolioRows = historicalTitleOrders.map((order) => {
@@ -4345,23 +4717,23 @@ function extractLandTitleIndividualData(data, bussiness) {
 			const identityBlock = realPropertySegment.IdentityBlock || {};
 			const registryBlock = realPropertySegment.RegistryBlock || {};
 			const ownership = registryBlock.Ownership || {};
-
+			
 			const titleRef = identityBlock.TitleReference || 'N/A';
 			const locality = identityBlock.Locality || 'N/A';
 			const transferRef = ownership.Dealings?.[0]?.Reference || 'N/A';
-
+			
 			return `<tr><td>${escapeHtml(titleRef)}</td><td>${escapeHtml(locality)}</td><td>Owner (Past)</td><td>${escapeHtml(transferRef)}</td><td>PAST</td></tr>`;
 		}).join('');
 	} else {
 		historicalPortfolioRows = '<tr><td colspan="5" style="text-align:center; padding: 12px; color: #94A3B8;">No past properties</td></tr>';
 	}
-
+	
 	// Determine page numbers based on content
 	let totalPages = 6; // Base pages: cover, executive summary, title search, portfolio, disclaimers
 	if (addOn && showTitleSearchInfo) {
 		totalPages += 2; // Add pages for valuation sections
 	}
-
+	
 	return {
 		person_full_name: personFullName,
 		report_date: reportDate,
@@ -4516,51 +4888,51 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 	} else if (reportype === 'rego-ppsr') {
 		extractedData = extractRegoPpsrData(data, bussiness);
 	} else {
-		// Default fallback - try to extract common fields
-		const entity = data.entity || {};
-		extractedData = {
-			company_type: reportype || 'N/A',
-			acn: data.acn || entity.acn || 'N/A',
-			abn: data.abn || entity.abn || 'N/A',
-			companyName: entity.name || 'N/A',
-			entity_abn: entity.abn || 'N/A',
-			entity_acn: entity.acn || 'N/A',
-			entity_name: entity.name || 'N/A',
-			entity_review_date: entity.review_date ? moment(entity.review_date).format('DD/MM/YYYY') : 'N/A',
-			entity_registered_in: entity.registered_in || 'N/A',
-			entity_abr_gst_status: entity.abr_gst_status || 'N/A',
-			entity_document_number: entity.document_number || 'N/A',
-			entity_organisation_type: entity.organisation_type || 'N/A',
-			entity_asic_date_of_registration: entity.asic_date_of_registration ? moment(entity.asic_date_of_registration).format('DD/MM/YYYY') : 'N/A',
-			abn_state: data.abn_state || 'N/A',
-			abn_status: data.abn_status || 'N/A',
-			actionSummaryRows: '',
+    // Default fallback - try to extract common fields
+    const entity = data.entity || {};
+    extractedData = {
+      company_type: reportype || 'N/A',
+      acn: data.acn || entity.acn || 'N/A',
+      abn: data.abn || entity.abn || 'N/A',
+      companyName: entity.name || 'N/A',
+      entity_abn: entity.abn || 'N/A',
+      entity_acn: entity.acn || 'N/A',
+      entity_name: entity.name || 'N/A',
+      entity_review_date: entity.review_date ? moment(entity.review_date).format('DD/MM/YYYY') : 'N/A',
+      entity_registered_in: entity.registered_in || 'N/A',
+      entity_abr_gst_status: entity.abr_gst_status || 'N/A',
+      entity_document_number: entity.document_number || 'N/A',
+      entity_organisation_type: entity.organisation_type || 'N/A',
+      entity_asic_date_of_registration: entity.asic_date_of_registration ? moment(entity.asic_date_of_registration).format('DD/MM/YYYY') : 'N/A',
+      abn_state: data.abn_state || 'N/A',
+      abn_status: data.abn_status || 'N/A',
+      actionSummaryRows: '',
 			actionSectionsHtml: '',
-			insolvency_notice_id: 'N/A',
-			insolvency_type: 'N/A',
-			insolvency_publish_date: 'N/A',
-			insolvency_status: 'N/A',
-			insolvency_appointee: 'N/A',
-			insolvency_parties_rows: '',
-			insolvency_court: 'N/A',
-			case_case_id: 'N/A',
-			case_source: 'N/A',
-			case_jurisdiction: 'N/A',
-			case_type: 'N/A',
-			case_status: 'N/A',
-			case_location: 'N/A',
-			case_most_recent_event: 'N/A',
-			case_notification_date: 'N/A',
-			case_next_event: 'N/A',
-			orders_rows: '',
-			case_parties_rows: '',
-			hearings_rows: '',
-			documents_rows: '',
-			caseNumber: 'N/A',
-			current_tax_debt_amount: 'N/A',
-			current_tax_debt_ato_updated_at: 'N/A'
-		};
-	}
+      insolvency_notice_id: 'N/A',
+      insolvency_type: 'N/A',
+      insolvency_publish_date: 'N/A',
+      insolvency_status: 'N/A',
+      insolvency_appointee: 'N/A',
+      insolvency_parties_rows: '',
+      insolvency_court: 'N/A',
+      case_case_id: 'N/A',
+      case_source: 'N/A',
+      case_jurisdiction: 'N/A',
+      case_type: 'N/A',
+      case_status: 'N/A',
+      case_location: 'N/A',
+      case_most_recent_event: 'N/A',
+      case_notification_date: 'N/A',
+      case_next_event: 'N/A',
+      orders_rows: '',
+      case_parties_rows: '',
+      hearings_rows: '',
+      documents_rows: '',
+      caseNumber: 'N/A',
+      current_tax_debt_amount: 'N/A',
+      current_tax_debt_ato_updated_at: 'N/A'
+    };
+  }
 
 	// Ensure extractedData has required fields
 	if (!extractedData) {
@@ -4643,12 +5015,12 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 	replaceVar('current_date_and_time', current_date_and_time);
 
 	replaceVar('firstName', extractedData.firstName || '');
-	replaceVar('lastName', extractedData.lastName || '');
-	replaceVar('fullName', extractedData.fullName || extractedData.searchName || 'N/A');
-	replaceVar('searchName', extractedData.searchName || extractedData.fullName || 'N/A');
+  replaceVar('lastName', extractedData.lastName || '');
+  replaceVar('fullName', extractedData.fullName || extractedData.searchName || 'N/A');
+  replaceVar('searchName', extractedData.searchName || extractedData.fullName || 'N/A');
 	replaceVar('soleTraderTableRows', extractedData.soleTraderTableRows || '');
 	replaceVar('unclaimedMoneyTableRows', extractedData.unclaimedMoneyTableRows || '');
-	replaceVar('totalRecords', extractedData.totalRecords || 0);
+  replaceVar('totalRecords', extractedData.totalRecords || 0);
 
 
 	replaceVar('reportDate', extractedData.reportDate || '');
@@ -4667,9 +5039,15 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 	replaceVar('searchNumber', extractedData.searchNumber || 'N/A');
 	replaceVar('ppsrStatusBadge', extractedData.ppsrStatusBadge || '');
 	replaceVar('registrationExpiry', extractedData.registrationExpiry || 'N/A');
+	replaceVar('registrationStatus', extractedData.registrationStatus || 'N/A');
 	replaceVar('complianceDate', extractedData.complianceDate || 'N/A');
+	replaceVar('compliancePlate', extractedData.compliancePlate || 'N/A');
+	replaceVar('yearOfManufacture', extractedData.yearOfManufacture || 'N/A');
 	replaceVar('stolenStatusMessage', extractedData.stolenStatusMessage || '');
 	replaceVar('writtenOffStatusMessage', extractedData.writtenOffStatusMessage || '');
+	replaceVar('ppsrRegistrationsHtml', extractedData.ppsrRegistrationsHtml || '');
+	replaceVar('securedPartiesHtml', extractedData.securedPartiesHtml || '');
+	replaceVar('registrationHistoryRows', extractedData.registrationHistoryRows || '');
 
 	// Replace entity variables
 	replaceVar('abn_state', extractedData.abn_state || '');
@@ -4864,46 +5242,46 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 	replaceVar('civil_court_rows', extractedData.civil_court_rows || '');
 
 
-	replaceVar('person_full_name', extractedData.person_full_name);
-	replaceVar('report_date', extractedData.report_date);
-	replaceVar('currentCount', extractedData.currentCount);
-	replaceVar('historicalCount', extractedData.historicalCount);
-	replaceVar('all_count', extractedData.all_count);
-	replaceVar('executive_summary_section', extractedData.executive_summary_section);
-	replaceVar('current_title_search_section', extractedData.current_title_search_section);
-	replaceVar('historical_title_search_section', extractedData.historical_title_search_section);
-	replaceVar('current_valuation_section', extractedData.current_valuation_section);
-	replaceVar('historical_valuation_section', extractedData.historical_valuation_section);
-	replaceVar('current_portfolio_rows', extractedData.current_portfolio_rows);
-	replaceVar('historical_portfolio_rows', extractedData.historical_portfolio_rows);
-	replaceVar('show_current_section', extractedData.show_current_section);
-	replaceVar('show_historical_section', extractedData.show_historical_section);
-	replaceVar('show_current_complete_section', extractedData.show_current_complete_section);
-	replaceVar('show_past_complete_section', extractedData.show_past_complete_section);
-	replaceVar('show_executive_summary', extractedData.show_executive_summary);
-	replaceVar('show_title_search_info', extractedData.show_title_search_info);
-	replaceVar('show_valuation_sections', extractedData.show_valuation_sections);
+		replaceVar('person_full_name', extractedData.person_full_name);
+		replaceVar('report_date', extractedData.report_date);
+		replaceVar('currentCount', extractedData.currentCount);
+		replaceVar('historicalCount', extractedData.historicalCount);
+		replaceVar('all_count', extractedData.all_count);
+		replaceVar('executive_summary_section', extractedData.executive_summary_section);
+		replaceVar('current_title_search_section', extractedData.current_title_search_section);
+		replaceVar('historical_title_search_section', extractedData.historical_title_search_section);
+		replaceVar('current_valuation_section', extractedData.current_valuation_section);
+		replaceVar('historical_valuation_section', extractedData.historical_valuation_section);
+		replaceVar('current_portfolio_rows', extractedData.current_portfolio_rows);
+		replaceVar('historical_portfolio_rows', extractedData.historical_portfolio_rows);
+		replaceVar('show_current_section', extractedData.show_current_section);
+		replaceVar('show_historical_section', extractedData.show_historical_section);
+		replaceVar('show_current_complete_section', extractedData.show_current_complete_section);
+		replaceVar('show_past_complete_section', extractedData.show_past_complete_section);
+		replaceVar('show_executive_summary', extractedData.show_executive_summary);
+		replaceVar('show_title_search_info', extractedData.show_title_search_info);
+		replaceVar('show_valuation_sections', extractedData.show_valuation_sections);
 
 
-	replaceVar('property_report_title', extractedData.property_report_title || 'Property Title Report');
-	replaceVar('property_title_reference', extractedData.property_title_reference || 'N/A');
-	replaceVar('property_volume', extractedData.property_volume || 'N/A');
-	replaceVar('property_search_date', extractedData.property_search_date || 'N/A');
-	replaceVar('property_search_obtained', extractedData.property_search_obtained || 'N/A');
-	replaceVar('property_edition_date', extractedData.property_edition_date || 'N/A');
-	replaceVar('property_parish', extractedData.property_parish || 'N/A');
-	replaceVar('property_county', extractedData.property_county || 'N/A');
-	replaceVar('property_transfer_reference', extractedData.property_transfer_reference || 'N/A');
-	replaceVar('property_title_type', extractedData.property_title_type || 'N/A');
-	replaceVar('property_estate_type', extractedData.property_estate_type || 'N/A');
-	replaceVar('property_title_result_status', extractedData.property_title_result_status || 'N/A');
-	replaceVar('property_schedule_parcels_rows', extractedData.property_schedule_parcels_rows || '');
-	replaceVar('property_encumbrances_list', extractedData.property_encumbrances_list || '');
-	replaceVar('property_folio', extractedData.property_folio);
-	replaceVar('property_overview_page', extractedData.property_overview_page);
-	replaceVar('property_order_reference', extractedData.property_order_reference);
+		replaceVar('property_report_title', extractedData.property_report_title || 'Property Title Report');
+		replaceVar('property_title_reference', extractedData.property_title_reference || 'N/A');
+		replaceVar('property_volume', extractedData.property_volume || 'N/A');
+		replaceVar('property_search_date', extractedData.property_search_date || 'N/A');
+		replaceVar('property_search_obtained', extractedData.property_search_obtained || 'N/A');
+		replaceVar('property_edition_date', extractedData.property_edition_date || 'N/A');
+		replaceVar('property_parish', extractedData.property_parish || 'N/A');
+		replaceVar('property_county', extractedData.property_county || 'N/A');
+		replaceVar('property_transfer_reference', extractedData.property_transfer_reference || 'N/A');
+		replaceVar('property_title_type', extractedData.property_title_type || 'N/A');
+		replaceVar('property_estate_type', extractedData.property_estate_type || 'N/A');
+		replaceVar('property_title_result_status', extractedData.property_title_result_status || 'N/A');
+		replaceVar('property_schedule_parcels_rows', extractedData.property_schedule_parcels_rows || '');
+		replaceVar('property_encumbrances_list', extractedData.property_encumbrances_list || '');
+		replaceVar('property_folio', extractedData.property_folio);
+		replaceVar('property_overview_page', extractedData.property_overview_page);
+		replaceVar('property_order_reference', extractedData.property_order_reference);
 
-	replaceVar('CompanyFullName', extractedData.CompanyFullName);
+		replaceVar('CompanyFullName', extractedData.CompanyFullName);
 	replaceVar('abn', extractedData.abn);
 	return updatedHtml;
 }

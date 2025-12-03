@@ -656,53 +656,89 @@ async function director_ppsr_report(bussiness) {
 }
 
 async function rego_ppsr_report(business) {
-	// Get dynamic token for PPSR
-	const ppsrToken = await getToken('ppsr');
+	try {
 
-	// Extract rego number and state from business object
-	const registrationPlate = business?.regoNumber || '';
-	const registrationPlateState = business?.regoState || '';
+		const ppsrToken = await getToken('ppsr');
 
-	if (!registrationPlate || !registrationPlateState) {
-		throw new Error('Rego number and state are required for REGO PPSR search');
-	}
+		// Extract rego number and state from business object
+		const registrationPlate = business?.regoNumber || '';
+		const registrationPlateState = business?.regoState || '';
 
-	// Call vehicle lookup API
-	const apiUrl = 'https://gateway.ppsrcloud.com/api/b2b/auvehicle/lookup-mv-info';
-	const requestData = {
-		registrationPlate: registrationPlate.trim(),
-		registrationPlateState: registrationPlateState.trim(),
-		advanceResultDetails: true
-	};
+		// Step 1: Call vehicle lookup API
+		const lookupApiUrl = 'https://gateway.ppsrcloud.com/api/b2b/auvehicle/lookup-mv-info';
+		const lookupRequestData = {
+			registrationPlate: registrationPlate.trim(),
+			registrationPlateState: registrationPlateState.trim(),
+			advanceResultDetails: true
+		};
 
-	const response = await axios.post(apiUrl, requestData, {
-		headers: {
-			'Authorization': `Bearer ${ppsrToken}`,
-			'Content-Type': 'application/json'
-		},
-		timeout: 30000 // 30 second timeout
-	});
-
-
-	const details = response.data?.resource?.details;
-	let ppsrCloudId = null;
-	if (details && Array.isArray(details) && details.length > 0) {
-		ppsrCloudId = details[0]?.ppsrCloudId;
-	}
-
-	if (!ppsrCloudId) {
-		throw new Error('No ppsrCloudId found in response details');
-	}
-
-	const reportData = {
-		status: true,
-		data: {
-			...response.data,
-			uuid: ppsrCloudId
+		let lookupResponse;
+		try {
+			lookupResponse = await axios.post(lookupApiUrl, lookupRequestData, {
+				headers: {
+					'Authorization': `Bearer ${ppsrToken}`,
+					'Content-Type': 'application/json'
+				},
+				timeout: 60000 // 60 second timeout (increased from 30)
+			});
+			
+		} catch (error) {
+			throw new Error(`Failed to lookup vehicle info: ${error.message}`);
 		}
-	};
-	
-	return reportData;
+
+		const lookupDetails = lookupResponse.data?.resource?.details;
+		let ppsrCloudId = null;
+		let vin = null;
+		
+		if (lookupDetails && Array.isArray(lookupDetails) && lookupDetails.length > 0) {
+			ppsrCloudId = lookupDetails[0]?.ppsrCloudId;
+			vin = lookupDetails[0]?.vin;
+		}
+
+		if (!ppsrCloudId) {
+			throw new Error('No ppsrCloudId found in response details. Please check the vehicle registration details.');
+		}
+
+		if (!vin) {
+			throw new Error('No VIN found in response details. Please check the vehicle registration details.');
+		}
+
+		// Step 2: Call submit-mv API with VIN
+		let submitMvResponse = null;
+		try {
+			const submitMvApiUrl = 'https://gateway.ppsrcloud.com/api/b2b/AuSearch/submit-mv';
+			const submitMvRequestData = {
+				vin: vin.trim()
+			};
+
+			submitMvResponse = await axios.post(submitMvApiUrl, submitMvRequestData, {
+				headers: {
+					'Authorization': `Bearer ${ppsrToken}`,
+					'Content-Type': 'application/json'
+				},
+				timeout: 30000 // 30 second timeout
+			});
+		} catch (error) {
+			console.error('Error calling submit-mv API:', error?.response?.data || error.message);
+			
+		}
+
+		// Combine both responses in the report data
+		const reportData = {
+			status: true,
+			data: {
+				lookupResponse: lookupResponse.data, 
+				submitMvResponse: submitMvResponse?.data || null, 
+				uuid: ppsrCloudId,
+				vin: vin
+			}
+		};
+		
+		return reportData;
+	} catch (error) {
+		console.error('Error in rego_ppsr_report:', error);
+		throw error;
+	}
 }
 
 async function director_bankrupcty_report(bussiness) {
@@ -2155,12 +2191,24 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 
 	} catch (error) {
 		console.error('Error creating report:', error);
+		console.error('Error stack:', error.stack);
+		
+		// If error already has a descriptive message, preserve it
+		if (error.message && (
+			error.message.includes('Failed to lookup vehicle info') ||
+			error.message.includes('No ppsrCloudId found') ||
+			error.message.includes('No VIN found') ||
+			error.message.includes('Rego number and state are required')
+		)) {
+			throw error; // Re-throw with original message
+		}
+		
 		if (error.response) {
 			// API returned an error response
 			throw new Error(`Report API error: ${error.response.status} - ${error.response.data?.message || error.response.statusText}`);
 		} else if (error.request) {
 			// Request was made but no response received
-			throw new Error('Report API request failed - no response received');
+			throw new Error(`Report API request failed - no response received. ${error.message || 'The API may be unavailable or timed out.'}`);
 		} else {
 			// Something else happened
 			throw new Error(`Report creation failed: ${error.message}`);

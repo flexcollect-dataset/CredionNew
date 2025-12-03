@@ -413,91 +413,11 @@
             
             <div class="section-title">PPSR Registration</div>
             
-            <div class="card primary">
-                <div class="card-header">SECURITY INTEREST - 202107280006359</div>
-                <div class="data-grid">
-                    <div class="data-item">
-                        <div class="data-label">Registration Number</div>
-                        <div class="data-value">202107280006359</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Change Number</div>
-                        <div class="data-value">89737516</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Registration Kind</div>
-                        <div class="data-value">Security Interest</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Status</div>
-                        <div class="data-value"><span class="status-badge status-current">Current</span></div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Start Date</div>
-                        <div class="data-value">28/07/2021 09:14:29</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">End Date</div>
-                        <div class="data-value">27/07/2028 23:59:59</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Last Changed</div>
-                        <div class="data-value">01/11/2025 19:14:21</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Transitional</div>
-                        <div class="data-value">No</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Collateral Type</div>
-                        <div class="data-value">Consumer Property</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Collateral Class</div>
-                        <div class="data-value">Motor Vehicle</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">PMSI</div>
-                        <div class="data-value">Yes</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Proceeds</div>
-                        <div class="data-value">All present and after acquired property</div>
-                    </div>
-                </div>
-            </div>
+            ${ppsrRegistrationsHtml}
             
             <div class="section-title">Secured Party</div>
             
-            <div class="card">
-                <div class="card-header">ALLIED RETAIL FINANCE PTY LTD</div>
-                <div class="data-grid">
-                    <div class="data-item">
-                        <div class="data-label">Organisation Name</div>
-                        <div class="data-value">ALLIED RETAIL FINANCE PTY LTD</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Verification Status</div>
-                        <div class="data-value">Verified</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">ACN</div>
-                        <div class="data-value">609859985</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Contact Name</div>
-                        <div class="data-value">Bianca Gungab</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Email</div>
-                        <div class="data-value"><a href="file:///cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="b5c2dac7ded3dac7d6d0f5d4d9d9dcd0d1d6c7d0d1dcc19bdbd0c19bd4c0">[email&nbsp;protected]</a></div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Physical Address</div>
-                        <div class="data-value">Level 6, 15 Talavera Road<br>Macquarie Park NSW 2113<br>AUSTRALIA</div>
-                    </div>
-                </div>
-            </div>
+            ${securedPartiesHtml}
         </div>
 
         <!-- PAGE 3: HISTORY & NEVDIS -->
@@ -513,21 +433,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr>
-                        <td>89737516</td>
-                        <td>Transfer</td>
-                        <td>01/11/2025 19:14:21 (Canberra Time)</td>
-                    </tr>
-                    <tr>
-                        <td>89701859</td>
-                        <td>Transfer</td>
-                        <td>01/11/2025 17:16:37 (Canberra Time)</td>
-                    </tr>
-                    <tr>
-                        <td>66688303</td>
-                        <td>Create</td>
-                        <td>28/07/2021 09:14:29 (Canberra Time)</td>
-                    </tr>
+                    ${registrationHistoryRows}
                 </tbody>
             </table>
             
