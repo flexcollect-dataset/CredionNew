@@ -1,15 +1,12 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-    
+<html lang="en">
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Credion IP Australia - Trademark Search Report - The Roller Door Doctor</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
         * {
             margin: 0;
             padding: 0;
@@ -123,13 +120,15 @@
             margin-bottom: 40px;
         }
 
+       
 
         .doc-id {
             font-size: 15px;
             color: #64748B;
             font-weight: 600;
         }
-        
+
+
         .page-title {
             font-size: 26px;
             font-weight: 700;
@@ -137,7 +136,7 @@
             margin-bottom: 30px;
             page-break-after: avoid;
         }
-        
+
         /* Card System */
         .card {
             background: #F8FAFC;
@@ -147,7 +146,7 @@
             margin-bottom: 20px;
             page-break-inside: avoid;
         }
-        
+
         .card-header {
             font-size: 12px;
             font-weight: 700;
@@ -156,20 +155,20 @@
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
-        
+
         .data-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 16px;
             page-break-inside: avoid;
         }
-        
+
         .data-item {
             display: flex;
             flex-direction: column;
             gap: 4px;
         }
-        
+
         .data-label {
             font-size: 9px;
             color: #64748B;
@@ -177,193 +176,206 @@
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
-        
+
         .data-value {
             font-size: 13px;
             font-weight: 600;
             color: #0F172A;
         }
+
+        /* Section Title */
+        .section-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: #475569;
+            margin: 24px 0 12px 0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            page-break-after: avoid;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin: 16px 0;
+            font-size: 10px;
+            border: 1px solid #E2E8F0;
+            border-radius: 6px;
+            overflow: hidden;
+            page-break-inside: auto;
+        }
+
+        thead {
+            display: table-header-group;
+        }
+
+        tbody {
+            display: table-row-group;
+        }
+
+        tr {
+            page-break-inside: avoid;
+            page-break-after: auto;
+        }
+
+        th {
+            background: #F1F5F9;
+            padding: 12px;
+            text-align: left;
+            font-weight: 700;
+            color: #475569;
+            border-bottom: 2px solid #E2E8F0;
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #F1F5F9;
+            color: #1E293B;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
     </style>
 </head>
+
 <body>
     <div class="page-container">
         <!-- SINGLE PAGE REPORT -->
-        <div class="page" style="padding: 50px 50px; display: flex; flex-direction: column;">
-           
-            
+        <div class="page" style="padding: 80px 60px; display: flex; flex-direction: column; page-break-after: always;">
+
+
             <!-- Title Section -->
             <div style="margin-bottom: 30px;">
-                <div style="font-size: 12px; font-weight: 500; color: #64748B; letter-spacing: 1px; margin-bottom: 8px; text-transform: uppercase;">
-                    The Roller Door Doctor
+                <div
+                    style="font-size: 12px; font-weight: 500; color: #64748B; letter-spacing: 1px; margin-bottom: 8px; text-transform: uppercase;">
+                    {{trademark_company_name}}
                 </div>
-                
+
                 <div style="font-size: 28px; font-weight: 600; color: #0F172A; line-height: 1.2; margin-bottom: 12px;">
                     IP Australia - Trademark Search
                 </div>
-                
+
                 <div style="font-size: 10px; color: #94A3B8; line-height: 1.6;">
-                    Report Date: 20 October 2025 | ACN: 111 458 998 | ABN: 72 111 458 998
+                    Report Date: {{trademark_report_date}} | ACN: {{trademark_acn}} | ABN: {{trademark_abn}}
                 </div>
             </div>
-            
+        </div>
+
+        <div class="page">
             <!-- Company Details Card -->
             <div class="card" style="border: 2px solid #CBD5E1; margin-bottom: 20px;">
-                <div class="card-header" style="background: #F8FAFC; color: #475569; font-weight: 600; font-size: 11px; margin-bottom: 12px;">COMPANY DETAILS</div>
+                <div class="card-header"
+                    style="background: #F8FAFC; color: #475569; font-weight: 600; font-size: 11px; margin-bottom: 12px;">
+                    COMPANY DETAILS</div>
                 <div class="data-grid" style="grid-template-columns: repeat(2, 1fr); row-gap: 12px; gap: 12px;">
                     <div class="data-item">
                         <div class="data-label" style="font-size: 8px;">Company Name</div>
-                        <div class="data-value" style="font-weight: 700; font-size: 12px;">THE ROLLER DOOR DOCTOR</div>
+                        <div class="data-value" style="font-weight: 700; font-size: 12px;">{{trademark_company_name}}
+                        </div>
                     </div>
                     <div class="data-item">
                         <div class="data-label" style="font-size: 8px;">ABN</div>
-                        <div class="data-value" style="font-size: 11px;">72 111 458 998</div>
+                        <div class="data-value" style="font-size: 11px;">{{trademark_abn}}</div>
                     </div>
                     <div class="data-item">
                         <div class="data-label" style="font-size: 8px;">ACN</div>
-                        <div class="data-value" style="font-size: 11px;">111 458 998</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label" style="font-size: 8px;">ASIC Status</div>
-                        <div class="data-value" style="font-size: 11px;">Registered</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label" style="font-size: 8px;">ABN Status</div>
-                        <div class="data-value" style="font-size: 11px;">Active</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label" style="font-size: 8px;">GST Status</div>
-                        <div class="data-value" style="font-size: 11px;">Current</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label" style="font-size: 8px;">Type</div>
-                        <div class="data-value" style="font-size: 11px;">Australian Proprietary Company</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label" style="font-size: 8px;">ASIC Registration</div>
-                        <div class="data-value" style="font-size: 11px;">20/10/2004</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label" style="font-size: 8px;">Review Date</div>
-                        <div class="data-value" style="font-size: 11px;">20/10/2026</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label" style="font-size: 8px;">Registered In</div>
-                        <div class="data-value" style="font-size: 11px;">NSW</div>
+                        <div class="data-value" style="font-size: 11px;">{{trademark_acn}}</div>
                     </div>
                     <div class="data-item">
                         <div class="data-label" style="font-size: 8px;">Report Date</div>
-                        <div class="data-value" style="font-size: 11px;">20 Oct 2025, 1:54pm</div>
+                        <div class="data-value" style="font-size: 11px;">{{trademark_report_date_time}}</div>
                     </div>
                     <div class="data-item">
                         <div class="data-label" style="font-size: 8px;">Document ID</div>
-                        <div class="data-value" style="font-size: 11px;">020771788</div>
+                        <div class="data-value" style="font-size: 11px;">{{trademark_uuid}}</div>
                     </div>
                 </div>
             </div>
-            
-            <!-- Trademark Search Results -->
-            <div class="card" style="border: 3px solid #CBD5E1; background: #F8FAFC; margin-bottom: 20px;">
-                <div style="font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.5px;">
-                    TRADEMARK SEARCH RESULTS
-                </div>
-                
-                <!-- Search Query -->
-                <div style="margin-bottom: 16px;">
-                    <div style="font-size: 8px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Results</div>
-                    <div style="font-size: 13px; font-weight: 600; color: #0F172A;">"the roller door doctor"</div>
-                </div>
-                
-                <!-- Results Summary -->
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; padding: 12px; background: white; border-radius: 6px;">
-                    <div>
-                        <div style="font-size: 8px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Total Results</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #0F172A;">1</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 8px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Status</div>
-                        <div style="font-size: 11px; font-weight: 600; color: #059669;">REGISTERED</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 8px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Search Type</div>
-                        <div style="font-size: 11px; font-weight: 600; color: #0F172A;">WORD</div>
-                    </div>
-                </div>
-                
-                <!-- Trademark Details -->
-                <div style="background: white; border-radius: 6px; padding: 14px; border: 1px solid #E2E8F0;">
-                    <div style="font-size: 10px; font-weight: 700; color: #475569; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Trademark ID: 1205763</div>
-                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
-                        <div>
-                            <div style="font-size: 8px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Mark</div>
-                            <div style="font-size: 11px; font-weight: 600; color: #0F172A;">THE ROLLER DOOR DOCTOR</div>
-                        </div>
-                        <div>
-                            <div style="font-size: 8px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Status</div>
-                            <div style="font-size: 11px; font-weight: 600; color: #059669;">REGISTERED</div>
-                        </div>
-                        <div>
-                            <div style="font-size: 8px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Changed Since</div>
-                            <div style="font-size: 11px; font-weight: 600; color: #0F172A;">15/01/2019</div>
-                        </div>
-                        <div>
-                            <div style="font-size: 8px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Sort Field</div>
-                            <div style="font-size: 11px; font-weight: 600; color: #0F172A;">NUMBER (ASC)</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Footer -->
-            <div style="margin-top: auto; padding-top: 20px;">
-                <div style="border-top: 1px solid #E2E8F0; padding-top: 12px;">
-                    <div style="font-size: 9px; color: #CBD5E1; text-align: center;">
-                        Credion Risk Intelligence
-                    </div>
-                </div>
-            </div>
-            
-        </div>
 
-        <!-- PAGE 2: SEARCH STATISTICS -->
-        <div class="page" style="padding: 50px 50px;">
-           
-            
+            <!-- Trademark Search Results -->
+            <div style="margin-bottom: 30px;">
+                <div class="section-title">Trademark Search Results - "{{trademark_search_query}}"</div>
+                <table>
+                    <thead>
+                        {{trademark_table_header}}
+                    </thead>
+                    <tbody>
+                        {{trademark_table_rows}}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Goods and Services -->
+            <div style="margin-bottom: 30px;">
+                <div class="section-title">Goods and Services</div>
+                <table>
+                    <thead>
+                        {{trademark_goods_services_table_header}}
+                    </thead>
+                    <tbody>
+                        {{trademark_goods_services_table_rows}}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Owner Information -->
+            <div style="margin-bottom: 30px;">
+                <div class="section-title">Owner Information</div>
+                <table>
+                    <thead>
+                        {{trademark_owner_table_header}}
+                    </thead>
+                    <tbody>
+                        {{trademark_owner_table_rows}}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Address for Service -->
+            <div style="margin-bottom: 30px;">
+                <div class="section-title">Address for Service</div>
+                <table>
+                    <thead>
+                        {{trademark_address_for_service_table_header}}
+                    </thead>
+                    <tbody>
+                        {{trademark_address_for_service_table_rows}}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- History and Publication Details -->
+            <div style="margin-bottom: 30px;">
+                <div class="section-title">History and Publication Details</div>
+                <table>
+                    <thead>
+                        {{trademark_history_table_header}}
+                    </thead>
+                    <tbody>
+                        {{trademark_history_table_rows}}
+                    </tbody>
+                </table>
+            </div>
+    
             <!-- Search Statistics -->
             <div class="card" style="border: 2px solid #CBD5E1; margin-bottom: 20px;">
-                <div style="font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">
+                <div
+                    style="font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">
                     SEARCH STATISTICS
                 </div>
-                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
-                    <div>
-                        <div style="font-size: 8px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Registered Trademarks</div>
-                        <div style="font-size: 13px; font-weight: 600; color: #059669;">1</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 8px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Never Registered</div>
-                        <div style="font-size: 13px; font-weight: 600; color: #64748B;">0</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 8px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Pending Applications</div>
-                        <div style="font-size: 13px; font-weight: 600; color: #64748B;">0</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 8px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Refused/Removed</div>
-                        <div style="font-size: 13px; font-weight: 600; color: #64748B;">0</div>
-                    </div>
-                </div>
+                {{trademark_search_statistics_html}}
             </div>
-            
-            <!-- Footer -->
-            <div style="margin-top: auto; padding-top: 20px;">
-                <div style="border-top: 1px solid #E2E8F0; padding-top: 12px;">
-                    <div style="font-size: 9px; color: #CBD5E1; text-align: center;">
-                        Credion Risk Intelligence
-                    </div>
-                </div>
-            </div>
-            
+
         </div>
     </div>
 
 
-</body></html>
+</body>
+
+</html>

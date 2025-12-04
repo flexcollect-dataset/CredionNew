@@ -10,180 +10,200 @@ const refreshingPromises = {};
    CONFIGURE YOUR API ENDPOINTS
 -------------------------------- */
 const SERVICES = {
-  ppsr: {
-    baseURL: "https://gateway.ppsrcloud.com/",
-    authURL: "https://gateway.ppsrcloud.com/connect/token",
-    getToken: async () => {
-      // PPSR uses form-urlencoded body
-      const params = new URLSearchParams();
-      params.append('grant_type', 'client_credentials');
-      params.append('scope', 'integrationaccess');
-      params.append('client_id', process.env.PPSR_CLIENT_ID || 'flexcollect-api-integration-prod');
-      params.append('client_secret', process.env.PPSR_CLIENT_SECRET || 'xAbcfxu7~Zcu*J_h5cyA7rF#n');
-      
-      const { data } = await axios.post("https://gateway.ppsrcloud.com/connect/token", params.toString(), {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
-      });
-      
-      return {
-        token: data.access_token,
-        expiresAt: Date.now() + (data.expires_in - 60) * 1000, // refresh 1 min early (expires_in is in seconds)
-      };
+    ppsr: {
+        baseURL: "https://gateway.ppsrcloud.com/",
+        authURL: "https://gateway.ppsrcloud.com/connect/token",
+        getToken: async () => {
+            // PPSR uses form-urlencoded body
+            const params = new URLSearchParams();
+            params.append('grant_type', 'client_credentials');
+            params.append('scope', 'integrationaccess');
+            params.append('client_id', process.env.PPSR_CLIENT_ID || 'flexcollect-api-integration-prod');
+            params.append('client_secret', process.env.PPSR_CLIENT_SECRET || 'xAbcfxu7~Zcu*J_h5cyA7rF#n');
+
+            const { data } = await axios.post("https://gateway.ppsrcloud.com/connect/token", params.toString(), {
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                }
+            });
+
+            return {
+                token: data.access_token,
+                expiresAt: Date.now() + (data.expires_in - 60) * 1000, // refresh 1 min early (expires_in is in seconds)
+            };
+        },
     },
-  },
-  bankruptcy: {
-    baseURL: "https://services.afsa.gov.au",
-    authURL: "https://services.afsa.gov.au/authentication-service/api/v2/login",
-    getToken: async () => {
-      // Bankruptcy uses JSON body
-      const { data } = await axios.post("https://services.afsa.gov.au/authentication-service/api/v2/login", {
-        clientId: process.env.BANKRUPTCY_CLIENT_ID || '8d2e211a-88d5-446f-b355-6b10a8278e3f',
-        clientSecret: process.env.BANKRUPTCY_CLIENT_SECRET || 'VBqsIg9683V652UadICDkjNw205h576mnw1Y23Gw5y7isp9hR1AC28c9RCBcYjYj'
-      }, {
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      // Assuming the response has a token field (adjust based on actual response)
-      // If response structure differs, update this accordingly
-      const token = data.accessToken;
-      const expiresIn = data.expiryDate;
-      
-      return {
-        token: token,
-        expiresAt: Date.now() + (expiresIn - 60) * 1000, // refresh 1 min early
-      };
+    bankruptcy: {
+        baseURL: "https://services.afsa.gov.au",
+        authURL: "https://services.afsa.gov.au/authentication-service/api/v2/login",
+        getToken: async () => {
+            // Bankruptcy uses JSON body
+            const { data } = await axios.post("https://services.afsa.gov.au/authentication-service/api/v2/login", {
+                clientId: process.env.BANKRUPTCY_CLIENT_ID || '8d2e211a-88d5-446f-b355-6b10a8278e3f',
+                clientSecret: process.env.BANKRUPTCY_CLIENT_SECRET || 'VBqsIg9683V652UadICDkjNw205h576mnw1Y23Gw5y7isp9hR1AC28c9RCBcYjYj'
+            }, {
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            // Assuming the response has a token field (adjust based on actual response)
+            // If response structure differs, update this accordingly
+            const token = data.accessToken;
+            const expiresIn = data.expiryDate;
+
+            return {
+                token: token,
+                expiresAt: Date.now() + (expiresIn - 60) * 1000, // refresh 1 min early
+            };
+        },
     },
-  },
-  corelogic: {
-    baseURL: "https://api-sbox.corelogic.asia/",
-    authURL: "https://api-sbox.corelogic.asia/access/as/token.oauth2",
-    getToken: async () => {
-      const clientId = process.env.CORELOGIC_CLIENT_ID || 'Lc5IATpomLaRconHlxNrRiY8BlM5Zv5n';
-      const clientSecret = process.env.CORELOGIC_CLIENT_SECRET || 'mDAvt7GvdmhSjUgL';
-      const scope = 'profile openid';
+    corelogic: {
+        baseURL: "https://api-sbox.corelogic.asia/",
+        authURL: "https://api-sbox.corelogic.asia/access/as/token.oauth2",
+        getToken: async () => {
+            const clientId = process.env.CORELOGIC_CLIENT_ID || 'Lc5IATpomLaRconHlxNrRiY8BlM5Zv5n';
+            const clientSecret = process.env.CORELOGIC_CLIENT_SECRET || 'mDAvt7GvdmhSjUgL';
+            const scope = 'profile openid';
 
-      const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-      const params = { grant_type: 'client_credentials', scope: scope};
+            const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+            const params = { grant_type: 'client_credentials', scope: scope };
 
-      const { data } = await axios.post( 'https://api-sbox.corelogic.asia/access/as/token.oauth2', null, {
-          params,
-          auth: {username: clientId, password:clientSecret},
-          headers: {
-            'Content-Length': '0',
-          },
-        }
-      );
+            const { data } = await axios.post('https://api-sbox.corelogic.asia/access/as/token.oauth2', null, {
+                params,
+                auth: { username: clientId, password: clientSecret },
+                headers: {
+                    'Content-Length': '0',
+                },
+            }
+            );
 
-      return {
-        token: data.access_token,
-        expiresAt: Date.now() + (data.expires_in - 60) * 1000,
-      };
+            return {
+                token: data.access_token,
+                expiresAt: Date.now() + (data.expires_in - 60) * 1000,
+            };
+        },
     },
-  },
-  landtitle: {
-    baseURL: 'https://online.globalx.com.au/api/national-property',
-    authURL: 'https://auth.globalx.com.au/auth/realms/globalx/protocol/openid-connect/token',
-    getToken: async () => {
-      // const clientId = process.env.GX_CLIENT_ID || 'ddcredion';
-      // const clientSecret = process.env.GX_CLIENT_SECRET || 'AWN3TbstqqVfpLK8mlmlAFOfGuDNY2F5';
+    landtitle: {
+        baseURL: 'https://online.globalx.com.au/api/national-property',
+        authURL: 'https://auth.globalx.com.au/auth/realms/globalx/protocol/openid-connect/token',
+        getToken: async () => {
+            const { data } = await axios.post('https://auth.globalx.com.au/auth/realms/GlobalX/protocol/openid-connect/token',
+                new URLSearchParams({
+                    grant_type: 'client_credentials',
+                    scope: 'digital-titles',
+                    client_id: process.env.GX_CLIENT_ID || 'ddcredion',
+                    client_secret: process.env.GX_CLIENT_SECRET || 'AWN3TbstqqVfpLK8mlmlAFOfGuDNY2F5'
+                }).toString(),
+                {
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                });
 
-      // const body = new URLSearchParams({
-      //   grant_type: 'client_credentials',
-      //   scope: 'digital-titles',
-      //   clientId: process.env.GX_CLIENT_ID || 'ddcredion',
-      //   clientSecret: process.env.GX_CLIENT_SECRET || 'AWN3TbstqqVfpLK8mlmlAFOfGuDNY2F5'
-      // }).toString();
-
-      const { data } = await axios.post('https://auth.globalx.com.au/auth/realms/GlobalX/protocol/openid-connect/token', 
-        new URLSearchParams({
-          grant_type: 'client_credentials',
-          scope: 'digital-titles',
-          client_id: process.env.GX_CLIENT_ID || 'ddcredion',
-          client_secret: process.env.GX_CLIENT_SECRET || 'AWN3TbstqqVfpLK8mlmlAFOfGuDNY2F5'
-        }).toString(), 
-        {
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        });
-
-      return {
-        token: data.access_token,
-        expiresAt: Date.now() + (data.expires_in - 60) * 1000,
-      };
+            return {
+                token: data.access_token,
+                expiresAt: Date.now() + (data.expires_in - 60) * 1000,
+            };
+        },
     },
-  },
+    trademark: {
+        baseURL: 'https://test.api.ipaustralia.gov.au',
+        authURL: 'https://test.api.ipaustralia.gov.au/public/external-token-api/v1/access_token',
+        getToken: async () => {
+            const clientId = process.env.TRADEMARK_CLIENT_ID || 'JxmxR2fA7Ak5ejyq2Pb8D7CzoCNIRasw';
+            const clientSecret = process.env.TRADEMARK_CLIENT_SECRET || 'kMy9Aw-F9w6XZjgLME9-CEoLYvJorgH69E6w40JnKMc0GsPSmmLy9BddQ0JlxTWW';
+            
+            const params = new URLSearchParams();
+            params.append('grant_type', 'client_credentials');
+
+            const { data } = await axios.post(
+                'https://test.api.ipaustralia.gov.au/public/external-token-api/v1/access_token',
+                params.toString(),
+                {
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    auth: {
+                        username: clientId,
+                        password: clientSecret
+                    }
+                }
+            );
+
+            return {
+                token: data.access_token,
+                expiresAt: Date.now() + (data.expires_in - 60) * 1000,
+            };
+        },
+    }
 };
 
 /* -------------------------------
    TOKEN MANAGER LOGIC
 -------------------------------- */
 async function getToken(serviceName) {
-  const cached = tokenCache[serviceName];
-  if (cached && Date.now() < cached.expiresAt) return cached.token;
+    const cached = tokenCache[serviceName];
+    if (cached && Date.now() < cached.expiresAt) return cached.token;
 
-  if (refreshingPromises[serviceName]) {
-    return (await refreshingPromises[serviceName]).token;
-  }
+    if (refreshingPromises[serviceName]) {
+        return (await refreshingPromises[serviceName]).token;
+    }
 
-  const service = SERVICES[serviceName];
-  if (!service) throw new Error(`Unknown service: ${serviceName}`);
+    const service = SERVICES[serviceName];
+    if (!service) throw new Error(`Unknown service: ${serviceName}`);
 
-  const promise = service
-    .getToken()
-    .then((data) => {
-      tokenCache[serviceName] = data;
-      return data;
-    })
-    .finally(() => delete refreshingPromises[serviceName]);
+    const promise = service
+        .getToken()
+        .then((data) => {
+            tokenCache[serviceName] = data;
+            return data;
+        })
+        .finally(() => delete refreshingPromises[serviceName]);
 
-  refreshingPromises[serviceName] = promise;
-  const { token } = await promise;
-  return token;
+    refreshingPromises[serviceName] = promise;
+    const { token } = await promise;
+    return token;
 }
 
 /* -------------------------------
    AXIOS CLIENT FACTORY
 -------------------------------- */
 function createApiClient(serviceName) {
-  const service = SERVICES[serviceName];
-  if (!service) throw new Error(`Unknown service: ${serviceName}`);
+    const service = SERVICES[serviceName];
+    if (!service) throw new Error(`Unknown service: ${serviceName}`);
 
-  const client = axios.create({ baseURL: service.baseURL });
+    const client = axios.create({ baseURL: service.baseURL });
 
-  // Attach token before each request
-  client.interceptors.request.use(async (config) => {
-    const token = await getToken(serviceName);
-    config.headers.Authorization = `Bearer ${token}`;
-    return config;
-  });
+    // Attach token before each request
+    client.interceptors.request.use(async (config) => {
+        const token = await getToken(serviceName);
+        config.headers.Authorization = `Bearer ${token}`;
+        return config;
+    });
 
-  // Optionally retry once on 401 (token expired early)
-  client.interceptors.response.use(undefined, async (error) => {
-    if (error.response?.status === 401 && !error.config._retry) {
-      error.config._retry = true;
-      const token = await getToken(serviceName);
-      error.config.headers.Authorization = `Bearer ${token}`;
-      return client.request(error.config);
-    }
-    throw error;
-  });
+    // Optionally retry once on 401 (token expired early)
+    client.interceptors.response.use(undefined, async (error) => {
+        if (error.response?.status === 401 && !error.config._retry) {
+            error.config._retry = true;
+            const token = await getToken(serviceName);
+            error.config.headers.Authorization = `Bearer ${token}`;
+            return client.request(error.config);
+        }
+        throw error;
+    });
 
-  return client;
+    return client;
 }
 
 /* -------------------------------
    EXPORT READY CLIENTS
 -------------------------------- */
 const apiClients = Object.keys(SERVICES).reduce((acc, key) => {
-  acc[key] = createApiClient(key);
-  return acc;
+    acc[key] = createApiClient(key);
+    return acc;
 }, {});
 
 // Export for use in other files
 module.exports = {
-  apiClients,
-  getToken
+    apiClients,
+    getToken
 };

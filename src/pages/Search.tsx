@@ -11,6 +11,7 @@ type SearchType =
 	| 'ATO'
 	| 'ABN/ACN PPSR'
 	| 'ADD DOCUMENT SEARCH'
+	| 'TRADEMARK'
 	| 'INDIVIDUAL RELATED ENTITIES'
 	| 'INDIVIDUAL BANKRUPTCY'
 	| 'INDIVIDUAL LAND TITLE'
@@ -35,7 +36,8 @@ type AdditionalSearchType =
 	| 'DIRECTOR PPSR'
 	| 'DIRECTOR BANKRUPTCY'
 	| 'ABN/ACN COURT FILES'
-	| 'ATO';
+	| 'ATO'
+	| 'TRADEMARK';
 
 type LandTitleOption = 'ABN/ACN LAND TITLE' | 'DIRECTOR LAND TITLE';
 type LandTitleDetailSelection = 'SUMMARY' | 'CURRENT' | 'PAST' | 'ALL';
@@ -263,12 +265,12 @@ const Search: React.FC = () => {
 	const [criminalMatchOptions, setCriminalMatchOptions] = useState<Array<{ label: string; match: any }>>([]);
 	const [isLoadingCriminalMatches, setIsLoadingCriminalMatches] = useState(false);
 	const [criminalMatchesError, setCriminalMatchesError] = useState<string | null>(null);
-	const [selectedCriminalMatch, setSelectedCriminalMatch] = useState<any | null>(null);
+	const [selectedCriminalMatches, setSelectedCriminalMatches] = useState<Array<any | null>>([]);
 
 	const [civilMatchOptions, setCivilMatchOptions] = useState<Array<{ label: string; match: any }>>([]);
 	const [isLoadingCivilMatches, setIsLoadingCivilMatches] = useState(false);
 	const [civilMatchesError, setCivilMatchesError] = useState<string | null>(null);
-	const [selectedCivilMatch, setSelectedCivilMatch] = useState<any | null>(null);
+	const [selectedCivilMatches, setSelectedCivilMatches] = useState<Array<any | null>>([]);
 	// Modal states for individual name search results
 	const [isIndividualNameSearchModalOpen, setIsIndividualNameSearchModalOpen] = useState(false);
 	const [individualNameSearchModalType, setIndividualNameSearchModalType] = useState<'bankruptcy' | 'related' | 'criminal' | 'civil' | 'landtitle' | null>(null);
@@ -345,11 +347,11 @@ const Search: React.FC = () => {
 		setRelatedEntityMatchOptions([]);
 		setRelatedMatchesError(null);
 		setIsLoadingRelatedMatches(false);
-		setSelectedCriminalMatch(null);
+		setSelectedCriminalMatches([]);
 		setCriminalMatchOptions([]);
 		setCriminalMatchesError(null);
 		setIsLoadingCriminalMatches(false);
-		setSelectedCivilMatch(null);
+		setSelectedCivilMatches([]);
 		setCivilMatchOptions([]);
 		setCivilMatchesError(null);
 		setIsLoadingCivilMatches(false);
@@ -390,7 +392,8 @@ const Search: React.FC = () => {
 		'DIRECTOR PPSR': 20,
 		'DIRECTOR BANKRUPTCY': 40,
 		'ABN/ACN COURT FILES': 10,
-		'ATO': 10
+		'ATO': 10,
+		'TRADEMARK': 20
 	};
 
 	const landTitlePricingConfig = {
@@ -585,6 +588,7 @@ const Search: React.FC = () => {
 		const isAsicSelected = selectedSearches.has('ASIC');
 		const isCourtSelected = selectedSearches.has('COURT');
 		const isAtoSelected = selectedSearches.has('ATO');
+		const isTrademarkSelected = selectedSearches.has('TRADEMARK');
 
 		const allOptions: AdditionalSearchOption[] = [
 			{ name: 'SELECT ALL', price: 0 },
@@ -608,7 +612,8 @@ const Search: React.FC = () => {
 				price: additionalSearchBasePrices['DIRECTOR BANKRUPTCY']
 			},
 			{ name: 'ABN/ACN COURT FILES', available: 1, price: additionalSearchBasePrices['ABN/ACN COURT FILES'] },
-			{ name: 'ATO', price: additionalSearchBasePrices['ATO'] }
+			{ name: 'ATO', price: additionalSearchBasePrices['ATO'] },
+			{ name: 'TRADEMARK', price: additionalSearchBasePrices['TRADEMARK'] }
 		];
 
 		return allOptions.filter(option => {
@@ -617,13 +622,14 @@ const Search: React.FC = () => {
 			if (isAsicSelected && option.name === 'ASIC - CURRENT') return false;
 			if (isCourtSelected && option.name === 'ABN/ACN COURT FILES') return false;
 			if (isAtoSelected && option.name === 'ATO') return false;
+			if (isTrademarkSelected && option.name === 'TRADEMARK') return false;
 			return true;
 		});
 	}, [companyDetails.directors, companyDetails.pastDirectors, landTitlePrices, selectedSearches]);
 
 	// Dynamic searches based on category - CHANGES PER CATEGORY!
 	const categorySearches: Record<CategoryType, SearchType[]> = {
-		'ORGANISATION': ['SELECT ALL', 'ASIC', 'COURT', 'ATO', 'ABN/ACN PPSR', 'ADD DOCUMENT SEARCH'],
+		'ORGANISATION': ['SELECT ALL', 'ASIC', 'COURT', 'ATO', 'ABN/ACN PPSR', 'ADD DOCUMENT SEARCH', 'TRADEMARK'],
 		'INDIVIDUAL': ['SELECT ALL', 'INDIVIDUAL RELATED ENTITIES', 'INDIVIDUAL BANKRUPTCY', 'COURT', 'INDIVIDUAL PPSR', 'REGO PPSR', 'SOLE TRADER CHECK', 'UNCLAIMED MONEY'],
 		'LAND TITLE': [] // No options for Land Title as of now
 	};
@@ -1617,8 +1623,8 @@ const Search: React.FC = () => {
 				return;
 			}
 
-			setSelectedCriminalMatch(null);
-			setSelectedCivilMatch(null);
+			setSelectedCriminalMatches([]);
+			setSelectedCivilMatches([]);
 			setCriminalMatchOptions([]);
 			setCivilMatchOptions([]);
 			setCriminalMatchesError(null);
@@ -2019,12 +2025,12 @@ const Search: React.FC = () => {
 			setSelectedRelatedMatches(relatedMatches);
 		}
 		if (selectedCriminalItems.length > 0) {
-			const criminalMatch = selectedCriminalItems[0]?.criminalMatch || null;
-			setSelectedCriminalMatch(criminalMatch);
+			const criminalMatches = selectedCriminalItems.map(item => item.criminalMatch || null);
+			setSelectedCriminalMatches(criminalMatches);
 		}
 		if (selectedCivilItems.length > 0) {
-			const civilMatch = selectedCivilItems[0]?.civilMatch || null;
-			setSelectedCivilMatch(civilMatch);
+			const civilMatches = selectedCivilItems.map(item => item.civilMatch || null);
+			setSelectedCivilMatches(civilMatches);
 		}
 		if (selectedLandTitleItems.length > 0) {
 			const firstLandTitleItem = selectedLandTitleItems[0];
@@ -2405,10 +2411,10 @@ const Search: React.FC = () => {
 			setRelatedEntityMatchOptions([]);
 		} else if (individualNameSearchModalType === 'criminal') {
 			// Clear criminal match but don't remove COURT from searches (civil might still be needed)
-			setSelectedCriminalMatch(null);
+			setSelectedCriminalMatches([]);
 		} else if (individualNameSearchModalType === 'civil') {
 			// Clear civil match but don't remove COURT from searches (criminal might still be needed)
-			setSelectedCivilMatch(null);
+			setSelectedCivilMatches([]);
 		} else if (individualNameSearchModalType === 'landtitle' || !individualNameSearchModalType) {
 			// Land title modal - remove INDIVIDUAL LAND TITLE
 			setSelectedSearches(prev => {
@@ -4782,7 +4788,7 @@ const Search: React.FC = () => {
 					return;
 				}
 				try {
-					await apiService.sendReports('korat.rutvik2511@gmail.com', [], 'Matter', documentSearchId);
+					await apiService.sendReports('andrew@credion.com.au', [], 'Matter', documentSearchId);
 					setProccessReportStatus(true);
 					setTotalDownloadReports(0);
 					setIsProcessingReports(false);
@@ -5060,6 +5066,8 @@ const Search: React.FC = () => {
 					reportType = 'asic-document-search';
 				} else if (reportItem.type === 'ASIC - CURRENT') {
 					reportType = 'asic-current';
+				} else if (reportItem.type === 'TRADEMARK') {
+					reportType = 'trademark';
 				} else {
 					reportType = reportItem.type.toLowerCase().replace(/\s+/g, '-');
 				}
@@ -5167,11 +5175,27 @@ const Search: React.FC = () => {
 
 						// For individual reports, we need to create one report per selected match
 						// Get matches to process
-						let individualMatchesToProcess: Array<BankruptcyMatch | null> | Array<DirectorRelatedMatch | null> = [];
+						let individualMatchesToProcess: Array<BankruptcyMatch | null> | Array<DirectorRelatedMatch | null> | Array<any | null> = [];
 						if (reportType === 'director-bankruptcy') {
 							individualMatchesToProcess = selectedBankruptcyMatches;
 						} else if (reportType === 'director-related') {
 							individualMatchesToProcess = selectedRelatedMatches;
+						} else if (reportType === 'director-court-criminal') {
+							individualMatchesToProcess = selectedCriminalMatches;
+						} else if (reportType === 'director-court-civil') {
+							individualMatchesToProcess = selectedCivilMatches;
+						} else if (reportType === 'director-court') {
+							// For 'director-court' (ALL), we need to create reports for all combinations
+							// If no matches selected, create one report with no match
+							if (selectedCriminalMatches.length === 0 && selectedCivilMatches.length === 0) {
+								individualMatchesToProcess = [null];
+							} else {
+								// Create a report for each criminal match and each civil match
+								// First add all criminal matches
+								individualMatchesToProcess = [...selectedCriminalMatches];
+								// Then add all civil matches
+								individualMatchesToProcess = [...individualMatchesToProcess, ...selectedCivilMatches];
+							}
 						} else {
 							// For other types, create one report (no multiple selection yet)
 							individualMatchesToProcess = [null];
@@ -5197,21 +5221,25 @@ const Search: React.FC = () => {
 							// Handle court data - pass criminal and/or civil matches based on report type
 							if (reportType === 'director-court-criminal') {
 								// Only pass criminal selection for criminal reports
-								if (selectedCriminalMatch) {
-									(businessDataWithMatch as any).criminalSelection = selectedCriminalMatch;
+								if (match != null) {
+									(businessDataWithMatch as any).criminalSelection = match;
 								}
 							} else if (reportType === 'director-court-civil') {
 								// Only pass civil selection for civil reports
-								if (selectedCivilMatch) {
-									(businessDataWithMatch as any).civilSelection = selectedCivilMatch;
+								if (match != null) {
+									(businessDataWithMatch as any).civilSelection = match;
 								}
 							} else if (reportType === 'director-court') {
-								// For 'director-court' (ALL), pass both if they exist
-								if (selectedCriminalMatch) {
-									(businessDataWithMatch as any).criminalSelection = selectedCriminalMatch;
+								// For 'director-court' (ALL), determine if this match is criminal or civil
+								// Check if match exists in criminal matches
+								const isCriminalMatch = selectedCriminalMatches.some(cm => cm === match);
+								const isCivilMatch = selectedCivilMatches.some(cm => cm === match);
+								
+								if (isCriminalMatch && match != null) {
+									(businessDataWithMatch as any).criminalSelection = match;
 								}
-								if (selectedCivilMatch) {
-									(businessDataWithMatch as any).civilSelection = selectedCivilMatch;
+								if (isCivilMatch && match != null) {
+									(businessDataWithMatch as any).civilSelection = match;
 								}
 							}
 
@@ -5387,7 +5415,7 @@ const Search: React.FC = () => {
 
 			if (selectedCategory === 'ORGANISATION' && selectedSearches.has('ADD DOCUMENT SEARCH') && documentSearchId && !isOnlyAddDocumentSearch) {
 				try {
-					await apiService.sendReports('korat.rutvik2511@gmail.com', [], 'Matter', documentSearchId);
+					await apiService.sendReports('andrew@credion.com.au', [], 'Matter', documentSearchId);
 				} catch (emailError: any) {
 					console.error('Error sending document ID email:', emailError);
 				}
@@ -6550,7 +6578,7 @@ const Search: React.FC = () => {
 									)}
 
 									{/* Selected Persons for Individual Reports - Display under search button */}
-									{selectedCategory === 'INDIVIDUAL' && (selectedBankruptcyMatches.length > 0 || selectedRelatedMatches.length > 0 || selectedCriminalMatch || selectedCivilMatch) && (
+									{selectedCategory === 'INDIVIDUAL' && (selectedBankruptcyMatches.length > 0 || selectedRelatedMatches.length > 0 || selectedCriminalMatches.length > 0 || selectedCivilMatches.length > 0) && (
 										<div className="mt-4 space-y-3">
 											{/* Bankruptcy - Main Searches */}
 											{selectedSearches.has('INDIVIDUAL BANKRUPTCY') && selectedBankruptcyMatches.length > 0 && selectedBankruptcyMatches.map((match, index) => match && (
@@ -6570,21 +6598,21 @@ const Search: React.FC = () => {
 												</div>
 											))}
 											{/* Criminal Court - Main Searches */}
-											{selectedSearches.has('COURT') && selectedCriminalMatch && (selectedCourtType === 'ALL' || selectedCourtType === 'CRIMINAL COURT') && (
-												<div className="rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
-													CRIMINAL COURT: {selectedCriminalMatch.given_name || selectedCriminalMatch.fullname || ''} {selectedCriminalMatch.surname || ''}
-													{selectedCriminalMatch.courtType && ` • ${selectedCriminalMatch.courtType}`}
-													{selectedCriminalMatch.state && ` • ${selectedCriminalMatch.state}`}
+											{selectedSearches.has('COURT') && selectedCriminalMatches.length > 0 && (selectedCourtType === 'ALL' || selectedCourtType === 'CRIMINAL COURT') && selectedCriminalMatches.map((match, index) => match && (
+												<div key={index} className="rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
+													CRIMINAL COURT: {match.given_name || match.fullname || ''} {match.surname || ''}
+													{match.courtType && ` • ${match.courtType}`}
+													{match.state && ` • ${match.state}`}
 												</div>
-											)}
+											))}
 											{/* Civil Court - Main Searches */}
-											{selectedSearches.has('COURT') && selectedCivilMatch && (selectedCourtType === 'ALL' || selectedCourtType === 'CIVIL COURT') && (
-												<div className="rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
-													CIVIL COURT: {selectedCivilMatch.given_name || selectedCivilMatch.fullname || ''} {selectedCivilMatch.surname || ''}
-													{selectedCivilMatch.courtType && ` • ${selectedCivilMatch.courtType}`}
-													{selectedCivilMatch.state && ` • ${selectedCivilMatch.state}`}
+											{selectedSearches.has('COURT') && selectedCivilMatches.length > 0 && (selectedCourtType === 'ALL' || selectedCourtType === 'CIVIL COURT') && selectedCivilMatches.map((match, index) => match && (
+												<div key={index} className="rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
+													CIVIL COURT: {match.given_name || match.fullname || ''} {match.surname || ''}
+													{match.courtType && ` • ${match.courtType}`}
+													{match.state && ` • ${match.state}`}
 												</div>
-											)}
+											))}
 											{/* Bankruptcy - Additional Searches */}
 											{selectedIndividualAdditionalSearches.has('INDIVIDUAL BANKRUPTCY') && selectedBankruptcyMatches.length > 0 && selectedBankruptcyMatches.map((match, index) => match && (
 												<div key={index} className="rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
@@ -6603,21 +6631,21 @@ const Search: React.FC = () => {
 												</div>
 											))}
 											{/* Criminal Court - Additional Searches */}
-											{selectedIndividualAdditionalSearches.has('COURT') && selectedCriminalMatch && (selectedCourtType === 'ALL' || selectedCourtType === 'CRIMINAL COURT') && (
-												<div className="rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
-													CRIMINAL COURT: {selectedCriminalMatch.given_name || selectedCriminalMatch.fullname || ''} {selectedCriminalMatch.surname || ''}
-													{selectedCriminalMatch.courtType && ` • ${selectedCriminalMatch.courtType}`}
-													{selectedCriminalMatch.state && ` • ${selectedCriminalMatch.state}`}
+											{selectedIndividualAdditionalSearches.has('COURT') && selectedCriminalMatches.length > 0 && (selectedCourtType === 'ALL' || selectedCourtType === 'CRIMINAL COURT') && selectedCriminalMatches.map((match, index) => match && (
+												<div key={index} className="rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
+													CRIMINAL COURT: {match.given_name || match.fullname || ''} {match.surname || ''}
+													{match.courtType && ` • ${match.courtType}`}
+													{match.state && ` • ${match.state}`}
 												</div>
-											)}
+											))}
 											{/* Civil Court - Additional Searches */}
-											{selectedIndividualAdditionalSearches.has('COURT') && selectedCivilMatch && (selectedCourtType === 'ALL' || selectedCourtType === 'CIVIL COURT') && (
-												<div className="rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
-													CIVIL COURT: {selectedCivilMatch.given_name || selectedCivilMatch.fullname || ''} {selectedCivilMatch.surname || ''}
-													{selectedCivilMatch.courtType && ` • ${selectedCivilMatch.courtType}`}
-													{selectedCivilMatch.state && ` • ${selectedCivilMatch.state}`}
+											{selectedIndividualAdditionalSearches.has('COURT') && selectedCivilMatches.length > 0 && (selectedCourtType === 'ALL' || selectedCourtType === 'CIVIL COURT') && selectedCivilMatches.map((match, index) => match && (
+												<div key={index} className="rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
+													CIVIL COURT: {match.given_name || match.fullname || ''} {match.surname || ''}
+													{match.courtType && ` • ${match.courtType}`}
+													{match.state && ` • ${match.state}`}
 												</div>
-											)}
+											))}
 										</div>
 									)}
 
@@ -6786,7 +6814,7 @@ const Search: React.FC = () => {
 
 						)}
 
-						{selectedCategory === 'INDIVIDUAL' && (isIndividualNameConfirmed || selectedLandTitleIndividualMatch || selectedBankruptcyMatches.length > 0 || selectedRelatedMatches.length > 0 || selectedCriminalMatch || selectedCivilMatch) && (
+						{selectedCategory === 'INDIVIDUAL' && (isIndividualNameConfirmed || selectedLandTitleIndividualMatch || selectedBankruptcyMatches.length > 0 || selectedRelatedMatches.length > 0 || selectedCriminalMatches.length > 0 || selectedCivilMatches.length > 0) && (
 							<div ref={additionalCardRef} className="bg-white rounded-[20px] p-12 mb-8 shadow-xl border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
 								<h2 className="text-[32px] font-bold text-center mb-10 text-gray-900 tracking-tight">
 									Select <span className="text-red-600 relative after:content-[''] after:absolute after:bottom-[-5px] after:left-0 after:right-0 after:h-[3px] after:bg-red-600 after:opacity-20">Enrichment Options</span>

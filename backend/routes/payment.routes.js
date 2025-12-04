@@ -452,6 +452,15 @@ function extractSearchWord(business, type) {
 			searchWord = bussiness?.person?.fullName;
 		}
 
+		if (type === 'rego-ppsr') {
+			const firstName = business?.fname || business?.firstName || '';
+			const middleName = business?.mname || business?.middleName || '';
+			const lastName = business?.lname || business?.lastName || '';
+			
+			const nameParts = [firstName, middleName, lastName].filter(part => part && part.trim());
+			searchWord = nameParts.length > 0 ? nameParts.join(' ').trim() : null;
+		}
+
 		// If no selection object found, use fname and lname
 		if (!searchWord) {
 			const firstName = business?.fname || business?.firstName || '';
@@ -461,15 +470,6 @@ function extractSearchWord(business, type) {
 			const nameParts = [firstName, middleName, lastName].filter(part => part && part.trim());
 			searchWord = nameParts.length > 0 ? nameParts.join(' ').trim() : null;
 		}
-
-		// Handle sole-trader-check type (uses fname and lname)
-		if (type === 'sole-trader-check' && !searchWord) {
-			const firstName = business?.fname || business?.firstName || '';
-			const lastName = business?.lname || business?.lastName || '';
-			const nameParts = [firstName, lastName].filter(part => part && part.trim());
-			searchWord = nameParts.length > 0 ? nameParts.join(' ').trim() : null;
-		}
-
 		return searchWord;
 	}
 
@@ -1943,6 +1943,90 @@ async function get_cotality_propertydata(propertyId) {
 	}
 }
 
+async function trademark_report(bussiness) {
+	try {
+		const bearerToken = await getToken('trademark');
+		
+		const apiUrl = 'https://test.api.ipaustralia.gov.au/public/australian-trade-mark-search-api/v1/search/quick';
+		const requestBody = {
+			query: bussiness.Name,
+			sort: {
+				field: "NUMBER",
+				direction: "ASCENDING"
+			},
+			filters: {
+				quickSearchType: ["WORD"],
+				status: ["REGISTERED"]
+			}
+		};
+
+		const response = await axios.post(apiUrl, requestBody, {
+			headers: {
+				'Authorization': `Bearer ${bearerToken}`,
+				'Content-Type': 'application/json'
+			},
+			timeout: 30000 // 30 second timeout
+		});
+
+		// Check if count is 0
+		if (response.data.count === 0) {
+			const reportUuid = `trademark-${Date.now()}-${uuidv4().substring(0, 8)}`;
+			console.log('No trademarks found. Returning empty data with UUID:', reportUuid);
+			return {
+				status: true,
+				data: {
+					uuid: reportUuid,
+					count: 0,
+					trademarks: []
+				}
+			};
+		}
+
+		// If there are results, fetch details for each trademark ID
+		const trademarkIds = response.data.trademarkIds || [];
+		const trademarkDetails = [];
+
+		for (const trademarkId of trademarkIds) {
+			try {
+				const detailUrl = `https://test.api.ipaustralia.gov.au/public/australian-trade-mark-search-api/v1/trade-mark/${trademarkId}`;
+				console.log(`Fetching trademark details for ID: ${trademarkId}`);
+				
+				const detailResponse = await axios.get(detailUrl, {
+					headers: {
+						'Authorization': `Bearer ${bearerToken}`,
+						'Content-Type': 'application/json'
+					},
+					timeout: 30000 // 30 second timeout
+				});
+
+				console.log(`Trademark ${trademarkId} Details:`, JSON.stringify(detailResponse.data, null, 2));
+				trademarkDetails.push(detailResponse.data);
+			} catch (error) {
+				console.error(`❌ Error fetching trademark ${trademarkId}:`, error.response?.data || error.message);
+				// Continue with other trademarks even if one fails
+			}
+		}
+
+		const reportUuid = `trademark-${Date.now()}-${uuidv4().substring(0, 8)}`;
+		console.log('Trademark Report UUID:', reportUuid);
+		console.log('Total Trademarks Found:', trademarkDetails.length);
+		
+		return {
+			status: true,
+			data: {
+				uuid: reportUuid,
+				count: response.data.count,
+				trademarkIds: trademarkIds,
+				trademarks: trademarkDetails,
+				aggregations: response.data.aggregations
+			}
+		};
+	} catch (error) {
+		console.error('❌ Trademark API Error:', error.response?.data || error.message);
+		throw error;
+	}
+}
+
 // Function to create report via external API
 async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 	try {
@@ -1983,8 +2067,6 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 			reportData = {
 				data: rdataObj
 			};
-
-
 		} else {
 			if (type == "asic-current" || type == "court" || type == "ato") {
 				const apiUrl = 'https://alares.com.au/api/reports/create';
@@ -2108,10 +2190,12 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 				reportData = await land_title_individual(business);
 			} else if (type == 'sole-trader-check') {
 				reportData = await sole_trader_check_report(business);
-			}else if(type == 'rego-ppsr'){
+			} else if(type == 'rego-ppsr'){
 				reportData = await rego_ppsr_report(business);
 			} else if(type == 'unclaimed-money'){
 				reportData = await unclaimed_money_report(business);
+			} else if(type == 'trademark'){
+				reportData = await trademark_report(business);
 			}
 
 			if (!existingReport && reportData && reportData.status !== false && reportData.data) {
