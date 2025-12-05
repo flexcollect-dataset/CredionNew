@@ -400,6 +400,38 @@ const Search: React.FC = () => {
 		'TRADEMARK': 20
   };
 
+  // State-based pricing configuration based on spreadsheet
+  // Format: { state: { locator: { individualOrganisation: price, address: price }, titleSearchFull: { individualOrganisation: price, address: price, title: price } } }
+  const landTitleStatePricing: Record<string, {
+    locator: { individualOrganisation: number; address: number };
+    titleSearchFull: { individualOrganisation: number; address: number; title: number };
+  }> = {
+    NSW: {
+      locator: { individualOrganisation: 25.00, address: 7.00 },
+      titleSearchFull: { individualOrganisation: 27.00, address: 27.00, title: 27.00 }
+    },
+    VIC: {
+      locator: { individualOrganisation: 15.67, address: 15.00 },
+      titleSearchFull: { individualOrganisation: 27.00, address: 27.00, title: 27.00 }
+    },
+    QLD: {
+      locator: { individualOrganisation: 9.32, address: 16.00 },
+      titleSearchFull: { individualOrganisation: 40.00, address: 40.00, title: 40.00 }
+    },
+    WA: {
+      locator: { individualOrganisation: 13.73, address: 12.00 },
+      titleSearchFull: { individualOrganisation: 50.00, address: 50.00, title: 50.00 }
+    },
+    SA: {
+      locator: { individualOrganisation: 36.07, address: 24.00 },
+      titleSearchFull: { individualOrganisation: 68.00, address: 68.00, title: 68.00 }
+    },
+    NT: {
+      locator: { individualOrganisation: 27.25, address: 26.00 },
+      titleSearchFull: { individualOrganisation: 65.00, address: 65.00, title: 65.00 }
+    }
+  };
+
   const landTitlePricingConfig = {
     base: {
       'ABN/ACN LAND TITLE': 100,
@@ -2943,6 +2975,87 @@ const Search: React.FC = () => {
 
 
 
+  // Calculate land title category price based on state and option type
+  const calculateLandTitleCategoryPrice = useCallback((
+    option: LandTitleCategoryOption,
+    states: Set<string> | string[],
+    selection?: LandTitleSelection
+  ): number => {
+    const statesArray = Array.isArray(states) ? states : Array.from(states);
+    if (statesArray.length === 0) {
+      return 0;
+    }
+
+    let totalPrice = 0;
+
+    // Calculate price for each selected state
+    statesArray.forEach(state => {
+      const statePricing = landTitleStatePricing[state];
+      if (!statePricing) return;
+
+      if (option === 'ADDRESS') {
+        // Address: locator price + title search full price
+        totalPrice += statePricing.locator.address + statePricing.titleSearchFull.address;
+      } else if (option === 'TITLE_REFERENCE') {
+        // Title Reference: title search full price
+        totalPrice += statePricing.titleSearchFull.title;
+      } else if (option === 'LAND_ORGANISATION') {
+        // Organization: always add locator price (for searching title references)
+        totalPrice += statePricing.locator.individualOrganisation;
+        
+        // If not SUMMARY, add additional price for retrieving details
+        if (selection?.detail !== 'SUMMARY') {
+          const currentCount = selection?.currentCount ?? 0;
+          const historicalCount = selection?.historicalCount ?? 0;
+          let totalCount = 0;
+          
+          if (selection?.detail === 'CURRENT') {
+            totalCount = currentCount;
+          } else if (selection?.detail === 'PAST') {
+            totalCount = historicalCount;
+          } else if (selection?.detail === 'ALL') {
+            totalCount = currentCount + historicalCount;
+          }
+          
+          // If no counts available, use 1 as default
+          if (totalCount === 0) {
+            totalCount = 1;
+          }
+          
+          // Add price for retrieving information about title references
+          totalPrice += statePricing.titleSearchFull.individualOrganisation * totalCount;
+        }
+      } else if (option === 'LAND_INDIVIDUAL') {
+        // Individual: always add locator price (for searching title references)
+        totalPrice += statePricing.locator.individualOrganisation;
+        
+        // If not SUMMARY, add additional price for retrieving details
+        if (selection?.detail !== 'SUMMARY') {
+          const currentCount = selection?.currentCount ?? 0;
+          const historicalCount = selection?.historicalCount ?? 0;
+          let totalCount = 0;
+          
+          if (selection?.detail === 'CURRENT') {
+            totalCount = currentCount;
+          } else if (selection?.detail === 'PAST') {
+            totalCount = historicalCount;
+          } else if (selection?.detail === 'ALL') {
+            totalCount = currentCount + historicalCount;
+          }
+          
+          if (totalCount === 0) {
+            totalCount = 1;
+          }
+          
+          // Add price for retrieving information about title references
+          totalPrice += statePricing.titleSearchFull.individualOrganisation * totalCount;
+        }
+      }
+    });
+
+    return totalPrice;
+  }, []);
+
   const calculateLandTitlePrice = useCallback((option: LandTitleOption, selection: LandTitleSelection) => {
     let price = landTitlePricingConfig.base[option];
     if (selection.addOn) {
@@ -3211,10 +3324,11 @@ const Search: React.FC = () => {
 		'REGO PPSR': 22.00,
 		'SOLE TRADER CHECK': 0.00,
 		'UNCLAIMED MONEY': 0.00,
-    'LAND_TITLE_TITLE_REFERENCE': titleReferenceDetailPricing[titleReferenceSelection.detail],
-    'LAND_TITLE_ORGANISATION': landTitleCategoryOptionConfig.LAND_ORGANISATION.price,
-    'LAND_TITLE_INDIVIDUAL': landTitleCategoryOptionConfig.LAND_INDIVIDUAL.price,
-    'LAND_TITLE_ADDRESS': landTitleCategoryOptionConfig.ADDRESS.price,
+    // Land title category prices are calculated dynamically based on state
+    'LAND_TITLE_TITLE_REFERENCE': 0,
+    'LAND_TITLE_ORGANISATION': 0,
+    'LAND_TITLE_INDIVIDUAL': 0,
+    'LAND_TITLE_ADDRESS': 0,
     'LAND_TITLE_ADD_ON': LAND_TITLE_ADD_ON_PRICE
   };
 
@@ -3352,19 +3466,71 @@ const Search: React.FC = () => {
 				if (selectedCategory === 'INDIVIDUAL' && search === 'COURT') {
 					return;
 				}
-				// For individual bankruptcy and related entities in main searches, charge per selected name
-				if (selectedCategory === 'INDIVIDUAL' && search === 'INDIVIDUAL BANKRUPTCY') {
-					const matchCount = selectedBankruptcyMatches.length > 0 ? selectedBankruptcyMatches.length : 1;
-					total += searchPrices['INDIVIDUAL BANKRUPTCY'] * matchCount;
-				} else if (selectedCategory === 'INDIVIDUAL' && search === 'INDIVIDUAL RELATED ENTITIES') {
-					const matchCount = selectedRelatedMatches.length > 0 ? selectedRelatedMatches.length : 1;
-					total += searchPrices['INDIVIDUAL RELATED ENTITIES'] * matchCount;
-				} else {
-        const priceKey = search === 'INDIVIDUAL PPSR' ? 'ABN/ACN PPSR' : search;
-        if (priceKey in searchPrices) {
-          total += searchPrices[priceKey as keyof SearchPrices];
+				// Handle land title category searches with state-based pricing
+				if (search === 'LAND_TITLE_TITLE_REFERENCE' || search === 'LAND_TITLE_ADDRESS' || 
+				    search === 'LAND_TITLE_ORGANISATION' || search === 'LAND_TITLE_INDIVIDUAL') {
+					// Find the corresponding category option
+					let categoryOption: LandTitleCategoryOption | null = null;
+					let states: Set<string> = new Set();
+					let selection: LandTitleSelection | undefined;
+					
+					if (search === 'LAND_TITLE_TITLE_REFERENCE') {
+						categoryOption = 'TITLE_REFERENCE';
+						states = landTitleReferenceStates;
+						selection = landTitleCategorySelections.TITLE_REFERENCE || titleReferenceSelection;
+					} else if (search === 'LAND_TITLE_ADDRESS') {
+						categoryOption = 'ADDRESS';
+						// For address, extract state from address details
+						if (landTitleAddressDetails?.state) {
+							// Map full state names to abbreviations if needed
+							const stateMap: Record<string, string> = {
+								'New South Wales': 'NSW',
+								'Victoria': 'VIC',
+								'Queensland': 'QLD',
+								'Western Australia': 'WA',
+								'South Australia': 'SA',
+								'Northern Territory': 'NT',
+								'Tasmania': 'TAS',
+								'Australian Capital Territory': 'ACT'
+							};
+							const stateAbbr = stateMap[landTitleAddressDetails.state] || landTitleAddressDetails.state;
+							// Check if it's a valid state abbreviation
+							if (landTitleStateOptions.includes(stateAbbr as any)) {
+								states = new Set([stateAbbr]);
+							}
+						}
+						selection = landTitleCategorySelections.ADDRESS;
+					} else if (search === 'LAND_TITLE_ORGANISATION') {
+						categoryOption = 'LAND_ORGANISATION';
+						states = landTitleOrganisationStates;
+						selection = landTitleCategorySelections.LAND_ORGANISATION;
+					} else if (search === 'LAND_TITLE_INDIVIDUAL') {
+						categoryOption = 'LAND_INDIVIDUAL';
+						states = landTitleIndividualStates;
+						selection = landTitleCategorySelections.LAND_INDIVIDUAL;
 					}
-        }
+					
+					if (categoryOption && states.size > 0) {
+						total += calculateLandTitleCategoryPrice(categoryOption, states, selection);
+					}
+				} else if (search === 'LAND_TITLE_ADD_ON') {
+					// Add-on price
+					total += searchPrices['LAND_TITLE_ADD_ON'];
+				} else {
+					// For individual bankruptcy and related entities in main searches, charge per selected name
+					if (selectedCategory === 'INDIVIDUAL' && search === 'INDIVIDUAL BANKRUPTCY') {
+						const matchCount = selectedBankruptcyMatches.length > 0 ? selectedBankruptcyMatches.length : 1;
+						total += searchPrices['INDIVIDUAL BANKRUPTCY'] * matchCount;
+					} else if (selectedCategory === 'INDIVIDUAL' && search === 'INDIVIDUAL RELATED ENTITIES') {
+						const matchCount = selectedRelatedMatches.length > 0 ? selectedRelatedMatches.length : 1;
+						total += searchPrices['INDIVIDUAL RELATED ENTITIES'] * matchCount;
+					} else {
+						const priceKey = search === 'INDIVIDUAL PPSR' ? 'ABN/ACN PPSR' : search;
+						if (priceKey in searchPrices) {
+							total += searchPrices[priceKey as keyof SearchPrices];
+						}
+					}
+				}
       }
     });
 
@@ -7551,7 +7717,7 @@ setLandTitleOrganisationSearchTerm(displayText);
                     onClick={handleTitleReferenceSummaryContinue}
                     className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
                   >
-                    Retrive – {formatCurrency(titleReferenceDetailPricing.SUMMARY)}
+                    Retrive
                   </button>
                   <button
                     type="button"
@@ -7756,7 +7922,20 @@ setLandTitleOrganisationSearchTerm(displayText);
                     disabled={isLoadingLandTitleCounts}
                     className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    {isLoadingLandTitleCounts ? 'Processing...' : `Retrive – ${formatCurrency(landTitleIndividualDetailPricing.SUMMARY)}`}
+                    {(() => {
+                      if (isLoadingLandTitleCounts) return 'Processing...';
+                      
+                      // Calculate locator price for retrieve button
+                      let retrievePrice = 0;
+                      landTitleIndividualStates.forEach(state => {
+                        const statePricing = landTitleStatePricing[state];
+                        if (statePricing) {
+                          retrievePrice += statePricing.locator.individualOrganisation;
+                        }
+                      });
+                      
+                      return retrievePrice > 0 ? `Retrive – ${formatCurrency(retrievePrice)}` : 'Retrive';
+                    })()}
                   </button>
                   <button
                     type="button"
@@ -7788,6 +7967,18 @@ setLandTitleOrganisationSearchTerm(displayText);
                 <div className="space-y-3">
                   {(Object.keys(landTitleIndividualDetailCounts) as Array<Exclude<LandTitleDetailSelection, 'SUMMARY'>>).map(detail => {
                     const isSelected = pendingLandTitleSelection.detail === detail;
+                    const count = landTitleIndividualDetailCounts[detail];
+                    
+                    // Calculate additional price for retrieving details
+                    let detailPrice = 0;
+                    landTitleIndividualStates.forEach(state => {
+                      const statePricing = landTitleStatePricing[state];
+                      if (statePricing) {
+                        const stateCount = count > 0 ? count : 1;
+                        detailPrice += statePricing.titleSearchFull.individualOrganisation * stateCount;
+                      }
+                    });
+                    
                     return (
                       <button
                         key={detail}
@@ -7800,9 +7991,11 @@ setLandTitleOrganisationSearchTerm(displayText);
                       >
                         <div className="flex items-center justify-between">
                           <span>
-                            {detail === 'CURRENT' ? 'Current' : detail === 'PAST' ? 'Past' : 'All'} ({landTitleIndividualDetailCounts[detail]} available)
+                            {detail === 'CURRENT' ? 'Current' : detail === 'PAST' ? 'Past' : 'All'} {count > 0 ? `${count} available` : ''}
                           </span>
-                          <span className="text-xs font-bold">{formatCurrency(landTitleIndividualDetailPricing[detail])}</span>
+                          {detailPrice > 0 && (
+                            <span className="text-xs font-bold">{formatCurrency(detailPrice)}</span>
+                          )}
                         </div>
                       </button>
                     );
@@ -7865,7 +8058,6 @@ setLandTitleOrganisationSearchTerm(displayText);
                   >
                     <div className="flex items-center justify-between">
                       <span>{LAND_TITLE_ADD_ON_LABEL}</span>
-                      <span className="text-xs font-bold">{formatCurrency(landTitlePricingConfig.addOn)}</span>
                     </div>
                   </button>
                   <button
@@ -7972,7 +8164,34 @@ setLandTitleOrganisationSearchTerm(displayText);
                     disabled={isLoadingLandTitleCounts || (landTitleModalOpen === 'ABN/ACN LAND TITLE' && !(selectedCategory === 'LAND TITLE' && selectedLandTitleOption === 'LAND_ORGANISATION' && landTitleOrganisationStates.size > 0) && landTitleOrganisationStates.size === 0)}
                     className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {isLoadingLandTitleCounts ? 'Processing...' : `Retrive – ${formatCurrency(landTitlePricingConfig.base[landTitleModalOpen])}`}
+                    {(() => {
+                      if (isLoadingLandTitleCounts) return 'Processing...';
+                      
+                      // Calculate locator price for retrieve button
+                      let retrievePrice = 0;
+                      if (landTitleModalOpen === 'ABN/ACN LAND TITLE') {
+                        // For organization, use landTitleOrganisationStates
+                        const states = selectedCategory === 'LAND TITLE' && selectedLandTitleOption === 'LAND_ORGANISATION' && landTitleOrganisationStates.size > 0
+                          ? landTitleOrganisationStates
+                          : landTitleOrganisationStates;
+                        states.forEach(state => {
+                          const statePricing = landTitleStatePricing[state];
+                          if (statePricing) {
+                            retrievePrice += statePricing.locator.individualOrganisation;
+                          }
+                        });
+                      } else if (landTitleModalOpen === 'DIRECTOR LAND TITLE') {
+                        // For individual, use landTitleIndividualStates
+                        landTitleIndividualStates.forEach(state => {
+                          const statePricing = landTitleStatePricing[state];
+                          if (statePricing) {
+                            retrievePrice += statePricing.locator.individualOrganisation;
+                          }
+                        });
+                      }
+                      
+                      return retrievePrice > 0 ? `Retrive – ${formatCurrency(retrievePrice)}` : 'Retrive';
+                    })()}
                   </button>
                   <button
                     type="button"
@@ -8037,7 +8256,48 @@ setLandTitleOrganisationSearchTerm(displayText);
                     return options.map(option => {
                       const detail = option.key as LandTitleDetailSelection;
                       const selectionForPrice = { ...pendingLandTitleSelection, detail, addOn: false };
-                      const pricePreview = calculateLandTitlePrice(landTitleModalOpen, selectionForPrice);
+                      
+                      // Calculate count and additional price for retrieving details (only for Current/Past/All, not SUMMARY)
+                      let detailPrice = 0;
+                      let count = 0;
+                      
+                      if (detail !== 'SUMMARY') {
+                        let states: Set<string> = new Set();
+                        
+                        if (landTitleModalOpen === 'ABN/ACN LAND TITLE') {
+                          states = selectedCategory === 'LAND TITLE' && selectedLandTitleOption === 'LAND_ORGANISATION' && landTitleOrganisationStates.size > 0
+                            ? landTitleOrganisationStates
+                            : landTitleOrganisationStates;
+                          
+                          if (detail === 'CURRENT') {
+                            count = currentCount;
+                          } else if (detail === 'PAST') {
+                            count = historicalCount;
+                          } else if (detail === 'ALL') {
+                            count = allCount;
+                          }
+                        } else if (landTitleModalOpen === 'DIRECTOR LAND TITLE') {
+                          states = landTitleIndividualStates;
+                          
+                          if (detail === 'CURRENT') {
+                            count = currentCount;
+                          } else if (detail === 'PAST') {
+                            count = historicalCount;
+                          } else if (detail === 'ALL') {
+                            count = allCount;
+                          }
+                        }
+                        
+                        // Calculate price: title search full * count for each state
+                        states.forEach(state => {
+                          const statePricing = landTitleStatePricing[state];
+                          if (statePricing) {
+                            const stateCount = count > 0 ? count : 1;
+                            detailPrice += statePricing.titleSearchFull.individualOrganisation * stateCount;
+                          }
+                        });
+                      }
+                      
                       return (
                         <button
                           key={option.key}
@@ -8049,8 +8309,13 @@ setLandTitleOrganisationSearchTerm(displayText);
                             }`}
                         >
                           <div className="flex items-center justify-between">
-                            <span>{option.label}</span>
-                            <span className="text-xs font-bold">{detail === 'SUMMARY' ? '—' : formatCurrency(pricePreview)}</span>
+                            <span>
+                              {detail === 'CURRENT' ? 'Current' : detail === 'PAST' ? 'Past' : detail === 'ALL' ? 'All' : 'Title References Only'}
+                              {detail !== 'SUMMARY' && count > 0 && ` ${count} available`}
+                            </span>
+                            {detail !== 'SUMMARY' && detailPrice > 0 && (
+                              <span className="text-xs font-bold">{formatCurrency(detailPrice)}</span>
+                            )}
                           </div>
                         </button>
                       );
@@ -8088,7 +8353,6 @@ setLandTitleOrganisationSearchTerm(displayText);
                   >
                     <div className="flex items-center justify-between">
                       <span>Property Value + Sales History + More</span>
-                      <span className="text-xs font-bold">{formatCurrency(landTitlePricingConfig.addOn)}</span>
                     </div>
                   </button>
                   <button
@@ -8314,6 +8578,51 @@ setLandTitleOrganisationSearchTerm(displayText);
 										matchCount = selectedRelatedMatches.length > 0 ? selectedRelatedMatches.length : 1;
 										displayPrice = basePrice * matchCount;
 										showMultiplier = matchCount > 1;
+									} else if (search === 'LAND_TITLE_TITLE_REFERENCE' || search === 'LAND_TITLE_ADDRESS' || 
+									    search === 'LAND_TITLE_ORGANISATION' || search === 'LAND_TITLE_INDIVIDUAL') {
+										// Calculate dynamic price for land title category searches
+										let categoryOption: LandTitleCategoryOption | null = null;
+										let states: Set<string> = new Set();
+										let selection: LandTitleSelection | undefined;
+										
+										if (search === 'LAND_TITLE_TITLE_REFERENCE') {
+											categoryOption = 'TITLE_REFERENCE';
+											states = landTitleReferenceStates;
+											selection = landTitleCategorySelections.TITLE_REFERENCE || titleReferenceSelection;
+										} else if (search === 'LAND_TITLE_ADDRESS') {
+											categoryOption = 'ADDRESS';
+											if (landTitleAddressDetails?.state) {
+												const stateMap: Record<string, string> = {
+													'New South Wales': 'NSW',
+													'Victoria': 'VIC',
+													'Queensland': 'QLD',
+													'Western Australia': 'WA',
+													'South Australia': 'SA',
+													'Northern Territory': 'NT',
+													'Tasmania': 'TAS',
+													'Australian Capital Territory': 'ACT'
+												};
+												const stateAbbr = stateMap[landTitleAddressDetails.state] || landTitleAddressDetails.state;
+												if (landTitleStateOptions.includes(stateAbbr as any)) {
+													states = new Set([stateAbbr]);
+												}
+											}
+											selection = landTitleCategorySelections.ADDRESS;
+										} else if (search === 'LAND_TITLE_ORGANISATION') {
+											categoryOption = 'LAND_ORGANISATION';
+											states = landTitleOrganisationStates;
+											selection = landTitleCategorySelections.LAND_ORGANISATION;
+										} else if (search === 'LAND_TITLE_INDIVIDUAL') {
+											categoryOption = 'LAND_INDIVIDUAL';
+											states = landTitleIndividualStates;
+											selection = landTitleCategorySelections.LAND_INDIVIDUAL;
+										}
+										
+										if (categoryOption && states.size > 0) {
+											displayPrice = calculateLandTitleCategoryPrice(categoryOption, states, selection);
+										}
+									} else if (search === 'LAND_TITLE_ADD_ON') {
+										displayPrice = searchPrices['LAND_TITLE_ADD_ON'];
 									} else {
 										const priceKey = search === 'INDIVIDUAL PPSR' ? 'ABN/ACN PPSR' : search;
 										displayPrice = searchPrices[priceKey as keyof SearchPrices] || searchPrices[search as keyof SearchPrices] || 0;
