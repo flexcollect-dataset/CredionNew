@@ -440,14 +440,6 @@ const Search: React.FC = () => {
     addOn: 40
   } as const;
 
-  const landTitleIndividualDetailPricing: Record<LandTitleDetailSelection, number> = {
-    SUMMARY: 20,
-    CURRENT: 10,
-    PAST: 110,
-    ALL: 120
-  };
-
-
   const isLandTitleOption = (option: string): option is LandTitleOption =>
     option === 'ABN/ACN LAND TITLE' || option === 'DIRECTOR LAND TITLE';
 
@@ -513,15 +505,6 @@ const Search: React.FC = () => {
       price: 125
     }
   };
-
-  const titleReferenceDetailPricing: Record<LandTitleDetailSelection, number> = {
-    SUMMARY: landTitleCategoryOptionConfig.TITLE_REFERENCE.price,
-    CURRENT: landTitleCategoryOptionConfig.TITLE_REFERENCE.price,
-    PAST: landTitleCategoryOptionConfig.TITLE_REFERENCE.price,
-    ALL: landTitleCategoryOptionConfig.TITLE_REFERENCE.price
-  };
-
-
 
   const LAND_TITLE_ADD_ON_LABEL = 'Property Value + Sales History + More';
   const LAND_TITLE_ADD_ON_PRICE = 40;
@@ -8255,7 +8238,6 @@ setLandTitleOrganisationSearchTerm(displayText);
                         ];
                     return options.map(option => {
                       const detail = option.key as LandTitleDetailSelection;
-                      const selectionForPrice = { ...pendingLandTitleSelection, detail, addOn: false };
                       
                       // Calculate count and additional price for retrieving details (only for Current/Past/All, not SUMMARY)
                       let detailPrice = 0;
