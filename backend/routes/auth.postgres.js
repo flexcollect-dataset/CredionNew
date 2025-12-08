@@ -2,9 +2,11 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { body, validationResult } = require('express-validator');
 const { User, RefreshToken, PasswordResetToken } = require('../models');
 const { Op } = require('sequelize');
+const emailService = require('../services/email.service');
 
 // JWT Secret (should be in environment variables)
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
@@ -443,9 +445,222 @@ router.post('/check-mobile', async (req, res) => {
     }
 });
 
-// ============================================
-// ADMIN/DEBUG ROUTES
-// ============================================
+
+router.post('/forgot-password', [
+    body('email')
+        .optional()
+        .isEmail()
+        .normalizeEmail()
+        .withMessage('Please provide a valid email address')
+], async (req, res) => {
+    try {
+        const { email, token, password } = req.body;
+
+        if (token && password) {
+            if (password.length < 8) {
+                return res.status(400).json({
+                    error: 'VALIDATION_ERROR',
+                    message: 'Password must be at least 8 characters long'
+                });
+            }
+
+
+            const resetToken = await PasswordResetToken.findOne({
+                where: {
+                    token: token,
+                    isUsed: false,
+                    expiresAt: {
+                        [Op.gt]: new Date()
+                    }
+                },
+                include: [{
+                    model: User,
+                    attributes: ['userId', 'email', 'isActive']
+                }]
+            });
+
+            if (!resetToken) {
+                return res.status(400).json({
+                    error: 'INVALID_TOKEN',
+                    message: 'Invalid or expired reset token. Please request a new password reset link.'
+                });
+            }
+ 
+            if (!resetToken.User.isActive) {
+                return res.status(403).json({
+                    error: 'ACCOUNT_DISABLED',
+                    message: 'Your account has been disabled'
+                });
+            }
+
+            const hashedPassword = await bcrypt.hash(password, 10);
+
+            await User.update(
+                { password: hashedPassword },
+                { where: { userId: resetToken.User.userId } }
+            );
+
+            await resetToken.update({ isUsed: true });
+
+            await PasswordResetToken.update(
+                { isUsed: true },
+                { 
+                    where: { 
+                        userId: resetToken.User.userId,
+                        isUsed: false,
+                        tokenId: { [Op.ne]: resetToken.tokenId }
+                    } 
+                }
+            );
+
+            return res.json({
+                success: true,
+                message: 'Your password has been reset successfully. You can now login with your new password.'
+            });
+        }
+
+        if (!token && !password) {
+            const errors = validationResult(req);
+            if (!errors.isEmpty()) {
+                return res.status(400).json({
+                    error: 'VALIDATION_ERROR',
+                    message: errors.array()[0].msg,
+                    errors: errors.array()
+                });
+            }
+
+            if (!email) {
+                return res.status(400).json({
+                    error: 'VALIDATION_ERROR',
+                    message: 'Email is required'
+                });
+            }
+
+            const normalizedEmail = email.toLowerCase();
+
+            const user = await User.findOne({
+                where: { 
+                    email: normalizedEmail 
+                }
+            });
+
+            if (!user) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'EMAIL_NOT_FOUND',
+                    message: 'Email not found'
+                });
+            }
+
+            const resetToken = crypto.randomBytes(32).toString('hex');
+            const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+            await PasswordResetToken.update(
+                { isUsed: true },
+                { where: { userId: user.userId, isUsed: false } }
+            );
+
+            await PasswordResetToken.create({
+                userId: user.userId,
+                token: resetToken,
+                expiresAt: expiresAt,
+                isUsed: false
+            });
+
+            const resetUrl = `${FRONTEND_BASE_URL}/forgot-password?token=${resetToken}`;
+
+            try {
+                await emailService.sendPasswordResetEmail(user.email, resetToken, resetUrl);
+            } catch (emailError) {
+                console.error('Error sending password reset email:', emailError);
+                return res.status(500).json({
+                    error: 'EMAIL_SEND_FAILED',
+                    message: 'Failed to send password reset email. Please try again later.'
+                });
+            }
+
+            return res.json({
+                success: true,
+                message: 'A password reset link has been sent. Please check your email inbox.'
+            });
+        }
+
+        return res.status(400).json({
+            error: 'INVALID_REQUEST',
+            message: 'Invalid request. Please provide either email (for forgot password) or token and password (for reset).'
+        });
+
+    } catch (error) {
+        console.error('Forgot password error:', error);
+        res.status(500).json({
+            error: 'INTERNAL_ERROR',
+            message: 'An internal error occurred. Please try again.'
+        });
+    }
+});
+
+router.post('/change-password', authenticateToken, [
+    body('currentPassword')
+        .notEmpty()
+        .withMessage('Current password is required'),
+    body('newPassword')
+        .isLength({ min: 8 })
+        .withMessage('New password must be at least 8 characters long')
+], async (req, res) => {
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({
+                error: 'VALIDATION_ERROR',
+                message: errors.array()[0].msg,
+                errors: errors.array()
+            });
+        }
+
+        const { currentPassword, newPassword } = req.body;
+        const userId = req.user.userId;
+
+        const user = await User.findByPk(userId);
+        if (!user) {
+            return res.status(404).json({
+                error: 'USER_NOT_FOUND',
+                message: 'User not found'
+            });
+        }
+
+        const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+        if (!isCurrentPasswordValid) {
+            return res.status(401).json({
+                error: 'INVALID_PASSWORD',
+                message: 'Current password is incorrect'
+            });
+        }
+
+        const isSamePassword = await bcrypt.compare(newPassword, user.password);
+        if (isSamePassword) {
+            return res.status(400).json({
+                error: 'SAME_PASSWORD',
+                message: 'New password must be different from current password'
+            });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        await user.update({ password: hashedPassword });
+
+        res.json({
+            success: true,
+            message: 'Password changed successfully'
+        });
+
+    } catch (error) {
+        console.error('Change password error:', error);
+        res.status(500).json({
+            error: 'INTERNAL_ERROR',
+            message: 'An internal error occurred. Please try again.'
+        });
+    }
+});
 
 // GET /auth/users - List all users (for testing)
 router.get('/users', async (req, res) => {

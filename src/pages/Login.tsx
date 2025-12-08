@@ -105,7 +105,7 @@ const Login = () => {
 
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">Forgot password?</span>
-                  <Link to="/contact" className="text-credion-red hover:text-credion-red-dark font-semibold">
+                  <Link to="/forgot-password" className="text-credion-red hover:text-credion-red-dark font-semibold">
                     Reset
                   </Link>
                 </div>

@@ -219,6 +219,68 @@ These reports have been generated and are ready for review.`;
   }
 }
 
+/**
+ * Send password reset email via Microsoft Graph
+ * @param {string} toEmail - recipient email
+ * @param {string} resetToken - password reset token
+ * @param {string} resetUrl - full URL for password reset
+ */
+async function sendPasswordResetEmail(toEmail, resetToken, resetUrl) {
+  try {
+    const subject = "Reset Your Credion Password";
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #dc2626;">Reset Your Password</h2>
+        <p>Dear User,</p>
+        <p>We received a request to reset your password for your Credion account.</p>
+        <p>Click the button below to reset your password:</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${resetUrl}" style="background-color: #dc2626; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">Reset Password</a>
+        </div>
+        <p>Or copy and paste this link into your browser:</p>
+        <p style="word-break: break-all; color: #6b7280; font-size: 12px;">${resetUrl}</p>
+        <p style="color: #6b7280; font-size: 12px;">This link will expire in 1 hour.</p>
+        <p>If you didn't request a password reset, please ignore this email. Your password will remain unchanged.</p>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+        <p style="color: #6b7280; font-size: 12px;">
+          This is an automated email from Credion. Please do not reply to this email.
+        </p>
+      </div>
+    `;
+    const text = `Reset Your Password
+
+We received a request to reset your password for your Credion account.
+
+Click this link to reset your password:
+${resetUrl}
+
+This link will expire in 1 hour.
+
+If you didn't request a password reset, please ignore this email. Your password will remain unchanged.
+
+This is an automated email from Credion. Please do not reply to this email.`;
+
+    const response = await graphSendMail({
+      senderUpn: SENDER_UPN,
+      toEmail,
+      subject,
+      html,
+      text,
+      attachments: []
+    });
+
+    console.log("✅ Password reset email sent via Microsoft Graph");
+    return {
+      success: true,
+      recipient: toEmail
+    };
+  } catch (error) {
+    console.error("[emailService] Error sending password reset email:", error);
+    throw error;
+  }
+}
+
 module.exports = {
-  sendReports
+  sendReports,
+  sendPasswordResetEmail
 };

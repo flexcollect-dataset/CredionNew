@@ -183,6 +183,29 @@ class ApiService {
 		});
 	}
 
+	async forgotPassword(email?: string, token?: string, password?: string): Promise<{ success: boolean; message: string }> {
+		const body: { email?: string; token?: string; password?: string } = {};
+		
+		if (token && password) {
+			body.token = token;
+			body.password = password;
+		} else if (email) {
+			body.email = email;
+		}
+		
+		return this.request<{ success: boolean; message: string }>('/auth/forgot-password', {
+			method: 'POST',
+			body: JSON.stringify(body),
+		});
+	}
+
+	async changePassword(currentPassword: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+		return this.request<{ success: boolean; message: string }>('/auth/change-password', {
+			method: 'POST',
+			body: JSON.stringify({ currentPassword, newPassword }),
+		});
+	}
+
 	// Health check
 	async healthCheck(): Promise<{ status: string; message: string; timestamp: string }> {
 		return this.request<{ status: string; message: string; timestamp: string }>('/health');
