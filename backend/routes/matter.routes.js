@@ -233,7 +233,8 @@ router.get('/:matterId/reports', authenticateToken, async (req, res) => {
         ur.created_at as "createdAt",
         ur.updated_at as "updatedAt",
         ad.rtype as "reportType",
-        ad.search_word as "searchWord"
+        ad.search_word as "searchWord",
+        ad.abn as "abn"
       FROM user_reports ur
       LEFT JOIN api_data ad ON ur.report_id = ad.id
       WHERE ur.matter_id = $1 AND ur.user_id = $2
@@ -257,6 +258,7 @@ router.get('/:matterId/reports', authenticateToken, async (req, res) => {
       updatedAt: report.updatedAt,
       reportType: report.reportType || null,
       searchWord: report.searchWord || null,
+      abn: report.abn || null,
       downloadUrl: `https://${BUCKET_NAME}.s3.${AWS_REGION}.amazonaws.com/${report.reportName}`
     }));
 

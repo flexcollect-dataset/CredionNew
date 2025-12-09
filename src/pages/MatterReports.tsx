@@ -13,6 +13,7 @@ interface Report {
   downloadUrl: string;
   reportType: string | null;
   searchWord: string | null;
+  abn: string | null;
 }
 
 const MatterReports: React.FC = () => {
@@ -31,11 +32,40 @@ const MatterReports: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [pageSize] = useState(20);
+  const [alertCounts, setAlertCounts] = useState<Record<string, number>>({});
+  const [entityIdMap, setEntityIdMap] = useState<Record<string, number>>({});
+  const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
+  const [notificationsModalOpen, setNotificationsModalOpen] = useState(false);
+  const [selectedEntityId, setSelectedEntityId] = useState<number | null>(null);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
+  const [notificationPage, setNotificationPage] = useState(1);
+  const [notificationTotalPages, setNotificationTotalPages] = useState(1);
+  const [selectedReportAbn, setSelectedReportAbn] = useState<string | null>(null);
+
 
   useEffect(() => {
     if (matterId) {
-      setCurrentPage(1); // Reset to first page when matter changes
+      setCurrentPage(1);
       loadMatter();
+    }
+    
+    const storedCounts = localStorage.getItem('watchlistAlertCounts');
+    if (storedCounts) {
+      try {
+        setAlertCounts(JSON.parse(storedCounts));
+      } catch (error) {
+        console.error('Error parsing stored alert counts:', error);
+      }
+    }
+    
+    const storedEntityIds = localStorage.getItem('watchlistEntityIds');
+    if (storedEntityIds) {
+      try {
+        setEntityIdMap(JSON.parse(storedEntityIds));
+      } catch (error) {
+        console.error('Error parsing stored entity IDs:', error);
+      }
     }
   }, [matterId]);
 
@@ -88,10 +118,123 @@ const MatterReports: React.FC = () => {
     alert('Update functionality coming soon');
   };
 
-  const handleAlert = (report: Report) => {
-    // TODO: Implement alert functionality
-    console.log('Set alert for report:', report);
-    alert('Alert functionality coming soon');
+  const handleAlert = async (report: Report) => {
+    const abn = report.abn;
+    if (!abn) {
+      alert('No ABN found for this report.');
+      return;
+    }
+
+    const entityId = entityIdMap[abn];
+    if (!entityId) {
+      alert('Entity ID not found for this ABN. Please click "Check Watchlist Alerts" first.');
+      return;
+    }
+
+    setSelectedEntityId(entityId);
+    setSelectedReportAbn(abn);
+    setNotificationPage(1);
+    setNotificationsModalOpen(true);
+    await loadNotifications(entityId, 1);
+  };
+
+  const loadNotifications = async (entityId: number, page: number) => {
+    setIsLoadingNotifications(true);
+    try {
+      const response = await apiService.getWatchlistNotifications(entityId, page);
+      if (response.success) {
+        setNotifications(response.data);
+        setNotificationTotalPages(response.last_page);
+        setNotificationPage(response.current_page);
+      } else {
+        alert('Failed to load notifications: ' + (response.message || 'Unknown error'));
+      }
+    } catch (error: any) {
+      console.error('Error loading notifications:', error);
+      alert('Error loading notifications: ' + (error.message || 'Unknown error'));
+    } finally {
+      setIsLoadingNotifications(false);
+    }
+  };
+
+  const handleCloseNotificationsModal = () => {
+    setNotificationsModalOpen(false);
+    setSelectedEntityId(null);
+    setSelectedReportAbn(null);
+    setNotifications([]);
+    setNotificationPage(1);
+  };
+
+  const formatNotificationDate = (dateString: string) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const handleFetchWatchlistAlerts = async () => {
+    setIsLoadingAlerts(true);
+    try {
+      const response = await apiService.getWatchlistEntities();
+      
+      if (response.success && response.data) {
+        const counts: Record<string, number> = {};
+        const entityIds: Record<string, number> = {};
+        
+        response.data.forEach((entity) => {
+          if (entity.abn) {
+            if (entity.num_alerts > 0) {
+              counts[entity.abn] = entity.num_alerts;
+            }
+            entityIds[entity.abn] = entity.id;
+          }
+        });
+
+        setAlertCounts(counts);
+        setEntityIdMap(entityIds);
+        localStorage.setItem('watchlistAlertCounts', JSON.stringify(counts));
+        localStorage.setItem('watchlistEntityIds', JSON.stringify(entityIds));
+        
+        const userData = localStorage.getItem('user');
+        if (userData) {
+          const mattersResponse = await apiService.getMatters();
+          const matters = mattersResponse.matters || [];
+          
+          let totalMatchedReports = 0;
+          for (const matter of matters) {
+            try {
+              const reportsResponse = await apiService.getMatterReports(matter.matterId, 1, 1000);
+              if (reportsResponse.success && reportsResponse.reports) {
+                const matchedReports = reportsResponse.reports.filter((report: any) => 
+                  report.abn && counts[report.abn] && counts[report.abn] > 0
+                );
+                totalMatchedReports += matchedReports.length;
+              }
+            } catch (error) {
+              console.error(`Error fetching reports for matter ${matter.matterId}:`, error);
+            }
+          }
+          
+          const totalAlerts = Object.values(counts).reduce((sum, count) => sum + count, 0);
+          alert(`Successfully loaded alerts. Found ${totalAlerts} total alerts across ${Object.keys(counts).length} ABNs. Matched ${totalMatchedReports} reports across all matters.`);
+        } else {
+          const totalAlerts = Object.values(counts).reduce((sum, count) => sum + count, 0);
+          alert(`Successfully loaded alerts. Found ${totalAlerts} total alerts across ${Object.keys(counts).length} ABNs.`);
+        }
+      } else {
+        alert('Failed to fetch watchlist entities. Please check the watchlist ID.');
+      }
+    } catch (error: any) {
+      console.error('Error fetching watchlist alerts:', error);
+      alert('Error fetching watchlist alerts: ' + (error.message || 'Unknown error'));
+    } finally {
+      setIsLoadingAlerts(false);
+    }
   };
 
   const handleEmailClick = (report: Report) => {
@@ -187,13 +330,32 @@ const MatterReports: React.FC = () => {
               )}
             </div>
           </div>
-          <button
-            onClick={handleAddNewReport}
-            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-          >
-            <Plus size={20} />
-            <span>Add New Report</span>
-          </button>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={handleFetchWatchlistAlerts}
+              disabled={isLoadingAlerts}
+              className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoadingAlerts ? (
+                <>
+                  <RefreshCw size={18} className="animate-spin" />
+                  <span>Loading...</span>
+                </>
+              ) : (
+                <>
+                  <Bell size={18} />
+                  <span>Check Watchlist Alerts</span>
+                </>
+              )}
+            </button>
+            <button
+              onClick={handleAddNewReport}
+              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            >
+              <Plus size={20} />
+              <span>Add New Report</span>
+            </button>
+          </div>
         </div>
 
         {/* Reports List */}
@@ -293,10 +455,15 @@ const MatterReports: React.FC = () => {
                           </button>
                           <button
                             onClick={() => handleAlert(report)}
-                            className="p-2 hover:bg-yellow-50 rounded-lg transition-colors text-yellow-600"
-                            title="Set Alert"
+                            className="p-2 hover:bg-yellow-50 rounded-lg transition-colors text-yellow-600 relative"
+                            title={report.abn && alertCounts[report.abn] ? `${alertCounts[report.abn]} alert(s) for ABN ${report.abn}` : 'Set Alert'}
                           >
                             <Bell size={20} />
+                            {report.abn && alertCounts[report.abn] && alertCounts[report.abn] > 0 && (
+                              <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                                {alertCounts[report.abn]}
+                              </span>
+                            )}
                           </button>
                         </div>
                       </td>
@@ -434,6 +601,165 @@ const MatterReports: React.FC = () => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notifications Modal */}
+      {notificationsModalOpen && selectedEntityId && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={handleCloseNotificationsModal}
+        >
+          <div 
+            className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-6 border-b">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">Notifications</h2>
+                {selectedReportAbn && (
+                  <p className="text-sm text-gray-600 mt-1">ABN: {selectedReportAbn}</p>
+                )}
+              </div>
+              <button
+                onClick={handleCloseNotificationsModal}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors text-gray-500"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6">
+              {isLoadingNotifications ? (
+                <div className="text-center py-8">
+                  <RefreshCw size={32} className="animate-spin mx-auto text-gray-400" />
+                  <p className="text-gray-600 mt-4">Loading notifications...</p>
+                </div>
+              ) : notifications.length === 0 ? (
+                <div className="text-center py-8">
+                  <Bell size={48} className="mx-auto text-gray-400 mb-4" />
+                  <p className="text-gray-600">No notifications found</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {notifications.map((notification) => (
+                    <div
+                      key={notification.id}
+                      className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${
+                              notification.status === 'Pending' 
+                                ? 'bg-yellow-100 text-yellow-800' 
+                                : 'bg-green-100 text-green-800'
+                            }`}>
+                              {notification.status}
+                            </span>
+                            <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                              {notification.type}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              {formatNotificationDate(notification.created_at)}
+                            </span>
+                          </div>
+                          <h3 className="font-semibold text-gray-900 mb-1">
+                            {notification.entity?.party_name || 'Unknown Entity'}
+                          </h3>
+                          {notification.source && (
+                            <p className="text-sm text-gray-600 mb-2">
+                              Source: {notification.source}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {notification.details_html ? (
+                        <div 
+                          className="text-sm text-gray-700 mb-2"
+                          dangerouslySetInnerHTML={{ __html: notification.details_html }}
+                        />
+                      ) : notification.details ? (
+                        <p className="text-sm text-gray-700 mb-2">{notification.details}</p>
+                      ) : null}
+                      
+                      {notification.data && (
+                        <div className="mt-2 p-2 bg-gray-50 rounded text-xs">
+                          {notification.data.date && (
+                            <p><strong>Date:</strong> {new Date(notification.data.date).toLocaleDateString()}</p>
+                          )}
+                          {notification.data.action && (
+                            <p><strong>Action:</strong> {notification.data.action}</p>
+                          )}
+                          {notification.data.amount !== undefined && (
+                            <p><strong>Amount:</strong> ${notification.data.amount.toLocaleString()}</p>
+                          )}
+                          {notification.data.previous_amount !== undefined && (
+                            <p><strong>Previous Amount:</strong> ${notification.data.previous_amount.toLocaleString()}</p>
+                          )}
+                        </div>
+                      )}
+                      
+                      {notification.asic_document && (
+                        <div className="mt-2 p-2 bg-blue-50 rounded text-xs">
+                          <p><strong>ASIC Document:</strong> {notification.asic_document.description}</p>
+                          {notification.asic_document.uuid && (
+                            <p><strong>UUID:</strong> {notification.asic_document.uuid}</p>
+                          )}
+                        </div>
+                      )}
+                      
+                      {notification.url && (
+                        <a
+                          href={notification.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:text-blue-800 mt-2 inline-block"
+                        >
+                          View Details →
+                        </a>
+                      )}
+                      
+                      {notification.insolvency_risk_factor && (
+                        <div className="mt-2">
+                          <span className="text-xs font-medium text-gray-600">
+                            Insolvency Risk Factor: <span className="text-red-600">{notification.insolvency_risk_factor}</span>
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            {notificationTotalPages > 1 && (
+              <div className="p-6 border-t flex items-center justify-between">
+                <div className="text-sm text-gray-600">
+                  Page {notificationPage} of {notificationTotalPages}
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => selectedEntityId && loadNotifications(selectedEntityId, notificationPage - 1)}
+                    disabled={notificationPage === 1 || isLoadingNotifications}
+                    className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1 transition-colors"
+                  >
+                    <ChevronLeft size={16} />
+                    <span>Previous</span>
+                  </button>
+                  <button
+                    onClick={() => selectedEntityId && loadNotifications(selectedEntityId, notificationPage + 1)}
+                    disabled={notificationPage >= notificationTotalPages || isLoadingNotifications}
+                    className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1 transition-colors"
+                  >
+                    <span>Next</span>
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

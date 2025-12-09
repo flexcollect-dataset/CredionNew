@@ -632,6 +632,134 @@ class ApiService {
 		});
 	}
 
+	async getWatchlistEntities(): Promise<{
+		success: boolean;
+		data: Array<{
+			id: number;
+			reference: string;
+			type: string;
+			party_name: string;
+			abn: string;
+			acn?: string;
+			num_alerts: number;
+			[key: string]: any;
+		}>;
+		error?: string;
+		message?: string;
+	}> {
+		const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
+		const apiUrl = `https://alares.com.au/api/watchlists/3876/entities`;
+
+		try {
+			const response = await fetch(apiUrl, {
+				method: 'GET',
+				headers: {
+					'Authorization': `Bearer ${bearerToken}`,
+					'Accept': 'application/json'
+				}
+			});
+
+			if (!response.ok) {
+				throw new Error(`API error: ${response.status} ${response.statusText}`);
+			}
+
+			const data = await response.json();
+			return {
+				success: true,
+				data: data.data || []
+			};
+		} catch (error) {
+			console.error('Error fetching watchlist entities:', error);
+			return {
+				success: false,
+				data: [],
+				error: 'WATCHLIST_FETCH_FAILED',
+				message: error instanceof Error ? error.message : 'Failed to retrieve watchlist entities'
+			};
+		}
+	}
+
+	async getWatchlistNotifications(entityId: number, page: number = 1): Promise<{
+		success: boolean;
+		total: number;
+		per_page: number;
+		current_page: number;
+		last_page: number;
+		data: Array<{
+			id: number;
+			watchlist_id: number;
+			watchlist_entity_id: number;
+			watchlist: { name: string };
+			entity: {
+				id: number;
+				watchlist_id: number;
+				reference: string | null;
+				party_name: string;
+				abn: string;
+				acn: string;
+				type: string;
+			};
+			case: any[];
+			licence_class: string | null;
+			asic_document: any | null;
+			data: any | null;
+			source: string;
+			case_type: string;
+			status: string;
+			match_type: string;
+			matched_on: string;
+			matched_party_role: string;
+			type: string;
+			url: string | null;
+			insolvency_risk_factor: string | null;
+			details: string;
+			details_html: string;
+			created_at: string;
+			updated_at: string;
+		}>;
+		error?: string;
+		message?: string;
+	}> {
+		const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
+		const apiUrl = `https://alares.com.au/api/watchlists/3876/notifications?entity_id=${entityId}&page=${page}`;
+
+		try {
+			const response = await fetch(apiUrl, {
+				method: 'GET',
+				headers: {
+					'Authorization': `Bearer ${bearerToken}`,
+					'Accept': 'application/json'
+				}
+			});
+
+			if (!response.ok) {
+				throw new Error(`API error: ${response.status} ${response.statusText}`);
+			}
+
+			const data = await response.json();
+			return {
+				success: true,
+				total: data.total || 0,
+				per_page: data.per_page || 25,
+				current_page: data.current_page || 1,
+				last_page: data.last_page || 1,
+				data: data.data || []
+			};
+		} catch (error) {
+			console.error('Error fetching watchlist notifications:', error);
+			return {
+				success: false,
+				total: 0,
+				per_page: 25,
+				current_page: 1,
+				last_page: 1,
+				data: [],
+				error: 'NOTIFICATIONS_FETCH_FAILED',
+				message: error instanceof Error ? error.message : 'Failed to retrieve notifications'
+			};
+		}
+	}
+
 }
 
 export const apiService = new ApiService();
