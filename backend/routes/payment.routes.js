@@ -449,7 +449,7 @@ function extractSearchWord(business, type) {
 				searchWord = business.criminalSelection.fullname;
 			}
 		} else if (type === 'land-title-individual') {
-			searchWord = bussiness?.person?.fullName;
+			searchWord = business?.person?.fullName;
 		}
 
 		if (type === 'rego-ppsr') {
@@ -575,44 +575,44 @@ async function fetchPpsrReportData(auSearchIdentifier) {
 	return response;
 }
 
-async function director_ppsr_report(bussiness) {
+async function director_ppsr_report(business) {
 	// Get dynamic token for PPSR
 	const ppsrToken = await getToken('ppsr');
 
 	// Convert dob to YYYY-MM-DD format
 	let formattedDob = "1993-03-01"; // Default fallback
-	if (bussiness.dob) {
+	if (business.dob) {
 		try {
 			// Try to parse the date with explicit format (DD/MM/YYYY is common)
 			// Try multiple formats to handle different input formats
 			let parsedDate;
-			if (typeof bussiness.dob === 'string') {
+			if (typeof business.dob === 'string') {
 				// Try DD/MM/YYYY format first (most common based on error)
-				if (bussiness.dob.includes('/')) {
-					parsedDate = moment(bussiness.dob, 'DD/MM/YYYY', true); // strict mode
+				if (business.dob.includes('/')) {
+					parsedDate = moment(business.dob, 'DD/MM/YYYY', true); // strict mode
 					if (!parsedDate.isValid()) {
 						// Try MM/DD/YYYY as fallback
-						parsedDate = moment(bussiness.dob, 'MM/DD/YYYY', true);
+						parsedDate = moment(business.dob, 'MM/DD/YYYY', true);
 					}
-				} else if (bussiness.dob.includes('-')) {
+				} else if (business.dob.includes('-')) {
 					// Already in ISO format or similar
-					parsedDate = moment(bussiness.dob, ['YYYY-MM-DD', 'DD-MM-YYYY'], true);
+					parsedDate = moment(business.dob, ['YYYY-MM-DD', 'DD-MM-YYYY'], true);
 				} else {
 					// Try moment's default parsing as last resort
-					parsedDate = moment(bussiness.dob);
+					parsedDate = moment(business.dob);
 				}
 			} else {
 				// If it's already a Date object or moment object
-				parsedDate = moment(bussiness.dob);
+				parsedDate = moment(business.dob);
 			}
 
 			if (parsedDate && parsedDate.isValid()) {
 				formattedDob = parsedDate.format('YYYY-MM-DD');
 			} else {
-				console.warn('Invalid date format for dob:', bussiness.dob);
+				console.warn('Invalid date format for dob:', business.dob);
 			}
 		} catch (error) {
-			console.error('Error formatting date of birth:', error, 'dob:', bussiness.dob);
+			console.error('Error formatting date of birth:', error, 'dob:', business.dob);
 			// If parsing fails, use default
 		}
 	}
@@ -627,8 +627,8 @@ async function director_ppsr_report(bussiness) {
 			{
 				grantorType: "individual",
 				individualDateOfBirth: formattedDob,
-				individualFamilyName: bussiness.lname,
-				individualGivenNames: bussiness.fname,
+				individualFamilyName: business.lname,
+				individualGivenNames: business.fname,
 				acceptIndividualGrantorSearchDeclaration: true,
 			}
 		]
@@ -741,10 +741,10 @@ async function rego_ppsr_report(business) {
 	}
 }
 
-async function director_bankrupcty_report(bussiness) {
+async function director_bankrupcty_report(business) {
 	reportData = null;
 
-	if (!bussiness || !bussiness.bankruptcySelection) {
+	if (!business || !business.bankruptcySelection) {
 		reportData = {
 			data: {
 				uuid: null
@@ -754,17 +754,17 @@ async function director_bankrupcty_report(bussiness) {
 	}
 
 	reportData = {
-		data: bussiness.bankruptcySelection
+		data: business.bankruptcySelection
 	};
-	reportData.data.uuid = bussiness.bankruptcySelection.extractId;
+	reportData.data.uuid = business.bankruptcySelection.extractId;
 	return reportData;
 }
 
-async function director_related_report(bussiness) {
+async function director_related_report(business) {
 	const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
 	
 	// Check if directorRelatedSelection exists in business object
-	if (!bussiness || !bussiness.directorRelatedSelection) {
+	if (!business || !business.directorRelatedSelection) {
 		// Return proper structure when no selection is available
 		return {
 			data: {
@@ -774,7 +774,7 @@ async function director_related_report(bussiness) {
 	}
 
 	// Extract values from directorRelatedSelection
-	const directorRelatedSelection = bussiness.directorRelatedSelection;
+	const directorRelatedSelection = business.directorRelatedSelection;
 	const dob = directorRelatedSelection.dob || '';
 	const name = directorRelatedSelection.name || '';
 	const person_id = directorRelatedSelection.person_id || '';
@@ -960,14 +960,14 @@ async function fetchAllCourtRecords(apiUrl, params, bearerToken, totalRecords) {
 	}
 }
 
-async function director_court_report(bussiness) {
+async function director_court_report(business) {
 	const bearerToken = '3eiXhUHT9G25QO9';
 
 	// Get fullnames and totals from business object
-	const criminalFullname = bussiness?.criminalSelection?.fullname || bussiness?.civilSelection?.fullname || '';
-	const civilFullname = bussiness?.civilSelection?.fullname || bussiness?.criminalSelection?.fullname || '';
-	const criminalTotal = bussiness?.criminalSelection?.total ? parseInt(bussiness.criminalSelection.total) : null;
-	const civilTotal = bussiness?.civilSelection?.total ? parseInt(bussiness.civilSelection.total) : null;
+	const criminalFullname = business?.criminalSelection?.fullname || business?.civilSelection?.fullname || '';
+	const civilFullname = business?.civilSelection?.fullname || business?.criminalSelection?.fullname || '';
+	const criminalTotal = business?.criminalSelection?.total ? parseInt(business.criminalSelection.total) : null;
+	const civilTotal = business?.civilSelection?.total ? parseInt(business.civilSelection.total) : null;
 
 	// Search Criminal Court
 	let criminalResponse = null;
@@ -1050,16 +1050,16 @@ async function director_court_report(bussiness) {
 	return reportData;
 }
 
-async function director_court_civil(bussiness) {
+async function director_court_civil(business) {
 	const bearerToken = '3eiXhUHT9G25QO9';
 
 	// Civil Court API
 	const civilApiUrl = 'https://corp-api.courtdata.com.au/api/search/civil/record';
 	const civilParams = {
-		fullname: bussiness?.civilSelection?.fullname || '',
+		fullname: business?.civilSelection?.fullname || '',
 	};
 	
-	const civilTotal = bussiness?.civilSelection?.total ? parseInt(bussiness.civilSelection.total) : null;
+	const civilTotal = business?.civilSelection?.total ? parseInt(business.civilSelection.total) : null;
 	let civilResponse;
 
 	// If total is more than 20, fetch all pages
@@ -1093,14 +1093,14 @@ async function director_court_civil(bussiness) {
 	return reportData;
 }
 
-async function director_court_criminal(bussiness) {
+async function director_court_criminal(business) {
 	const bearerToken = '3eiXhUHT9G25QO9';
 	const criminalApiUrl = 'https://corp-api.courtdata.com.au/api/search/criminal/record';
 	const criminalParams = {
-		fullname: bussiness?.criminalSelection?.fullname || '',
+		fullname: business?.criminalSelection?.fullname || '',
 	};
 	
-	const criminalTotal = bussiness?.criminalSelection?.total ? parseInt(bussiness.criminalSelection.total) : null;
+	const criminalTotal = business?.criminalSelection?.total ? parseInt(business.criminalSelection.total) : null;
 	let criminalResponse;
 
 	// If total is more than 20, fetch all pages
@@ -1367,7 +1367,7 @@ async function property(abn, cname, ldata) {
 	return reportData;
 }
 
-async function director_property(bussiness) {
+async function director_property(business) {
 	let cotalityData = null;
 	let titleRefData = null;
 
@@ -1943,13 +1943,13 @@ async function get_cotality_propertydata(propertyId) {
 	}
 }
 
-async function trademark_report(bussiness) {
+async function trademark_report(business) {
 	try {
 		const bearerToken = await getToken('trademark');
 		
 		const apiUrl = 'https://test.api.ipaustralia.gov.au/public/australian-trade-mark-search-api/v1/search/quick';
 		const requestBody = {
-			query: bussiness.Name,
+			query: business.Name,
 			sort: {
 				field: "NUMBER",
 				direction: "ASCENDING"

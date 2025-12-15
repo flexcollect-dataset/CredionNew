@@ -5347,6 +5347,7 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 	// For land title address reports, show the searched address in the cover header
 	if (reportype === 'land-title-address') {
 		headerIdentifier = extractSearchWord(bussiness, reportype);
+		replaceVar('property_report_address_title', headerIdentifier);
 	}
 
 	// Ensure acn and abn fields ALWAYS exist - set defaults if missing
@@ -5662,7 +5663,6 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 
 
 	replaceVar('property_report_title', extractedData.property_report_title || 'Property Title Report');
-	replaceVar('property_report_address_title', headerIdentifier)
 	replaceVar('property_title_reference', extractedData.property_title_reference || 'N/A');
 	replaceVar('property_volume', extractedData.property_volume || 'N/A');
 	replaceVar('property_search_date', extractedData.property_search_date || 'N/A');
