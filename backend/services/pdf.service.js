@@ -45,10 +45,10 @@ function extractSearchWord(business, type) {
 	// Determine if this is an organization or individual based on report type
 	const isLandTitleOrg = type === 'land-title-organisation';
 	const isLandTitleIndividual = type === 'land-title-individual';
-	const isOrganization = isLandTitleOrg ||
-		(business?.isCompany === "ORGANISATION" && !isLandTitleIndividual);
-	const isIndividual = isLandTitleIndividual ||
-		(business?.isCompany === "INDIVIDUAL" && !isLandTitleOrg);
+	const isOrganization = isLandTitleOrg || 
+	                     (business?.isCompany === "ORGANISATION" && !isLandTitleIndividual);
+	const isIndividual = isLandTitleIndividual || 
+	                    (business?.isCompany === "INDIVIDUAL" && !isLandTitleOrg);
 
 	if (isOrganization) {
 		// For organizations, use company name
@@ -74,6 +74,17 @@ function extractSearchWord(business, type) {
 			} else if (business?.criminalSelection?.fullname) {
 				searchWord = business.criminalSelection.fullname;
 			}
+		} else if (type === 'land-title-individual') {
+			searchWord = bussiness?.person?.fullName;
+		}
+
+		if (type === 'rego-ppsr') {
+			const firstName = business?.fname || business?.firstName || '';
+			const middleName = business?.mname || business?.middleName || '';
+			const lastName = business?.lname || business?.lastName || '';
+			
+			const nameParts = [firstName, middleName, lastName].filter(part => part && part.trim());
+			searchWord = nameParts.length > 0 ? nameParts.join(' ').trim() : null;
 		}
 
 		// If no selection object found, use fname and lname
@@ -81,14 +92,20 @@ function extractSearchWord(business, type) {
 			const firstName = business?.fname || business?.firstName || '';
 			const middleName = business?.mname || business?.middleName || '';
 			const lastName = business?.lname || business?.lastName || '';
-
+			
 			const nameParts = [firstName, middleName, lastName].filter(part => part && part.trim());
 			searchWord = nameParts.length > 0 ? nameParts.join(' ').trim() : null;
 		}
-
 		return searchWord;
 	}
 
+	if(type === 'land-title-address') {
+		return searchWord = business?.address;
+	}
+
+	if(type === 'land-title-reference') {
+		return searchWord = business?.referenceId;
+	}
 	return null;
 }
 
@@ -2936,7 +2953,33 @@ function extractpropertyData(data) {
 	const identityBlock = realPropertySegment.IdentityBlock || {};
 	const registryBlock = realPropertySegment.RegistryBlock || {};
 	const ownership = registryBlock.Ownership || {};
-	const owners = Array.isArray(ownership.Owners) ? ownership.Owners : [];
+	
+	// Recursive function to extract all owners from ownership structure
+	// Handles both direct Owners array and nested TenantsInCommon structure
+	const extractAllOwners = (obj) => {
+		if (!obj || typeof obj !== 'object') return [];
+		
+		const owners = [];
+		
+		// If this object has an Owners array directly, add them
+		if (Array.isArray(obj.Owners)) {
+			owners.push(...obj.Owners);
+		}
+		
+		// If this object has TenantsInCommon array, recursively extract owners from each tenant
+		if (Array.isArray(obj.TenantsInCommon)) {
+			obj.TenantsInCommon.forEach(tenant => {
+				if (tenant && typeof tenant === 'object') {
+					// Recursively extract owners from each tenant
+					owners.push(...extractAllOwners(tenant));
+				}
+			});
+		}
+		
+		return owners;
+	};
+	
+	const owners = extractAllOwners(ownership);
 
 	const escapeHtml = (value) => {
 		if (value === null || value === undefined) {
@@ -3131,7 +3174,7 @@ function extractpropertyData(data) {
 	const includeValuation = hasCotalityData;
 
 	const ownerTenancyValue = ownership.Tenancy || 'N/A';
-	const ownerTypeValue = ownership.Owners?.[0]?.Type || 'N/A';
+	const ownerTypeValue = owners?.[0]?.Type || 'N/A';
 	const ownerNamesHtml = ownerNames.length
 		? ownerNames.map((name) => escapeHtml(name)).join('<br>')
 		: 'N/A';
@@ -5303,14 +5346,7 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 
 	// For land title address reports, show the searched address in the cover header
 	if (reportype === 'land-title-address') {
-		const headerIdentifier = extractedData.property_address && extractedData.property_address !== 'N/A'
-			? extractedData.property_address
-			: extractedData.property_title_reference || '';
-		if (headerIdentifier) {
-			const safeHeaderIdentifier = String(headerIdentifier);
-			htmlContent = htmlContent.replace('{{property_title_reference}}', safeHeaderIdentifier);
-			htmlContent = htmlContent.replace('${property_title_reference}', safeHeaderIdentifier);
-		}
+		headerIdentifier = extractSearchWord(bussiness, reportype);
 	}
 
 	// Ensure acn and abn fields ALWAYS exist - set defaults if missing
@@ -5626,6 +5662,7 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 
 
 	replaceVar('property_report_title', extractedData.property_report_title || 'Property Title Report');
+	replaceVar('property_report_address_title', headerIdentifier)
 	replaceVar('property_title_reference', extractedData.property_title_reference || 'N/A');
 	replaceVar('property_volume', extractedData.property_volume || 'N/A');
 	replaceVar('property_search_date', extractedData.property_search_date || 'N/A');
