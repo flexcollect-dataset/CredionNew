@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FileText, Download, RefreshCw, Bell, Plus, Mail, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, FileText, Download, RefreshCw, Bell, Plus, Mail, X, ChevronLeft, ChevronRight, Network } from 'lucide-react';
 import { apiService } from '../services/api';
 
 interface Report {

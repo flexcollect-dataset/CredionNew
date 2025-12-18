@@ -1033,8 +1033,8 @@ const MindMap: React.FC = () => {
       if (params.node && networkInstanceRef.current && networkRef.current) {
         tooltipNodeId = params.node;
         // Get node data from DataSet
-        const nodeData = nodesDataSet.get(params.node);
-        if (nodeData && nodeData.title) {
+        const nodeData = nodesDataSet.get(params.node) as any;
+        if (nodeData && !Array.isArray(nodeData) && nodeData.title) {
           updateTooltipPosition(params.node, nodeData.title);
         }
       }
@@ -1047,10 +1047,10 @@ const MindMap: React.FC = () => {
 
     // Track mouse movement to update tooltip position
     if (networkRef.current) {
-      const handleMouseMove = (event: MouseEvent) => {
+      const handleMouseMove = () => {
         if (tooltipNodeId && networkInstanceRef.current) {
-          const nodeData = nodesDataSet.get(tooltipNodeId);
-          if (nodeData && nodeData.title) {
+          const nodeData = nodesDataSet.get(tooltipNodeId) as any;
+          if (nodeData && !Array.isArray(nodeData) && nodeData.title) {
             updateTooltipPosition(tooltipNodeId, nodeData.title);
           }
         }
