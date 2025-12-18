@@ -376,7 +376,7 @@ function extractCourtData(data) {
                 <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
                     <div style="text-align: center;">
                         <div class="stat-label">Outcome</div>
-                        <div style="font-size: 12px; font-weight: 700; color: #0F172A; margin-top: 6px;">
+                        <div style="font-size: 18px; font-weight: 700; color: #0F172A; margin-top: 6px;">
                             ${allOrders.length}</div>
                     </div>
                     <div style="text-align: center;">
@@ -2291,7 +2291,7 @@ function extractPpsrData(data, business, reportype) {
 	const searchDateTime = data.searchDateTime || moment().format('DD MMMM YYYY, HH:mm [AEDT]');
 
 	// Analyze registrations
-	const registrations = items || [];
+	const registrations = resource.items;
 	const activeRegistrations = registrations.filter(r => {
 		if (!r.registrationEndTime) return true; // No end time = active
 		return moment(r.registrationEndTime).isAfter(moment());
@@ -2304,72 +2304,227 @@ function extractPpsrData(data, business, reportype) {
 		collateralTypeCounts[type] = (collateralTypeCounts[type] || 0) + 1;
 	});
 
-	// Identify blanket security (All Pap No Except)
+	// Get collateral class type counts from searchCriteriaSummary if available, otherwise count from registrations
+	const resultCollateralClassTypeCount = searchCriteriaSummary.resultCollateralClassTypeCount || {};
+	
+	// Build a map of all collateral types and their counts
+	const allCollateralTypeCounts = {};
+	
+	// First, use the counts from resultCollateralClassTypeCount if available
+	if (Object.keys(resultCollateralClassTypeCount).length > 0) {
+		Object.keys(resultCollateralClassTypeCount).forEach(type => {
+			allCollateralTypeCounts[type] = resultCollateralClassTypeCount[type];
+		});
+	} else {
+		// Fall back to counting from registrations array
+		registrations.forEach(r => {
+			const type = r.collateralClassType || 'Unknown';
+			allCollateralTypeCounts[type] = (allCollateralTypeCounts[type] || 0) + 1;
+		});
+	}
+
+	// Identify blanket security (All Pap No Except) - keep for backward compatibility
 	const blanketSecurities = registrations.filter(r =>
 		r.collateralClassType === 'All Pap No Except' ||
-		r.collateralClassType === 'All Pap No Except'
+		r.collateralClassType === 'all Pap No Except'
 	);
 
-	// Count motor vehicles
+	// Count motor vehicles - keep for backward compatibility
 	const motorVehicles = registrations.filter(r =>
-		r.collateralClassType === 'Motor Vehicle'
+		r.collateralClassType === 'Motor Vehicle' ||
+		r.collateralClassType === 'motor Vehicle'
 	);
 
-	// Build security breakdown text
+	// Build security breakdown text dynamically for all types
 	let securityBreakdown = '';
-	if (blanketSecurities.length > 0) {
-		securityBreakdown += `${blanketSecurities.length} × BLANKET SECURITY (All Assets)\n`;
-	}
-	if (motorVehicles.length > 0) {
-		securityBreakdown += `${motorVehicles.length} × MOTOR VEHICLE SECURITIES`;
-	}
+	const breakdownParts = [];
+	
+	// Helper function to format type name for display
+	const formatTypeName = (type) => {
+		if (!type) return 'Unknown';
+		// Handle common variations
+		const typeLower = type.toLowerCase();
+		if (typeLower.includes('all pap') || typeLower.includes('allpap')) {
+			return 'BLANKET SECURITY (All Assets)';
+		}
+		if (typeLower.includes('motor vehicle') || typeLower.includes('motorvehicle')) {
+			return 'MOTOR VEHICLE SECURITIES';
+		}
+		if (typeLower.includes('other goods') || typeLower.includes('othergoods')) {
+			return 'OTHER GOODS SECURITIES';
+		}
+		if (typeLower.includes('account')) {
+			return 'ACCOUNT SECURITIES';
+		}
+		// For other types, capitalize each word
+		return type.split(' ').map(word => 
+			word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+		).join(' ') + ' SECURITIES';
+	};
+	
+	// Sort types: prioritize "All Pap No Except" first, then others alphabetically
+	const sortedTypes = Object.keys(allCollateralTypeCounts).sort((a, b) => {
+		const aLower = a.toLowerCase();
+		const bLower = b.toLowerCase();
+		if (aLower.includes('all pap')) return -1;
+		if (bLower.includes('all pap')) return 1;
+		return a.localeCompare(b);
+	});
+	
+	// Build breakdown for each type
+	sortedTypes.forEach(type => {
+		const count = allCollateralTypeCounts[type];
+		if (count > 0) {
+			const formattedType = formatTypeName(type);
+			breakdownParts.push(`${count} × ${formattedType}`);
+		}
+	});
+	
+	securityBreakdown = breakdownParts.join('</br>');
 	if (securityBreakdown === '') {
 		securityBreakdown = 'No data available';
 	}
 
-	// Build secured parties summary
-	const securedPartiesMap = new Map();
+	// Helper function to format a single collateral type name
+	const formatCollateralTypeName = (type) => {
+		if (!type) return 'General Security';
+		
+		const typeLower = type.toLowerCase().trim();
+		
+		// Handle common variations
+		if (typeLower.includes('all pap') || typeLower.includes('allpap')) {
+			return 'Blanket Security';
+		}
+		if (typeLower.includes('motor vehicle') || typeLower.includes('motorvehicle')) {
+			return 'Vehicle Finance';
+		}
+		if (typeLower.includes('other goods') || typeLower.includes('othergoods')) {
+			return 'Other Goods Security';
+		}
+		if (typeLower.includes('account')) {
+			return 'Account Security';
+		}
+		if (typeLower.includes('intellectual property')) {
+			return 'Intellectual Property';
+		}
+		if (typeLower.includes('financial property')) {
+			return 'Financial Property';
+		}
+		
+		// Capitalize each word for other types
+		return type.split(' ').map(word => 
+			word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+		).join(' ');
+	};
+	
+	// Build secured parties summary grouped by party AND collateral type
+	// This creates separate entries for each collateral type per secured party
+	const securedPartiesByTypeMap = new Map();
+	
 	registrations.forEach(r => {
 		const partySummary = r.securedPartySummary || 'Unknown';
 		const collateralType = r.collateralClassType || 'Unknown';
-		const count = securedPartiesMap.get(partySummary) || { total: 0, types: new Set() };
-		count.total += 1;
-		count.types.add(collateralType);
-		securedPartiesMap.set(partySummary, count);
+		
+		// Create a unique key combining party name and collateral type
+		const key = `${partySummary}|||${collateralType}`;
+		
+		const entry = securedPartiesByTypeMap.get(key) || {
+			partyName: partySummary,
+			collateralType: collateralType,
+			count: 0,
+			registrations: []
+		};
+		
+		entry.count += 1;
+		entry.registrations.push(r);
+		securedPartiesByTypeMap.set(key, entry);
+	});
+
+	// Helper function to determine asset text for a specific type
+	const getAssetTextForType = (count, collateralType) => {
+		const typeLower = (collateralType || '').toLowerCase();
+		
+		// Check if it's a vehicle type
+		if (typeLower.includes('motor vehicle') || typeLower.includes('motorvehicle')) {
+			return `${count} ${count === 1 ? 'Vehicle' : 'Vehicles'}`;
+		}
+		
+		// Check if it's a blanket security (All Pap No Except)
+		if (typeLower.includes('all pap') || typeLower.includes('allpap')) {
+			return 'All Company Assets';
+		}
+		
+		// For other types, show count
+		return `${count} ${count === 1 ? 'Asset' : 'Assets'}`;
+	};
+	
+	// Helper function to determine priority based on collateral type
+	const getPriorityForType = (collateralType, registrations) => {
+		const typeLower = (collateralType || '').toLowerCase();
+		
+		// Blanket securities (All Pap No Except) are always CRITICAL
+		if (typeLower.includes('all pap') || typeLower.includes('allpap')) {
+			return 'CRITICAL';
+		}
+		
+		// Check if any of the registrations for this type is a blanket security
+		const hasBlanket = registrations.some(r => {
+			const rType = (r.collateralClassType || '').toLowerCase();
+			return rType.includes('all pap') || rType.includes('allpap');
+		});
+		
+		if (hasBlanket) {
+			return 'CRITICAL';
+		}
+		
+		return 'HIGH';
+	};
+
+	// Convert map to array and sort: Blanket Security first, then by party name, then by type
+	const securedPartiesArray = Array.from(securedPartiesByTypeMap.values());
+	
+	// Sort: Blanket Security first, then alphabetically by party name, then by type
+	securedPartiesArray.sort((a, b) => {
+		const aTypeLower = (a.collateralType || '').toLowerCase();
+		const bTypeLower = (b.collateralType || '').toLowerCase();
+		
+		const aIsBlanket = aTypeLower.includes('all pap') || aTypeLower.includes('allpap');
+		const bIsBlanket = bTypeLower.includes('all pap') || bTypeLower.includes('allpap');
+		
+		// Blanket securities first
+		if (aIsBlanket && !bIsBlanket) return -1;
+		if (!aIsBlanket && bIsBlanket) return 1;
+		
+		// Then sort by party name
+		const nameCompare = a.partyName.localeCompare(b.partyName);
+		if (nameCompare !== 0) return nameCompare;
+		
+		// Then by type
+		return a.collateralType.localeCompare(b.collateralType);
 	});
 
 	// Generate secured parties at a glance HTML
 	let securedPartiesRows = '';
-	let partyIndex = 0;
-	for (const [partyName, info] of securedPartiesMap.entries()) {
-		if (partyIndex >= 4) break; // Limit to 4 parties on page 2
-
-		const assetCount = info.total;
-		const hasVehicles = motorVehicles.filter(r => r.securedPartySummary === partyName).length > 0;
-		const assetText = assetCount === 1 ? 'All Company Assets' :
-			hasVehicles
-				? `${motorVehicles.filter(r => r.securedPartySummary === partyName).length} Vehicles`
-				: `${assetCount} Assets`;
-
-		const priority = blanketSecurities.some(r => r.securedPartySummary === partyName)
-			? 'CRITICAL'
-			: 'HIGH';
-
-		const typeLabel = hasVehicles ? 'Vehicle Finance' : 'General Security';
+	let rowIndex = 0;
+	
+	for (const entry of securedPartiesArray) {
+		const typeLabel = formatCollateralTypeName(entry.collateralType);
+		const assetText = getAssetTextForType(entry.count, entry.collateralType);
+		const priority = getPriorityForType(entry.collateralType, entry.registrations);
 
 		securedPartiesRows += `
                 <div class="data-grid" style="grid-template-columns: 2fr 1.5fr 1fr 1fr; gap: 12px;">
-                    <div class="data-value">${partyName}</div>
+                    <div class="data-value">${entry.partyName}</div>
                     <div class="data-value">${typeLabel}</div>
                     <div class="data-value">${assetText}</div>
                     <div><span class="badge ${priority.toLowerCase()}">${priority}</span></div>
                 </div>
     `;
-		if (partyIndex < securedPartiesMap.size - 1 && partyIndex < 3) {
-			securedPartiesRows += '<div class="divider" style="margin: 12px 0;"></div>';
-		}
-		partyIndex++;
+		// Add divider between rows (but not after the last row, and limit to first few rows)
+		securedPartiesRows += '<div class="divider" style="margin: 12px 0;"></div>';
+		rowIndex++;
 	}
+	
 	if (securedPartiesRows === '') {
 		securedPartiesRows = '<div class="data-value" style="text-align: center; color: #64748B; font-style: italic; grid-column: 1 / -1;">No data available</div>';
 	}
@@ -2450,7 +2605,7 @@ function extractPpsrData(data, business, reportype) {
         </div>
     `;
 	}
-	registrations.slice(0, 7).forEach((reg, index) => { // Limit to 7 registrations (pages 4-10)
+	registrations.forEach((reg, index) => { // Limit to 7 registrations (pages 4-10)
 		const regNum = index + 1;
 		const isBlanket = reg.collateralClassType === 'All Pap No Except';
 		const isVehicle = reg.collateralClassType === 'Motor Vehicle';
@@ -2496,19 +2651,11 @@ function extractPpsrData(data, business, reportype) {
 		const serialNumberType = reg.serialNumberType || '';
 		const vehicleDescription = reg.vehicleDescriptiveText || 'Unknown/Unknown/Unknown';
 
-		const pageNum = 4 + index; // Pages start at 4
-
 		registrationPagesHtml += `
-        <!-- PAGE ${pageNum}: REGISTRATION #${regNum} -->
         <div class="page">
             
             
-            <div class="section-title">Registration #${regNum} - ${isVehicle ? 'Motor Vehicle' : (isBlanket ? 'General Security' : collateralType)}</div>
-            ${isVehicle && motorVehicles.filter(v => v.securedPartySummary === reg.securedPartySummary).length > 1
-				? `<div class="section-subtitle">${reg.securedPartySummary} (Vehicle ${motorVehicles.filter(v => v.securedPartySummary === reg.securedPartySummary && registrations.indexOf(v) <= registrations.indexOf(reg)).length} of ${motorVehicles.filter(v => v.securedPartySummary === reg.securedPartySummary).length})</div>`
-				: `<div class="section-subtitle">${reg.securedPartySummary || 'N/A'}</div>`
-			}
-            
+            <div class="section-title">Registration #${regNum} - ${isVehicle ? 'Motor Vehicle' : (isBlanket ? 'General Security' : collateralType)}</div>  
             ${isBlanket ? `
             <div class="card alert" style="margin-bottom: 20px;">
                 <div style="font-size: 11px; line-height: 1.7; color: #1E293B;">

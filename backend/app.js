@@ -128,8 +128,9 @@ app.get('/', (req, res) => {
 
 // Matter Routes
 const matterRoutes = require('./routes/matter.routes');
+const mindMapRoutes = require('./routes/mindMap.routes');
 app.use('/api/matters', matterRoutes);
-
+app.use('/api/matters', mindMapRoutes);
 // Import models
 const { User, UserPaymentMethod, Matter } = require('./models');
 

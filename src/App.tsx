@@ -23,6 +23,7 @@ import NewMatter from './pages/NewMatter';
 import ExistingMatter from './pages/ExistingMatter';
 import MyMatters from './pages/MyMatters';
 import MatterReports from './pages/MatterReports';
+import MindMap from './pages/MindMap';
 
 function App() {
   return (
@@ -53,6 +54,7 @@ function App() {
                   <Route path="/existing-matter" element={<ExistingMatter />} />
                   <Route path="/my-matters" element={<MyMatters />} />
                   <Route path="/matter-reports/:matterId" element={<MatterReports />} />
+                  <Route path="/mind-map/:matterId" element={<MindMap />} />
                 </Routes>
         </main>
         <Footer />

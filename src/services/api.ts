@@ -90,6 +90,36 @@ export interface DirectorRelatedSearchResponse {
 	message?: string;
 }
 
+export interface MindMapResponse {
+  success: boolean;
+  message: string;
+  data: {
+    entities: {
+      companies: any[];
+      persons: any[]; // Merged directors, office holders, secretaries
+      shareholders: any[];
+      bankruptcies?: any[]; // Bankruptcy nodes
+      // Keep for backward compatibility
+      directors: any[];
+      secretaries: any[];
+      officeHolders: any[];
+    };
+    relationships: any[];
+    stats: {
+      totalCompanies: number;
+      totalPersons: number;
+      totalDirectors: number;
+      totalShareholders: number;
+	  totalSecretaries: number;
+      totalOfficeHolders: number;
+      totalRelationships: number;
+    };
+  };
+  matterId: number;
+  matterName: string;
+  reportCount: number;
+}
+
 class ApiService {
 	private baseURL: string;
 
@@ -136,6 +166,8 @@ class ApiService {
 		}
 	}
 
+	
+	
 	// Authentication methods
 	async login(credentials: LoginRequest): Promise<AuthResponse> {
 		return this.request<AuthResponse>('/auth/login', {
@@ -248,6 +280,15 @@ class ApiService {
 		}>(`/api/matters/${matterId}/reports?page=${page}&limit=${limit}`);
 	}
 
+	async getMindMapData(matterId: number): Promise<MindMapResponse> {
+	  return this.request<MindMapResponse>(
+		`/api/matters/${matterId}/mind-map`,
+		{
+		  method: 'GET',
+		}
+	  );
+	}
+	
 	async updateMatter(matterId: number, data: { matterName?: string; description?: string; status?: string }) {
 		return this.request<{ success: boolean; message: string; matter: any }>(`/api/matters/${matterId}`, {
 			method: 'PUT',
