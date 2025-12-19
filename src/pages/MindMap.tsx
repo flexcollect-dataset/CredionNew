@@ -386,7 +386,7 @@ const MindMap: React.FC = () => {
           color: companyColor,
           font: { color: '#ffffff', size: 14, bold: true },
           size: 40,
-          margin: 15,
+          margin: 20, // Increased margin to create more space around main entities
           // Don't set fixed positions - let physics engine handle it
         });
 
@@ -732,7 +732,7 @@ const MindMap: React.FC = () => {
           color: addressColor,
           font: { color: '#ffffff', size: 10 },
           size: 20,
-          margin: 5,
+          margin: 10, // Increased margin to prevent addresses from getting too close to main entities
         });
       });
     }
@@ -840,8 +840,8 @@ const MindMap: React.FC = () => {
           // Remove length property - let physics engine determine optimal edge length
           smooth: {
             enabled: true,
-            type: 'dynamic', // Use dynamic routing for better edge placement
-            roundness: 0.2, // Consistent roundness
+            type: 'continuous', // Continuous routing works better with manual node dragging
+            roundness: 0.5, // Higher roundness for smoother curves
             forceDirection: 'none', // Let the algorithm decide direction
           },
           font: {
@@ -932,13 +932,13 @@ const MindMap: React.FC = () => {
         barnesHut: {
           gravitationalConstant: -2000,
           centralGravity: 0.1,
-          springLength: 250, // Increased spring length for better edge spacing
+          springLength: 300, // Increased spring length for better edge spacing and distance from main entity
           springConstant: 0.04,
-          damping: 0.09,
-          avoidOverlap: 0.8, // Increased overlap avoidance for better node separation
+          damping: 0.15, // Increased damping to help nodes settle faster
+          avoidOverlap: 1.2, // Increased overlap avoidance to prevent nodes from getting too close
         },
         maxVelocity: 50,
-        minVelocity: 0.75,
+        minVelocity: 0.1, // Lowered to ensure physics stops completely when nodes settle
         solver: 'barnesHut',
         timestep: 0.5,
       },
@@ -960,8 +960,8 @@ const MindMap: React.FC = () => {
       edges: {
         smooth: {
           enabled: true,
-          type: 'dynamic', // Dynamic routing for better edge placement and reduced overlap
-          roundness: 0.2,
+          type: 'continuous', // Continuous routing works better with manual node dragging and minimal physics
+          roundness: 0.5, // Higher roundness for smoother curves
           forceDirection: 'none', // Let the algorithm decide optimal direction
         },
         endPointOffset: { to: 0 }, // Remove gap between arrow and node
@@ -988,7 +988,6 @@ const MindMap: React.FC = () => {
         },
         // Improve edge routing to reduce overlaps
         selfReferenceSize: 20,
-        selfReferenceAngle: Math.PI / 4,
       },
       nodes: {
         borderWidth: 2,
@@ -1033,8 +1032,8 @@ const MindMap: React.FC = () => {
       if (params.node && networkInstanceRef.current && networkRef.current) {
         tooltipNodeId = params.node;
         // Get node data from DataSet
-        const nodeData = nodesDataSet.get(params.node) as any;
-        if (nodeData && !Array.isArray(nodeData) && nodeData.title) {
+        const nodeData = nodesDataSet.get(params.node);
+        if (nodeData && nodeData.title) {
           updateTooltipPosition(params.node, nodeData.title);
         }
       }
@@ -1047,10 +1046,10 @@ const MindMap: React.FC = () => {
 
     // Track mouse movement to update tooltip position
     if (networkRef.current) {
-      const handleMouseMove = () => {
+      const handleMouseMove = (event: MouseEvent) => {
         if (tooltipNodeId && networkInstanceRef.current) {
-          const nodeData = nodesDataSet.get(tooltipNodeId) as any;
-          if (nodeData && !Array.isArray(nodeData) && nodeData.title) {
+          const nodeData = nodesDataSet.get(tooltipNodeId);
+          if (nodeData && nodeData.title) {
             updateTooltipPosition(tooltipNodeId, nodeData.title);
           }
         }
@@ -1063,21 +1062,101 @@ const MindMap: React.FC = () => {
       });
     }
 
-    // Fit the network once physics stabilization is complete, then disable physics
+    // Fit the network once physics stabilization is complete, then switch to minimal physics
+    // Minimal physics allows edges to reroute smoothly when nodes are dragged, but keeps nodes stable
+    let stabilizationComplete = false;
     networkInstanceRef.current.on('stabilizationEnd' as any, () => {
-      if (networkInstanceRef.current) {
+      if (networkInstanceRef.current && !stabilizationComplete) {
+        stabilizationComplete = true;
+        
         // Fit without animation
         networkInstanceRef.current.fit({
           animation: false,
         });
         
-        // Disable physics to stop animation and put network in static/interactive mode
-        // Users can manually drag nodes to fix edge overlaps
+        // Switch to minimal physics mode - keeps nodes stable but allows edges to reroute smoothly
+        // This enables smooth edge rerouting when users drag nodes
         networkInstanceRef.current.setOptions({
           physics: {
-            enabled: false,
+            enabled: true,
+            stabilization: {
+              enabled: false, // Disable stabilization after initial setup
+            },
+            barnesHut: {
+              gravitationalConstant: -100, // Slightly higher for better edge response
+              centralGravity: 0.02, // Slightly higher for better edge response
+              springLength: 300,
+              springConstant: 0.005, // Slightly higher so edges respond better to node movement
+              damping: 0.9, // High damping but allows some movement for edge rerouting
+              avoidOverlap: 1.2,
+            },
+            maxVelocity: 5, // Slightly higher to allow edge rerouting
+            minVelocity: 0.05, // Low but allows continuous edge updates
+            solver: 'barnesHut',
+            timestep: 0.2, // Faster timestep for smoother edge updates
           },
         });
+      }
+    });
+    
+    // Also listen for stabilization progress
+    networkInstanceRef.current.on('stabilizationProgress' as any, (params: any) => {
+      // If stabilization is taking too long or is complete, switch to minimal physics
+      if (params.iterations >= 200 && networkInstanceRef.current && !stabilizationComplete) {
+        stabilizationComplete = true;
+        networkInstanceRef.current.setOptions({
+          physics: {
+            enabled: true,
+            stabilization: {
+              enabled: false,
+            },
+            barnesHut: {
+              gravitationalConstant: -100,
+              centralGravity: 0.02,
+              springLength: 300,
+              springConstant: 0.005,
+              damping: 0.9,
+              avoidOverlap: 1.2,
+            },
+            maxVelocity: 5,
+            minVelocity: 0.05,
+            solver: 'barnesHut',
+            timestep: 0.2,
+          },
+        });
+      }
+    });
+    
+    // Add drag event listeners to ensure edges reroute smoothly during node movement
+    networkInstanceRef.current.on('dragStart' as any, () => {
+      // When dragging starts, ensure physics is active for edge rerouting
+      if (networkInstanceRef.current) {
+        networkInstanceRef.current.setOptions({
+          physics: {
+            enabled: true,
+            stabilization: { enabled: false },
+            barnesHut: {
+              gravitationalConstant: -100,
+              centralGravity: 0.02,
+              springLength: 300,
+              springConstant: 0.005,
+              damping: 0.9,
+              avoidOverlap: 1.2,
+            },
+            maxVelocity: 5,
+            minVelocity: 0.05,
+            solver: 'barnesHut',
+            timestep: 0.2,
+          },
+        });
+      }
+    });
+    
+    // Force edge redraw when dragging ends to ensure edges are properly rerouted
+    networkInstanceRef.current.on('dragEnd' as any, () => {
+      if (networkInstanceRef.current) {
+        // Trigger a redraw to ensure edges are updated
+        networkInstanceRef.current.redraw();
       }
     });
   };
@@ -1095,10 +1174,23 @@ const MindMap: React.FC = () => {
       edges: edgesDataSet,
     });
 
-    // Ensure physics stays disabled and fit without animation
+    // Ensure minimal physics is enabled for smooth edge rerouting
     networkInstanceRef.current.setOptions({
       physics: {
-        enabled: false,
+        enabled: true,
+        stabilization: { enabled: false },
+        barnesHut: {
+          gravitationalConstant: -100,
+          centralGravity: 0.02,
+          springLength: 300,
+          springConstant: 0.005,
+          damping: 0.9,
+          avoidOverlap: 1.2,
+        },
+        maxVelocity: 5,
+        minVelocity: 0.05,
+        solver: 'barnesHut',
+        timestep: 0.2,
       },
     });
     
@@ -1118,10 +1210,23 @@ const MindMap: React.FC = () => {
     setIsFullscreen(!isFullscreen);
     setTimeout(() => {
       if (networkInstanceRef.current) {
-        // Ensure physics stays disabled and fit without animation
+        // Ensure minimal physics is enabled for smooth edge rerouting
         networkInstanceRef.current.setOptions({
           physics: {
-            enabled: false,
+            enabled: true,
+            stabilization: { enabled: false },
+            barnesHut: {
+              gravitationalConstant: -100,
+              centralGravity: 0.02,
+              springLength: 300,
+              springConstant: 0.005,
+              damping: 0.9,
+              avoidOverlap: 1.2,
+            },
+            maxVelocity: 5,
+            minVelocity: 0.05,
+            solver: 'barnesHut',
+            timestep: 0.2,
           },
         });
         networkInstanceRef.current.fit({
