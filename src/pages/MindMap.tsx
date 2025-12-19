@@ -1032,9 +1032,9 @@ const MindMap: React.FC = () => {
       if (params.node && networkInstanceRef.current && networkRef.current) {
         tooltipNodeId = params.node;
         // Get node data from DataSet
-        const nodeData = nodesDataSet.get(params.node);
-        if (nodeData && !Array.isArray(nodeData) && nodeData.title) {
-          updateTooltipPosition(params.node, nodeData.title);
+        const nodeData = nodesDataSet.get(params.node) as any;
+        if (nodeData && !Array.isArray(nodeData) && (nodeData as any).title) {
+          updateTooltipPosition(params.node, (nodeData as any).title);
         }
       }
     });
