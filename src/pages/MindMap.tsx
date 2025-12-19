@@ -1046,10 +1046,10 @@ const MindMap: React.FC = () => {
 
     // Track mouse movement to update tooltip position
     if (networkRef.current) {
-      const handleMouseMove = (event: MouseEvent) => {
+      const handleMouseMove = () => {
         if (tooltipNodeId && networkInstanceRef.current) {
-          const nodeData = nodesDataSet.get(tooltipNodeId);
-          if (nodeData && nodeData.title) {
+          const nodeData = nodesDataSet.get(tooltipNodeId) as any;
+          if (nodeData && !Array.isArray(nodeData) && nodeData.title) {
             updateTooltipPosition(tooltipNodeId, nodeData.title);
           }
         }
