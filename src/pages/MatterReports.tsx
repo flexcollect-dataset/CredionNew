@@ -33,7 +33,7 @@ const MatterReports: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [pageSize] = useState(20);
-  const [alertCounts, setAlertCounts] = useState<Record<string, number>>({});
+  const [setAlertCounts] = useState<Record<string, number>>({});
   const [entityIdMap, setEntityIdMap] = useState<Record<string, number>>({});
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
   const [notificationsModalOpen, setNotificationsModalOpen] = useState(false);
