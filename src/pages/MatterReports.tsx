@@ -33,7 +33,6 @@ const MatterReports: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [pageSize] = useState(20);
-  const [setAlertCounts] = useState<Record<string, number>>({});
   const [entityIdMap, setEntityIdMap] = useState<Record<string, number>>({});
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
   const [notificationsModalOpen, setNotificationsModalOpen] = useState(false);
@@ -52,15 +51,6 @@ const MatterReports: React.FC = () => {
     if (matterId) {
       setCurrentPage(1);
       loadMatter();
-    }
-    
-    const storedCounts = localStorage.getItem('watchlistAlertCounts');
-    if (storedCounts) {
-      try {
-        setAlertCounts(JSON.parse(storedCounts));
-      } catch (error) {
-        console.error('Error parsing stored alert counts:', error);
-      }
     }
     
     const storedEntityIds = localStorage.getItem('watchlistEntityIds');
@@ -218,9 +208,7 @@ const MatterReports: React.FC = () => {
           });
         }
 
-        setAlertCounts(counts);
         setEntityIdMap(entityIds);
-        localStorage.setItem('watchlistAlertCounts', JSON.stringify(counts));
         localStorage.setItem('watchlistEntityIds', JSON.stringify(entityIds));
         
         const userData = localStorage.getItem('user');
