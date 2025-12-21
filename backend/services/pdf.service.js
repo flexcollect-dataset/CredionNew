@@ -5964,7 +5964,7 @@ async function generatePDF(htmlContent, outputPath) {
 }
 
 // Function to add download report to DB
-async function addDownloadReportInDB(rdata, userId, matterId, reportId, reportName, reportype, business) {
+async function addDownloadReportInDB(rdata, userId, matterId, reportId, reportName, reportype, business, userReportIdToUpdate = null) {
 	let templateName;
 
 	if (reportype == "asic-current") {

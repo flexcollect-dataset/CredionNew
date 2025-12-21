@@ -457,7 +457,7 @@ router.post('/watchlist/sync', authenticateToken, async (req, res) => {
         }
 
 
-        const [existingRecords] = await sequelize.query(`
+        const existingRecordsResult = await sequelize.query(`
           SELECT id, created_at, abn
           FROM api_data
           WHERE abn = $1
@@ -465,6 +465,20 @@ router.post('/watchlist/sync', authenticateToken, async (req, res) => {
           bind: [entity.abn],
           type: sequelize.QueryTypes.SELECT
         });
+
+        // Ensure existingRecords is always an array
+        // Handle different possible return formats from sequelize.query
+        let existingRecords = [];
+        if (Array.isArray(existingRecordsResult)) {
+          existingRecords = existingRecordsResult;
+        } else if (existingRecordsResult && Array.isArray(existingRecordsResult[0])) {
+          existingRecords = existingRecordsResult[0];
+        } else if (existingRecordsResult && existingRecordsResult.data && Array.isArray(existingRecordsResult.data)) {
+          existingRecords = existingRecordsResult.data;
+        } else if (existingRecordsResult) {
+          // If it's a single object, wrap it in an array
+          existingRecords = [existingRecordsResult];
+        }
 
         if (!existingRecords || existingRecords.length === 0) {
           console.log(`[Watchlist Sync] No existing records found for ABN: ${entity.abn}, skipping update`);
