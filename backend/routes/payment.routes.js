@@ -2034,7 +2034,7 @@ async function trademark_report(business) {
 }
 
 // Function to create report via external API
-async function createReport({ business, type, userId, matterId, ispdfcreate }) {
+async function createReport({ business, type, userId, matterId, ispdfcreate, skipExistingCheck = false, userReportIdToUpdate = null }) {
 	try {
 		let existingReport = null;
 		let iresult = null;
@@ -2054,7 +2054,8 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 			}
 		}
 
-		if (business?.isCompany == "ORGANISATION") {
+		// Skip existing check if skipExistingCheck is true
+		if (!skipExistingCheck && business?.isCompany == "ORGANISATION") {
 			if (type == "asic-current" || type == "court" || type == "ato") {
 				existingReport = await checkExistingReportData(abn, "asic-current");
 			} else {
@@ -2273,11 +2274,25 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 			const filename = sanitizedSearchWord 
 				? `${type}_${sanitizedSearchWord}_${uuidv4()}`
 				: `${type}_${uuidv4()}`;
-			pdffilename = await addDownloadReportInDB(reportData, userId, matterId, reportId, filename, type, business);
-			return pdffilename;
+			pdffilename = await addDownloadReportInDB(
+				reportData,
+				userId,
+				matterId,
+				reportId,
+				filename,
+				type,
+				business,
+				userReportIdToUpdate || null
+			);
+			return {
+				success: true,
+				reportId,
+				pdfFilename: pdffilename
+			};
 		} else {
 			return {
-				success: true
+				success: true,
+				reportId
 			}
 		}
 

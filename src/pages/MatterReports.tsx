@@ -14,6 +14,7 @@ interface Report {
   reportType: string | null;
   searchWord: string | null;
   abn: string | null;
+  numAlerts?: number;
 }
 
 const MatterReports: React.FC = () => {
@@ -42,6 +43,9 @@ const MatterReports: React.FC = () => {
   const [notificationPage, setNotificationPage] = useState(1);
   const [notificationTotalPages, setNotificationTotalPages] = useState(1);
   const [selectedReportAbn, setSelectedReportAbn] = useState<string | null>(null);
+  const [selectedReportType, setSelectedReportType] = useState<string | null>(null);
+  const [selectedUserReportId, setSelectedUserReportId] = useState<number | null>(null);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
 
   useEffect(() => {
@@ -133,6 +137,8 @@ const MatterReports: React.FC = () => {
 
     setSelectedEntityId(entityId);
     setSelectedReportAbn(abn);
+    setSelectedReportType(report.reportType || null);
+    setSelectedUserReportId(report.id);
     setNotificationPage(1);
     setNotificationsModalOpen(true);
     await loadNotifications(entityId, 1);
@@ -177,23 +183,40 @@ const MatterReports: React.FC = () => {
     });
   };
 
+  const groupNotificationsByType = (notifications: any[]) => {
+    const grouped: Record<string, any[]> = {};
+    
+    notifications.forEach((notification) => {
+      const type = notification.type || notification.case_type || 'Other';
+      if (!grouped[type]) {
+        grouped[type] = [];
+      }
+      grouped[type].push(notification);
+    });
+    
+    return grouped;
+  };
+
   const handleFetchWatchlistAlerts = async () => {
     setIsLoadingAlerts(true);
     try {
       const response = await apiService.getWatchlistEntities();
       
       if (response.success && response.data) {
-        const counts: Record<string, number> = {};
-        const entityIds: Record<string, number> = {};
+        const counts: Record<string, number> = response.counts || {};
+        const entityIds: Record<string, number> = response.entityIds || {};
         
-        response.data.forEach((entity) => {
-          if (entity.abn) {
-            if (entity.num_alerts > 0) {
-              counts[entity.abn] = entity.num_alerts;
+        // Build counts and entityIds from data if not provided in response
+        if (!response.counts || !response.entityIds) {
+          response.data.forEach((entity) => {
+            if (entity.abn) {
+              if (entity.num_alerts > 0) {
+                counts[entity.abn] = entity.num_alerts;
+              }
+              entityIds[entity.abn] = entity.id;
             }
-            entityIds[entity.abn] = entity.id;
-          }
-        });
+          });
+        }
 
         setAlertCounts(counts);
         setEntityIdMap(entityIds);
@@ -227,7 +250,8 @@ const MatterReports: React.FC = () => {
           alert(`Successfully loaded alerts. Found ${totalAlerts} total alerts across ${Object.keys(counts).length} ABNs.`);
         }
       } else {
-        alert('Failed to fetch watchlist entities. Please check the watchlist ID.');
+        const errorMsg = response.message || response.error || 'Failed to fetch watchlist entities. Please check the watchlist ID.';
+        alert(errorMsg);
       }
     } catch (error: any) {
       console.error('Error fetching watchlist alerts:', error);
@@ -463,12 +487,12 @@ const MatterReports: React.FC = () => {
                           <button
                             onClick={() => handleAlert(report)}
                             className="p-2 hover:bg-yellow-50 rounded-lg transition-colors text-yellow-600 relative"
-                            title={report.abn && alertCounts[report.abn] ? `${alertCounts[report.abn]} alert(s) for ABN ${report.abn}` : 'Set Alert'}
+                            title={report.numAlerts && report.numAlerts > 0 ? `${report.numAlerts} alert(s) for ABN ${report.abn}` : 'Set Alert'}
                           >
                             <Bell size={20} />
-                            {report.abn && alertCounts[report.abn] && alertCounts[report.abn] > 0 && (
+                            {report.numAlerts && report.numAlerts > 0 && (
                               <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-                                {alertCounts[report.abn]}
+                                {report.numAlerts}
                               </span>
                             )}
                           </button>
@@ -650,94 +674,221 @@ const MatterReports: React.FC = () => {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {notifications.map((notification) => (
-                    <div
-                      key={notification.id}
-                      className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2 mb-2">
-                            <span className={`px-2 py-1 rounded text-xs font-medium ${
-                              notification.status === 'Pending' 
-                                ? 'bg-yellow-100 text-yellow-800' 
-                                : 'bg-green-100 text-green-800'
-                            }`}>
-                              {notification.status}
-                            </span>
-                            <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                              {notification.type}
-                            </span>
-                            <span className="text-xs text-gray-500">
-                              {formatNotificationDate(notification.created_at)}
-                            </span>
+                  {(() => {
+                    const grouped = groupNotificationsByType(notifications);
+                    const taxDebtNotifications = grouped['Tax Debt'] || [];
+                    const asicNotifications = grouped['ASIC Document'] || [];
+                    const otherNotifications = Object.entries(grouped)
+                      .filter(([type]) => type !== 'Tax Debt' && type !== 'ASIC Document')
+                      .flatMap(([, notifs]) => notifs);
+
+                    return (
+                      <>
+                        {/* Grouped Tax Debt Notifications */}
+                        {taxDebtNotifications.length > 0 && (
+                          <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-2 mb-2">
+                                  <span className="px-2 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                                    Pending
+                                  </span>
+                                  <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                    Tax Debt
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    {taxDebtNotifications.length} update{taxDebtNotifications.length > 1 ? 's' : ''}
+                                  </span>
+                                </div>
+                                <h3 className="font-semibold text-gray-900 mb-1">
+                                  {taxDebtNotifications[0]?.entity?.party_name || 'Unknown Entity'}
+                                </h3>
+                                {taxDebtNotifications[0]?.source && (
+                                  <p className="text-sm text-gray-600 mb-2">
+                                    Source: {taxDebtNotifications[0].source}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            
+                            <div className="mb-2">
+                              <p className="text-sm font-medium text-gray-900 mb-2">Tax debt changed</p>
+                              <p className="text-xs text-gray-500 italic mb-3">Main data and amount is blur</p>
+                              
+                              <div className="space-y-2">
+                                {taxDebtNotifications.map((notification, index) => (
+                                  <div key={notification.id} className="p-2 bg-gray-50 rounded text-xs">
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span className="text-gray-600">
+                                        Update #{index + 1} - {formatNotificationDate(notification.created_at)}
+                                      </span>
+                                    </div>
+                                    {notification.data && (
+                                      <div className="mt-1 space-y-1">
+                                        {notification.data.date && (
+                                          <p>
+                                            <strong>Date:</strong>{' '}
+                                            <span className="blur-sm">{new Date(notification.data.date).toLocaleDateString()}</span>
+                                          </p>
+                                        )}
+                                        {notification.data.action && (
+                                          <p>
+                                            <strong>Action:</strong>{' '}
+                                            <span className="blur-sm">{notification.data.action}</span>
+                                          </p>
+                                        )}
+                                        {notification.data.amount !== undefined && (
+                                          <p>
+                                            <strong>Amount:</strong>{' '}
+                                            <span className="blur-sm">${notification.data.amount.toLocaleString()}</span>
+                                          </p>
+                                        )}
+                                        {notification.data.previous_amount !== undefined && (
+                                          <p>
+                                            <strong>Previous Amount:</strong>{' '}
+                                            <span className="blur-sm">${notification.data.previous_amount.toLocaleString()}</span>
+                                          </p>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
                           </div>
-                          <h3 className="font-semibold text-gray-900 mb-1">
-                            {notification.entity?.party_name || 'Unknown Entity'}
-                          </h3>
-                          {notification.source && (
-                            <p className="text-sm text-gray-600 mb-2">
-                              Source: {notification.source}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      
-                      {notification.details_html ? (
-                        <div 
-                          className="text-sm text-gray-700 mb-2"
-                          dangerouslySetInnerHTML={{ __html: notification.details_html }}
-                        />
-                      ) : notification.details ? (
-                        <p className="text-sm text-gray-700 mb-2">{notification.details}</p>
-                      ) : null}
-                      
-                      {notification.data && (
-                        <div className="mt-2 p-2 bg-gray-50 rounded text-xs">
-                          {notification.data.date && (
-                            <p><strong>Date:</strong> {new Date(notification.data.date).toLocaleDateString()}</p>
-                          )}
-                          {notification.data.action && (
-                            <p><strong>Action:</strong> {notification.data.action}</p>
-                          )}
-                          {notification.data.amount !== undefined && (
-                            <p><strong>Amount:</strong> ${notification.data.amount.toLocaleString()}</p>
-                          )}
-                          {notification.data.previous_amount !== undefined && (
-                            <p><strong>Previous Amount:</strong> ${notification.data.previous_amount.toLocaleString()}</p>
-                          )}
-                        </div>
-                      )}
-                      
-                      {notification.asic_document && (
-                        <div className="mt-2 p-2 bg-blue-50 rounded text-xs">
-                          <p><strong>ASIC Document:</strong> {notification.asic_document.description}</p>
-                          {notification.asic_document.uuid && (
-                            <p><strong>UUID:</strong> {notification.asic_document.uuid}</p>
-                          )}
-                        </div>
-                      )}
-                      
-                      {notification.url && (
-                        <a
-                          href={notification.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-blue-600 hover:text-blue-800 mt-2 inline-block"
-                        >
-                          View Details →
-                        </a>
-                      )}
-                      
-                      {notification.insolvency_risk_factor && (
-                        <div className="mt-2">
-                          <span className="text-xs font-medium text-gray-600">
-                            Insolvency Risk Factor: <span className="text-red-600">{notification.insolvency_risk_factor}</span>
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                        )}
+
+                        {/* ASIC Document Notifications */}
+                        {asicNotifications.map((notification) => (
+                          <div
+                            key={notification.id}
+                            className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                          >
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-2 mb-2">
+                                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                    notification.status === 'Pending' 
+                                      ? 'bg-yellow-100 text-yellow-800' 
+                                      : 'bg-green-100 text-green-800'
+                                  }`}>
+                                    {notification.status}
+                                  </span>
+                                  <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                    {notification.type}
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    {formatNotificationDate(notification.created_at)}
+                                  </span>
+                                </div>
+                                <h3 className="font-semibold text-gray-900 mb-1">
+                                  {notification.entity?.party_name || 'Unknown Entity'}
+                                </h3>
+                                {notification.source && (
+                                  <p className="text-sm text-gray-600 mb-2">
+                                    Source: {notification.source}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            
+                            <div className="mb-2">
+                              <p className="text-sm font-medium text-gray-900 mb-2">Document has changed</p>
+                              <p className="text-xs text-gray-500 italic mb-3">Main data blur</p>
+                              
+                              {notification.asic_document && (
+                                <div className="mt-2 p-2 bg-blue-50 rounded text-xs">
+                                  <p>
+                                    <strong>ASIC Document:</strong>{' '}
+                                    <span className="blur-sm">{notification.asic_document.description}</span>
+                                  </p>
+                                  {notification.asic_document.uuid && (
+                                    <p>
+                                      <strong>UUID:</strong>{' '}
+                                      <span className="blur-sm">{notification.asic_document.uuid}</span>
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                              
+                              {notification.details && (
+                                <div className="mt-2 p-2 bg-gray-50 rounded text-xs">
+                                  <p className="blur-sm">{notification.details}</p>
+                                </div>
+                              )}
+                              
+                              {notification.insolvency_risk_factor && (
+                                <div className="mt-2">
+                                  <span className="text-xs font-medium text-gray-600">
+                                    Insolvency Risk Factor:{' '}
+                                    <span className="text-red-600 blur-sm">{notification.insolvency_risk_factor}</span>
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            
+            
+                          </div>
+                        ))}
+
+                        {/* Other Notifications */}
+                        {otherNotifications.map((notification) => (
+                          <div
+                            key={notification.id}
+                            className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                          >
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-2 mb-2">
+                                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                    notification.status === 'Pending' 
+                                      ? 'bg-yellow-100 text-yellow-800' 
+                                      : 'bg-green-100 text-green-800'
+                                  }`}>
+                                    {notification.status}
+                                  </span>
+                                  <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                    {notification.type}
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    {formatNotificationDate(notification.created_at)}
+                                  </span>
+                                </div>
+                                <h3 className="font-semibold text-gray-900 mb-1">
+                                  {notification.entity?.party_name || 'Unknown Entity'}
+                                </h3>
+                                {notification.source && (
+                                  <p className="text-sm text-gray-600 mb-2">
+                                    Source: {notification.source}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {notification.details_html ? (
+                              <div 
+                                className="text-sm text-gray-700 mb-2"
+                                dangerouslySetInnerHTML={{ __html: notification.details_html }}
+                              />
+                            ) : notification.details ? (
+                              <p className="text-sm text-gray-700 mb-2">{notification.details}</p>
+                            ) : null}
+                            
+                            {notification.url && (
+                              <a
+                                href={notification.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-blue-600 hover:text-blue-800 mt-2 inline-block"
+                              >
+                                View Details →
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
             </div>
@@ -767,6 +918,64 @@ const MatterReports: React.FC = () => {
                 </div>
               </div>
             )}
+            
+            {/* Pay Button */}
+            <div className="p-6 border-t bg-gray-50">
+              <button
+                onClick={async () => {
+                  if (!selectedReportAbn) {
+                    alert('ABN not found. Cannot process payment.');
+                    return;
+                  }
+
+                  if (!selectedReportType) {
+                    alert('Report type not found for this report.');
+                    return;
+                  }
+
+                  if (!selectedUserReportId) {
+                    alert('Report row not found. Cannot update user report.');
+                    return;
+                  }
+
+                  setIsProcessingPayment(true);
+                  try {
+                    const response = await apiService.payForWatchlistReport(
+                      selectedReportAbn,
+                      selectedReportType,
+                      matterId ? Number(matterId) : undefined,
+                      selectedUserReportId
+                    );
+
+                    if (response.success) {
+                      alert('Payment processed successfully! Report created and PDF generated.');
+                      handleCloseNotificationsModal();
+                      if (matterId) {
+                        loadReports();
+                      }
+                    } else {
+                      alert('Payment failed: ' + (response.message || 'Unknown error'));
+                    }
+                  } catch (error: any) {
+                    console.error('Error processing payment:', error);
+                    alert('Error processing payment: ' + (error.message || 'Unknown error'));
+                  } finally {
+                    setIsProcessingPayment(false);
+                  }
+                }}
+                disabled={isProcessingPayment || !selectedReportAbn || !selectedReportType}
+                className="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold text-base shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+              >
+                {isProcessingPayment ? (
+                  <>
+                    <RefreshCw size={20} className="animate-spin" />
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  <span>Pay $50</span>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

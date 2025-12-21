@@ -685,29 +685,40 @@ class ApiService {
 			num_alerts: number;
 			[key: string]: any;
 		}>;
+		counts?: Record<string, number>;
+		entityIds?: Record<string, number>;
+		updatedRecords?: number;
 		error?: string;
 		message?: string;
 	}> {
-		const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
-		const apiUrl = `https://alares.com.au/api/watchlists/3876/entities`;
-
 		try {
-			const response = await fetch(apiUrl, {
-				method: 'GET',
-				headers: {
-					'Authorization': `Bearer ${bearerToken}`,
-					'Accept': 'application/json'
-				}
+			const response = await this.request<{
+				success: boolean;
+				data: Array<{
+					id: number;
+					reference: string;
+					type: string;
+					party_name: string;
+					abn: string;
+					acn?: string;
+					num_alerts: number;
+					[key: string]: any;
+				}>;
+				counts?: Record<string, number>;
+				entityIds?: Record<string, number>;
+				updatedRecords?: number;
+				message?: string;
+			}>('/api/matters/watchlist/sync', {
+				method: 'POST',
 			});
 
-			if (!response.ok) {
-				throw new Error(`API error: ${response.status} ${response.statusText}`);
-			}
-
-			const data = await response.json();
 			return {
-				success: true,
-				data: data.data || []
+				success: response.success,
+				data: response.data || [],
+				counts: response.counts,
+				entityIds: response.entityIds,
+				updatedRecords: response.updatedRecords,
+				message: response.message
 			};
 		} catch (error) {
 			console.error('Error fetching watchlist entities:', error);
@@ -716,6 +727,34 @@ class ApiService {
 				data: [],
 				error: 'WATCHLIST_FETCH_FAILED',
 				message: error instanceof Error ? error.message : 'Failed to retrieve watchlist entities'
+			};
+		}
+	}
+
+	async payForWatchlistReport(abn: string, reportType: string, matterId?: number, userReportId?: number): Promise<{
+		success: boolean;
+		message: string;
+		pdfFilename?: string;
+		error?: string;
+	}> {
+		try {
+			const response = await this.request<{
+				success: boolean;
+				message: string;
+				pdfFilename?: string;
+				error?: string;
+			}>('/api/matters/watchlist/pay', {
+				method: 'POST',
+				body: JSON.stringify({ abn, reportType, matterId, userReportId }),
+			});
+
+			return response;
+		} catch (error) {
+			console.error('Error processing payment:', error);
+			return {
+				success: false,
+				message: error instanceof Error ? error.message : 'Failed to process payment',
+				error: 'PAYMENT_FAILED'
 			};
 		}
 	}

@@ -1,7 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
-const { Matter, UserReport } = require('../models');
+const axios = require('axios');
+const { Matter, UserReport, ApiData } = require('../models');
+const { sequelize } = require('../config/db');
+const { createReport } = require('./payment.routes');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
@@ -234,7 +237,8 @@ router.get('/:matterId/reports', authenticateToken, async (req, res) => {
         ur.updated_at as "updatedAt",
         ad.rtype as "reportType",
         ad.search_word as "searchWord",
-        ad.abn as "abn"
+        ad.abn as "abn",
+        ad.num_alerts as "numAlerts"
       FROM user_reports ur
       LEFT JOIN api_data ad ON ur.report_id = ad.id
       WHERE ur.matter_id = $1 AND ur.user_id = $2
@@ -259,6 +263,7 @@ router.get('/:matterId/reports', authenticateToken, async (req, res) => {
       reportType: report.reportType || null,
       searchWord: report.searchWord || null,
       abn: report.abn || null,
+      numAlerts: report.numAlerts || 0,
       downloadUrl: `https://${BUCKET_NAME}.s3.${AWS_REGION}.amazonaws.com/${report.reportName}`
     }));
 
@@ -407,6 +412,179 @@ router.delete('/:matterId', authenticateToken, async (req, res) => {
     res.status(500).json({
       error: 'MATTER_DELETE_FAILED',
       message: error.message || 'Failed to delete matter'
+    });
+  }
+});
+
+// Sync watchlist entities and update api_data table
+router.post('/watchlist/sync', authenticateToken, async (req, res) => {
+  try {
+    const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
+    const watchlistId = '3876';
+    const apiUrl = `https://alares.com.au/api/watchlists/${watchlistId}/entities`;
+
+    // Fetch watchlist entities from external API
+    const response = await axios.get(apiUrl, {
+      headers: {
+        'Authorization': `Bearer ${bearerToken}`,
+        'Accept': 'application/json'
+      }
+    });
+
+    const data = response.data;
+    const entities = data.data || [];
+
+    // Update api_data table for each entity with ABN
+    let updatedCount = 0;
+    const counts = {};
+    const entityIds = {};
+
+    for (const entity of entities) {
+      if (entity.abn) {
+        const numAlerts = entity.num_alerts || 0;
+        const isAlert = numAlerts > 0;
+
+
+        const apiCreatedAt = entity.latest_report?.created_at || entity.created_at || entity.entity?.created_at;
+        
+        if (!apiCreatedAt) {
+         
+          if (numAlerts > 0) {
+            counts[entity.abn] = numAlerts;
+          }
+          entityIds[entity.abn] = entity.id;
+          continue;
+        }
+
+
+        const [existingRecords] = await sequelize.query(`
+          SELECT id, created_at, abn
+          FROM api_data
+          WHERE abn = $1
+        `, {
+          bind: [entity.abn],
+          type: sequelize.QueryTypes.SELECT
+        });
+
+        if (!existingRecords || existingRecords.length === 0) {
+          console.log(`[Watchlist Sync] No existing records found for ABN: ${entity.abn}, skipping update`);
+
+          if (numAlerts > 0) {
+            counts[entity.abn] = numAlerts;
+          }
+          entityIds[entity.abn] = entity.id;
+          continue;
+        }
+
+
+        const apiCreatedAtDate = new Date(apiCreatedAt);
+
+        let recordsUpdated = 0;
+        for (const record of existingRecords) {
+          const dbCreatedAtDate = new Date(record.created_at);
+          
+
+          if (apiCreatedAtDate > dbCreatedAtDate) {
+            const [updateResults, updateMetadata] = await sequelize.query(`
+              UPDATE api_data
+              SET alert = $1, num_alerts = $2, updated_at = NOW()
+              WHERE id = $3
+            `, {
+              bind: [isAlert, numAlerts, record.id]
+            });
+
+            const affectedRows = updateMetadata?.rowCount || 0;
+            if (affectedRows > 0) {
+              recordsUpdated += affectedRows;
+              updatedCount += affectedRows;
+             
+            }
+          } else {
+            console.log(`Skipped update for record ID ${record.id} (ABN: ${entity.abn}) - API created_at (${apiCreatedAt}) is not after DB created_at (${record.created_at})`);
+          }
+        }
+
+
+        if (numAlerts > 0) {
+          counts[entity.abn] = numAlerts;
+        }
+        entityIds[entity.abn] = entity.id;
+      }
+    }
+
+    res.json({
+      success: true,
+      data: entities,
+      updatedRecords: updatedCount,
+      counts: counts,
+      entityIds: entityIds,
+      message: `Successfully synced watchlist entities. Updated ${updatedCount} records in api_data table.`
+    });
+
+  } catch (error) {
+    console.error('Error syncing watchlist entities:', error);
+    res.status(500).json({
+      success: false,
+      error: 'WATCHLIST_SYNC_FAILED',
+      message: error.message || 'Failed to sync watchlist entities'
+    });
+  }
+});
+
+// Payment endpoint for watchlist notifications
+router.post('/watchlist/pay', authenticateToken, async (req, res) => {
+  try {
+    const { abn, reportType, matterId, userReportId } = req.body;
+    const userId = req.userId;
+
+    if (!abn) {
+      return res.status(400).json({
+        success: false,
+        error: 'MISSING_ABN',
+        message: 'ABN is required'
+      });
+    }
+
+    if (!reportType) {
+      return res.status(400).json({
+        success: false,
+        error: 'MISSING_REPORT_TYPE',
+        message: 'Report type is required'
+      });
+    }
+
+    const business = {
+      Abn: abn,
+      isCompany: 'ORGANISATION'
+    };
+
+    try {
+      const result = await createReport({
+        business,
+        type: reportType,
+        userId,
+        matterId: matterId || null,
+        ispdfcreate: true,
+        skipExistingCheck: true,
+        userReportIdToUpdate: userReportId || null
+      });
+
+      return res.json({
+        success: true,
+        message: 'Payment processed successfully. Report created and PDF generated.',
+        pdfFilename: result.pdfFilename,
+        reportId: result.reportId
+      });
+    } catch (error) {
+      console.error('Error creating report for payment:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error processing payment:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'PAYMENT_PROCESSING_FAILED',
+      message: error.message || 'Failed to process payment and create report'
     });
   }
 });

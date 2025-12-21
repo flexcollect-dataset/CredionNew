@@ -6045,13 +6045,28 @@ async function addDownloadReportInDB(rdata, userId, matterId, reportId, reportNa
 		throw new Error(`S3 upload failed: ${s3UploadResult.error}`);
 	}
 
-	await UserReport.create({
-		userId: userId || null,
-		matterId: matterId || null,
-		reportId: reportId || null,
-		reportName: `${reportName}.pdf` || null,
-		isPaid: true
-	});
+	if (userReportIdToUpdate) {
+		await UserReport.update(
+			{
+				reportId: reportId || null,
+				reportName: `${reportName}.pdf` || null,
+				isPaid: true
+			},
+			{
+				where: {
+					id: userReportIdToUpdate
+				}
+			}
+		);
+	} else {
+		await UserReport.create({
+			userId: userId || null,
+			matterId: matterId || null,
+			reportId: reportId || null,
+			reportName: `${reportName}.pdf` || null,
+			isPaid: true
+		});
+	}
 
 	return pdfFilename;
 }

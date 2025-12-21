@@ -44,6 +44,12 @@ const ApiData = sequelize.define('ApiData', {
         defaultValue: false,
         field: 'alert'
     },
+    num_alerts: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        defaultValue: 0,
+        field: 'num_alerts'
+    },
     createdAt: {
         type: DataTypes.DATE,
         allowNull: false,
