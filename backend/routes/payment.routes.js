@@ -439,7 +439,7 @@ function extractSearchWord(business, type) {
 			if (givenNames || surname) {
 				searchWord = `${givenNames} ${surname}`.trim();
 			}
-		} else if (type === 'director-related' && business?.directorRelatedSelection?.name) {
+		} else if ((type === 'director-related' || type === 'director-related-historical') && business?.directorRelatedSelection?.name) {
 			searchWord = business.directorRelatedSelection.name;
 		} else if (type === 'director-court' || type === 'director-court-civil' || type === 'director-court-criminal') {
 			// For court reports, prefer civilSelection.fullname, fallback to criminalSelection.fullname
@@ -760,7 +760,7 @@ async function director_bankrupcty_report(business) {
 	return reportData;
 }
 
-async function director_related_report(business) {
+async function director_related_report(business, isHistorical = false) {
 	const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
 	
 	// Check if directorRelatedSelection exists in business object
@@ -823,10 +823,16 @@ async function director_related_report(business) {
 	    type: 'individual',
 	    name: name,
 	    dob: formattedDob,
-	    asic_current: '1',
 	    person_id: person_id,
 	    acs_search_id: acs_search_id
 	};
+	
+	// Add asic_current or asic_historical based on isHistorical parameter
+	if (isHistorical) {
+		params.asic_historical = '1';
+	} else {
+		params.asic_current = '1';
+	}
 	
 	let createResponse;
 	try {
@@ -2171,7 +2177,9 @@ async function createReport({ business, type, userId, matterId, ispdfcreate }) {
 			} else if (type == "director-bankruptcy") {
 				reportData = await director_bankrupcty_report(business);
 			} else if (type == "director-related") {
-				reportData = await director_related_report(business);
+				reportData = await director_related_report(business, false);
+			} else if (type == "director-related-historical") {
+				reportData = await director_related_report(business, true);
 			} else if (type == "director-court") {
 				reportData = await director_court_report(business);
 			} else if (type == "director-court-civil") {

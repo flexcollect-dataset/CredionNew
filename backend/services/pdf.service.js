@@ -65,7 +65,7 @@ function extractSearchWord(business, type) {
 			if (givenNames || surname) {
 				searchWord = `${givenNames} ${surname}`.trim();
 			}
-		} else if (type === 'director-related' && business?.directorRelatedSelection?.name) {
+		} else if ((type === 'director-related' || type === 'director-related-historical') && business?.directorRelatedSelection?.name) {
 			searchWord = business.directorRelatedSelection.name;
 		} else if (type === 'director-court' || type === 'director-court-civil' || type === 'director-court-criminal') {
 			// For court reports, prefer civilSelection.fullname, fallback to criminalSelection.fullname
@@ -5415,7 +5415,7 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 		extractedData = extractPpsrData(data, bussiness, reportype);
 	} else if (reportype === 'director-bankruptcy') {
 		extractedData = extractBankruptcyData(data, bussiness);
-	} else if (reportype === 'director-related') {
+	} else if (reportype === 'director-related' || reportype === 'director-related-historical') {
 		extractedData = extractDirectorRelatedEntitiesData(data, bussiness);
 	} else if (reportype === 'director-court' || reportype === 'director-court-civil' || reportype === 'director-court-criminal') {
 		extractedData = extractDirectorCourtData(data, bussiness);
@@ -5983,7 +5983,7 @@ async function addDownloadReportInDB(rdata, userId, matterId, reportId, reportNa
 		templateName = 'director-ppsr-report.html';
 	} else if (reportype == "director-bankruptcy") {
 		templateName = 'director-bankruptcy-report.html';
-	} else if (reportype == "director-related") {
+	} else if (reportype == "director-related" || reportype == "director-related-historical") {
 		templateName = 'director-related-entities-report.html';
 	} else if (reportype == "director-court" || reportype == "director-court-civil" || reportype == "director-court-criminal") {
 		templateName = 'director-court-report.html';

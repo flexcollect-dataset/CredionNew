@@ -135,6 +135,8 @@ const Search: React.FC = () => {
   const [isAsicModalOpen, setIsAsicModalOpen] = useState(false);
   const [isCourtModalOpen, setIsCourtModalOpen] = useState(false);
   const [isDocumentModalOpen, setIsDocumentModalOpen] = useState(false);
+  const [isIndividualRelatedEntitiesModalOpen, setIsIndividualRelatedEntitiesModalOpen] = useState(false);
+  const [selectedIndividualRelatedEntitiesType, setSelectedIndividualRelatedEntitiesType] = useState<'CURRENT' | 'HISTORICAL' | null>(null);
 	const [isRegoModalOpen, setIsRegoModalOpen] = useState(false);
 	const [regoNumber, setRegoNumber] = useState('');
 	const [regoState, setRegoState] = useState<string>('');
@@ -3204,6 +3206,36 @@ const Search: React.FC = () => {
     setIsCourtModalOpen(false);
   };
 
+  const removeIndividualRelatedEntitiesSelection = useCallback(() => {
+    setSelectedIndividualRelatedEntitiesType(null);
+    setSelectedSearches(prev => {
+      const updated = new Set(prev);
+      const hadIndividualRelatedEntities = updated.delete('INDIVIDUAL RELATED ENTITIES');
+      if (hadIndividualRelatedEntities) {
+        updated.delete('SELECT ALL');
+      }
+      return updated;
+    });
+  }, []);
+
+  const closeIndividualRelatedEntitiesModal = useCallback(
+    (options?: { removeSelection?: boolean }) => {
+      setIsIndividualRelatedEntitiesModalOpen(false);
+      if (options?.removeSelection) {
+        removeIndividualRelatedEntitiesSelection();
+      }
+    },
+    [removeIndividualRelatedEntitiesSelection]
+  );
+
+  const handleIndividualRelatedEntitiesSelectionConfirm = () => {
+    if (!selectedIndividualRelatedEntitiesType) {
+      alert('Please select either CURRENT or HISTORICAL');
+      return;
+    }
+    setIsIndividualRelatedEntitiesModalOpen(false);
+  };
+
   const handleDocumentModalCancel = useCallback(() => {
     setDocumentIdInput(documentSearchId);
     setIsDocumentModalOpen(false);
@@ -3328,6 +3360,7 @@ const Search: React.FC = () => {
       if (selectedSearches.has('SELECT ALL')) {
         const hadAsicSelected = newSelected.has('ASIC');
         const hadCourtSelected = newSelected.has('COURT');
+        const hadIndividualRelatedEntities = newSelected.has('INDIVIDUAL RELATED ENTITIES');
         newSelected.clear();
         if (hadAsicSelected) {
           setSelectedAsicTypes(new Set());
@@ -3336,6 +3369,10 @@ const Search: React.FC = () => {
         if (hadCourtSelected) {
           setSelectedCourtType('ALL');
           setIsCourtModalOpen(false);
+        }
+        if (hadIndividualRelatedEntities) {
+          setSelectedIndividualRelatedEntitiesType(null);
+          setIsIndividualRelatedEntitiesModalOpen(false);
         }
         setDocumentSearchId('');
         setDocumentIdInput('');
@@ -3359,6 +3396,9 @@ const Search: React.FC = () => {
         }
         if (selectedCategory === 'INDIVIDUAL' && searches.includes('COURT')) {
           setIsCourtModalOpen(true);
+        }
+        if (selectedCategory === 'INDIVIDUAL' && searches.includes('INDIVIDUAL RELATED ENTITIES')) {
+          setIsIndividualRelatedEntitiesModalOpen(true);
         }
 
 				setSelectedSearches(newSelected);
@@ -3408,6 +3448,10 @@ const Search: React.FC = () => {
           setSelectedCourtType('ALL');
           setIsCourtModalOpen(false);
         }
+        if (search === 'INDIVIDUAL RELATED ENTITIES' && selectedCategory === 'INDIVIDUAL') {
+          setSelectedIndividualRelatedEntitiesType(null);
+          setIsIndividualRelatedEntitiesModalOpen(false);
+        }
 				if (search === 'REGO PPSR') {
 					setRegoNumber('');
 					setRegoState('');
@@ -3419,6 +3463,14 @@ const Search: React.FC = () => {
 					setIsRegoModalOpen(true);
 					return;
 				}
+
+        // Check if INDIVIDUAL RELATED ENTITIES is being selected - show modal first
+        if (search === 'INDIVIDUAL RELATED ENTITIES' && selectedCategory === 'INDIVIDUAL') {
+          newSelected.add(search);
+          setSelectedSearches(newSelected);
+          setIsIndividualRelatedEntitiesModalOpen(true);
+          return;
+        }
 
         newSelected.add(search);
         const allSelected = searches
@@ -3733,6 +3785,20 @@ const Search: React.FC = () => {
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
   }, [closeCourtModal, isCourtModalOpen]);
+
+  useEffect(() => {
+    if (!isIndividualRelatedEntitiesModalOpen) {
+      return;
+    }
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeIndividualRelatedEntitiesModal({ removeSelection: true });
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [closeIndividualRelatedEntitiesModal, isIndividualRelatedEntitiesModalOpen]);
 
   useEffect(() => {
     if (!isDocumentModalOpen) {
@@ -4892,6 +4958,12 @@ setLandTitleOrganisationSearchTerm(displayText);
       return;
     }
 
+    // Validation: If INDIVIDUAL RELATED ENTITIES is selected, type (CURRENT or HISTORICAL) must be selected
+    if (selectedCategory === 'INDIVIDUAL' && selectedSearches.has('INDIVIDUAL RELATED ENTITIES') && !selectedIndividualRelatedEntitiesType) {
+      alert('Please select either CURRENT or HISTORICAL for INDIVIDUAL RELATED ENTITIES');
+      return;
+    }
+
     if (!hasMainSearches && !hasAdditionalSearches && !hasAsicTypes) {
       alert('Please select at least one search option');
       return;
@@ -4982,6 +5054,14 @@ setLandTitleOrganisationSearchTerm(displayText);
               if (hasAsicTypes) {
                 return;
               }
+            }
+            // Handle INDIVIDUAL RELATED ENTITIES with type selection
+            if (search === 'INDIVIDUAL RELATED ENTITIES' && selectedCategory === 'INDIVIDUAL' && selectedIndividualRelatedEntitiesType) {
+              reportsToCreate.push({ 
+                type: `INDIVIDUAL RELATED ENTITIES: ${selectedIndividualRelatedEntitiesType}`, 
+                name: `INDIVIDUAL RELATED ENTITIES ${selectedIndividualRelatedEntitiesType}` 
+              });
+              return;
             }
             const meta = isLandTitleOption(search) ? { landTitleSelection: landTitleSelections[search as LandTitleOption] } : undefined;
             reportsToCreate.push({ type: search, name: search, meta });
@@ -5226,6 +5306,15 @@ setLandTitleOrganisationSearchTerm(displayText);
           reportType = 'asic-current';
         } else if (reportItem.type === 'ATO') {
           reportType = 'ato';
+        } else if (reportItem.type.startsWith('INDIVIDUAL RELATED ENTITIES:')) {
+          // Handle INDIVIDUAL RELATED ENTITIES with CURRENT or HISTORICAL
+          if (reportItem.type.includes('CURRENT')) {
+            reportType = 'director-related';
+          } else if (reportItem.type.includes('HISTORICAL')) {
+            reportType = 'director-related-historical';
+          } else {
+            reportType = 'director-related';
+          }
 				} else if (reportItem.type.includes('DIRECTOR') || reportItem.type.includes('INDIVIDUAL')) {
           if (reportItem.type.includes('PPSR')) {
             reportType = 'director-ppsr';
@@ -7554,6 +7643,72 @@ setLandTitleOrganisationSearchTerm(displayText);
               <button
                 type="button"
                 onClick={handleCourtSelectionConfirm}
+                className="rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedCategory === 'INDIVIDUAL' && selectedSearches.has('INDIVIDUAL RELATED ENTITIES') && isIndividualRelatedEntitiesModalOpen && (
+        <div
+          className="fixed inset-0 z-[119] flex items-center justify-center bg-gray-900/60 px-4"
+          onClick={() => closeIndividualRelatedEntitiesModal({ removeSelection: true })}
+        >
+          <div
+            className="relative w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => closeIndividualRelatedEntitiesModal({ removeSelection: true })}
+              className="absolute top-4 right-4 text-gray-400 transition-colors duration-200 hover:text-red-600"
+              aria-label="Close modal"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div className="text-center">
+              <h3 className="text-2xl font-bold text-gray-900">Select Report Type</h3>
+              <p className="mt-2 text-sm text-gray-500">
+                Choose whether you want CURRENT or HISTORICAL related entities search.
+              </p>
+            </div>
+
+            <div className="mt-8 space-y-3">
+              {(['CURRENT', 'HISTORICAL'] as const).map((type) => {
+                const isSelected = selectedIndividualRelatedEntitiesType === type;
+                return (
+                  <button
+                    type="button"
+                    key={type}
+                    onClick={() => setSelectedIndividualRelatedEntitiesType(type)}
+                    className={`w-full rounded-xl border-2 px-6 py-4 text-sm font-semibold uppercase tracking-wide transition-all duration-200 ${isSelected
+                      ? 'border-red-600 bg-red-600 text-white shadow-lg shadow-red-600/25'
+                      : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-red-600 hover:bg-red-50'
+                      }`}
+                  >
+                    {type}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-8 grid grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => closeIndividualRelatedEntitiesModal({ removeSelection: true })}
+                className="rounded-xl border-2 border-gray-200 bg-white py-3 text-sm font-semibold uppercase tracking-wide text-gray-600 transition-all duration-200 hover:border-gray-300 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleIndividualRelatedEntitiesSelectionConfirm}
                 className="rounded-xl bg-red-600 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition-all duration-200 hover:bg-red-700"
               >
                 Continue
