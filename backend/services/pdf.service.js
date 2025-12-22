@@ -16,11 +16,27 @@ async function ensureMediaDir() {
 	}
 }
 
-// Helper function to format ACN
 function fmtAcn(acnVal) {
 	if (!acnVal) return '';
-	const s = ('' + acnVal).replace(/\D/g, '');
-	return s.length === 9 ? s.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3') : acnVal;
+	let s = ('' + acnVal).replace(/\D/g, '');
+
+	// pad with leading zeros until length is 9
+	if (s.length < 9) {
+		s = s.padStart(9, '0');
+	}
+
+	// format if length is exactly 9
+	return s.length === 9
+		? s.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3')
+		: acnVal;
+}
+
+function fmtAbn(abnVal) {
+	if (!abnVal) return '';
+	const s = ('' + abnVal).replace(/\D/g, '');
+	return s.length === 11 
+		? s.replace(/(\d{2})(\d{3})(\d{3})(\d{3})/, '$1 $2 $3 $4') 
+		: abnVal;
 }
 
 // Helper function to format dates
@@ -29,14 +45,11 @@ function fmtDate(date) {
 	return moment(date).format('DD MMM YYYY');
 }
 
-/**
- * Extract search word from business object based on report type
- * For ORGANISATION: returns company name
- * For INDIVIDUAL: returns name from selection object if available, otherwise fname + lname
- * @param {Object} business - Business object containing report data
- * @param {String} type - Report type
- * @returns {String|null} - Search word or null if not found
- */
+function fmtDateTime(date) {
+	if (!date) return 'N/A';
+	return `${moment(date).format('DD MMM YYYY')}<br>${moment(date).format('h:mma')}`;
+}
+
 function extractSearchWord(business, type) {
 	if (!business) {
 		return null;
@@ -45,10 +58,10 @@ function extractSearchWord(business, type) {
 	// Determine if this is an organization or individual based on report type
 	const isLandTitleOrg = type === 'land-title-organisation';
 	const isLandTitleIndividual = type === 'land-title-individual';
-	const isOrganization = isLandTitleOrg || 
-	                     (business?.isCompany === "ORGANISATION" && !isLandTitleIndividual);
-	const isIndividual = isLandTitleIndividual || 
-	                    (business?.isCompany === "INDIVIDUAL" && !isLandTitleOrg);
+	const isOrganization = isLandTitleOrg ||
+		(business?.isCompany === "ORGANISATION" && !isLandTitleIndividual);
+	const isIndividual = isLandTitleIndividual ||
+		(business?.isCompany === "INDIVIDUAL" && !isLandTitleOrg);
 
 	if (isOrganization) {
 		// For organizations, use company name
@@ -82,7 +95,7 @@ function extractSearchWord(business, type) {
 			const firstName = business?.fname || business?.firstName || '';
 			const middleName = business?.mname || business?.middleName || '';
 			const lastName = business?.lname || business?.lastName || '';
-			
+
 			const nameParts = [firstName, middleName, lastName].filter(part => part && part.trim());
 			searchWord = nameParts.length > 0 ? nameParts.join(' ').trim() : null;
 		}
@@ -92,26 +105,21 @@ function extractSearchWord(business, type) {
 			const firstName = business?.fname || business?.firstName || '';
 			const middleName = business?.mname || business?.middleName || '';
 			const lastName = business?.lname || business?.lastName || '';
-			
+
 			const nameParts = [firstName, middleName, lastName].filter(part => part && part.trim());
 			searchWord = nameParts.length > 0 ? nameParts.join(' ').trim() : null;
 		}
 		return searchWord;
 	}
 
-	if(type === 'land-title-address') {
+	if (type === 'land-title-address') {
 		return searchWord = business?.address;
 	}
 
-	if(type === 'land-title-reference') {
+	if (type === 'land-title-reference') {
 		return searchWord = business?.referenceId;
 	}
 	return null;
-}
-
-function fmtDateTime(date) {
-	if (!date) return 'N/A';
-	return `${moment(date).format('DD MMM YYYY')}<br>${moment(date).format('h:mma')}`;
 }
 
 // Extract data for ATO Report
@@ -326,141 +334,141 @@ function extractCourtData(data) {
 
 			// Build action section HTML
 			actionSectionsHtml += `
-        <!-- ACTION ${actionNumber}: ${caseType} -->
-        <div class="page" style="page-break-before: ${index > 0 ? 'always' : 'auto'};">
-            <div class="page-title">Action ${actionNumber}: ${caseType}</div>
-            
-            <div class="card" style="border: 2px solid #CBD5E1; background: #F8FAFC; padding: 12px;">
-                <div class="card-header" style="background: #F8FAFC; color: #475569; font-weight: 600;">CASE INFORMATION</div>
-                <div class="data-grid" style="grid-template-columns: repeat(2, 1fr);">
-                    <div class="data-item">
-                        <div class="data-label">Case ID</div>
-                        <div class="data-value">${case_case_id}</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Source</div>
-                        <div class="data-value">${case_source}</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Jurisdiction</div>
-                        <div class="data-value">${case_jurisdiction}</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Case Type</div>
-                        <div class="data-value">${case_type}</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Case Status</div>
-                        <div class="data-value">${case_status}</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Location</div>
-                        <div class="data-value">${case_location}</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Most Recent Event</div>
-                        <div class="data-value">${case_most_recent_event}</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Notification Date</div>
-                        <div class="data-value">${case_notification_date}</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Next Event</div>
-                        <div class="data-value">${case_next_event}</div>
-                    </div>
-                </div>
-            </div>
-            <div class="card info">
-                <div class="card-header" style="color: #0F172A;">Action Summary</div>
-                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
-                    <div style="text-align: center;">
-                        <div class="stat-label">Outcome</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #0F172A; margin-top: 6px;">
-                            ${allOrders.length}</div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div class="stat-label">Hearing</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #0F172A;">${caseItem.hearings.length}
-                        </div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div class="stat-label">Parties</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #0F172A;">${caseItem.parties.length}
-                        </div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div class="stat-label">Documents</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #0F172A;">${caseItem.documents.length}
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="section-title">Orders and Outcomes</div>
-            
-            <table>
-                <thead>
-                    <tr>
-                        <th style="width: 20%;">Date</th>
-                        <th style="width: 80%;">Details</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${orders_rows}
-                </tbody>
-            </table>
-            
-            <div class="section-title">Parties</div>
-            
-            <table>
-                <thead>
-                    <tr>
-                        <th style="width: 40%;">Name</th>
-                        <th style="width: 15%;">Role</th>
-                        <th style="width: 30%;">Representative</th>
-                        <th style="width: 15%;">ACN</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${case_parties_rows}
-                </tbody>
-            </table>
+	<!-- ACTION ${actionNumber}: ${caseType} -->
+	<div class="page" style="page-break-before: ${index > 0 ? 'always' : 'auto'};">
+		<div class="page-title">Action ${actionNumber}: ${caseType}</div>
+		
+		<div class="card" style="border: 2px solid #CBD5E1; background: #F8FAFC; padding: 12px;">
+			<div class="card-header" style="background: #F8FAFC; color: #475569; font-weight: 600;">CASE INFORMATION</div>
+			<div class="data-grid" style="grid-template-columns: repeat(2, 1fr);">
+				<div class="data-item">
+					<div class="data-label">Case ID</div>
+					<div class="data-value">${case_case_id}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Source</div>
+					<div class="data-value">${case_source}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Jurisdiction</div>
+					<div class="data-value">${case_jurisdiction}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Case Type</div>
+					<div class="data-value">${case_type}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Case Status</div>
+					<div class="data-value">${case_status}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Location</div>
+					<div class="data-value">${case_location}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Most Recent Event</div>
+					<div class="data-value">${case_most_recent_event}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Notification Date</div>
+					<div class="data-value">${case_notification_date}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Next Event</div>
+					<div class="data-value">${case_next_event}</div>
+				</div>
+			</div>
+		</div>
+		<div class="card info">
+			<div class="card-header" style="color: #0F172A;">Action Summary</div>
+			<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
+				<div style="text-align: center;">
+					<div class="stat-label">Outcome</div>
+					<div style="font-size: 18px; font-weight: 700; color: #0F172A; margin-top: 6px;">
+						${allOrders.length}</div>
+				</div>
+				<div style="text-align: center;">
+					<div class="stat-label">Hearing</div>
+					<div style="font-size: 18px; font-weight: 700; color: #0F172A;">${caseItem.hearings.length}
+					</div>
+				</div>
+				<div style="text-align: center;">
+					<div class="stat-label">Parties</div>
+					<div style="font-size: 18px; font-weight: 700; color: #0F172A;">${caseItem.parties.length}
+					</div>
+				</div>
+				<div style="text-align: center;">
+					<div class="stat-label">Documents</div>
+					<div style="font-size: 18px; font-weight: 700; color: #0F172A;">${caseItem.documents.length}
+					</div>
+				</div>
+			</div>
+		</div>
+		<div class="section-title">Orders and Outcomes</div>
+		
+		<table>
+			<thead>
+				<tr>
+					<th style="width: 20%;">Date</th>
+					<th style="width: 80%;">Details</th>
+				</tr>
+			</thead>
+			<tbody>
+				${orders_rows}
+			</tbody>
+		</table>
+		
+		<div class="section-title">Parties</div>
+		
+		<table>
+			<thead>
+				<tr>
+					<th style="width: 40%;">Name</th>
+					<th style="width: 15%;">Role</th>
+					<th style="width: 30%;">Representative</th>
+					<th style="width: 15%;">ACN</th>
+				</tr>
+			</thead>
+			<tbody>
+				${case_parties_rows}
+			</tbody>
+		</table>
 
-			<div class="section-title">Hearing Schedule</div>
-			<table>
-                <thead>
-                    <tr>
-                        <th style="width: 15%;">Date/Time</th>
-                        <th style="width: 18%;">Officer</th>
-                        <th style="width: 15%;">Court Room</th>
-                        <th style="width: 25%;">Court Location</th>
-                        <th style="width: 12%;">Type</th>
-                        <th style="width: 15%;">Outcome</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${hearings_rows}
-                </tbody>
-            </table>
+		<div class="section-title">Hearing Schedule</div>
+		<table>
+			<thead>
+				<tr>
+					<th style="width: 15%;">Date/Time</th>
+					<th style="width: 18%;">Officer</th>
+					<th style="width: 15%;">Court Room</th>
+					<th style="width: 25%;">Court Location</th>
+					<th style="width: 12%;">Type</th>
+					<th style="width: 15%;">Outcome</th>
+				</tr>
+			</thead>
+			<tbody>
+				${hearings_rows}
+			</tbody>
+		</table>
 
-			<div class="section-title">Document Timeline</div>
-            
-            <table>
-                <thead>
-                    <tr>
-                        <th style="width: 12%;">Date</th>
-                        <th style="width: 10%;">Time</th>
-                        <th style="width: 40%;">Title</th>
-                        <th style="width: 38%;">Filed By</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${documents_rows}
-                </tbody>
-            </table>
+		<div class="section-title">Document Timeline</div>
+		
+		<table>
+			<thead>
+				<tr>
+					<th style="width: 12%;">Date</th>
+					<th style="width: 10%;">Time</th>
+					<th style="width: 40%;">Title</th>
+					<th style="width: 38%;">Filed By</th>
+				</tr>
+			</thead>
+			<tbody>
+				${documents_rows}
+			</tbody>
+		</table>
 
-        </div>
-      `;
+	</div>
+	`;
 		});
 	}
 
@@ -531,20 +539,20 @@ function extractAsicCurrentData(data) {
 
 		// Generate tax debt section HTML
 		taxDebtSection = `
-            <div style="margin-top: 60px;">
-                <div class="card" style="border: 2px solid #CBD5E1; background: #F8FAFC;">
-                    <div style="font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 16px; display: flex; align-items: center;">
-                        ⚠ CRITICAL: ATO TAX DEBT
-                    </div>
-                    <div style="font-size: 20px; font-weight: 700; color: #0F172A; margin-bottom: 12px;">
-                        ${taxDebtAmount}
-                    </div>
-                    <div style="font-size: 11px; color: #64748B;">
-                        Outstanding/Updated as of ${taxDebtUpdatedAt}
-                    </div>
-                </div>
-            </div>
-    `;
+		<div style="margin-top: 60px;">
+			<div class="card" style="border: 2px solid #CBD5E1; background: #F8FAFC;">
+				<div style="font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 16px; display: flex; align-items: center;">
+					⚠ CRITICAL: ATO TAX DEBT
+				</div>
+				<div style="font-size: 20px; font-weight: 700; color: #0F172A; margin-bottom: 12px;">
+					${taxDebtAmount}
+				</div>
+				<div style="font-size: 11px; color: #64748B;">
+					Outstanding/Updated as of ${taxDebtUpdatedAt}
+				</div>
+			</div>
+		</div>
+`;
 	}
 
 	// Get status values (with fallbacks)
@@ -655,17 +663,17 @@ function extractAsicCurrentData(data) {
 		const docNo = addr.document_number || 'N/A';
 
 		addressBoxesHtml += `
-                <div class="card">
-                    <div class="card-header">${addr.type || 'Address'}</div>
-                    <div style="font-size: 11px; line-height: 1.6;">
-                        ${addr.care_of ? `<strong>Name:</strong> ${addr.care_of}<br>` : ''}
-                        <strong>Address:</strong><br>
-                        ${addressText}<br><br>
-                        <strong>Start Date:</strong> ${startDate}<br>
-                        <strong>Document No:</strong> ${docNo}
-                    </div>
-                </div>
-    `;
+			<div class="card">
+				<div class="card-header">${addr.type || 'Address'}</div>
+				<div style="font-size: 11px; line-height: 1.6;">
+					${addr.care_of ? `<strong>Name:</strong> ${addr.care_of}<br>` : ''}
+					<strong>Address:</strong><br>
+					${addressText}<br><br>
+					<strong>Start Date:</strong> ${startDate}<br>
+					<strong>Document No:</strong> ${docNo}
+				</div>
+			</div>
+`;
 	});
 
 	// Get first contact address for ASIC
@@ -689,20 +697,20 @@ function extractAsicCurrentData(data) {
 			: 'Current';
 
 		contactAddressHtml = `
-            <div class="card info" style="margin-top: 30px;">
-                <div class="card-header" style="color: #0F172A;">Contact Address for ASIC</div>
-                <div class="card warning" style="margin: 10px 0; font-size: 10px;">
-                    ⚠️ This address is to be used by ASIC and not for delivery of documents to the company
-                </div>
-                <div style="font-size: 14px; font-weight: 700; margin: 12px 0; color: #0F172A;">
-                    ${contactAddressText}
-                </div>
-                <div style="font-size: 10px; color: #64748B;">
-                    <strong>Type:</strong> ${firstContactAddress.type || 'Contact Address for ASIC use only'}<br>
-                    <strong>Start Date:</strong> ${contactStartDate} | <strong>End Date:</strong> ${contactEndDate}
-                </div>
-            </div>
-    `;
+		<div class="card info" style="margin-top: 30px;">
+			<div class="card-header" style="color: #0F172A;">Contact Address for ASIC</div>
+			<div class="card warning" style="margin: 10px 0; font-size: 10px;">
+				⚠️ This address is to be used by ASIC and not for delivery of documents to the company
+			</div>
+			<div style="font-size: 14px; font-weight: 700; margin: 12px 0; color: #0F172A;">
+				${contactAddressText}
+			</div>
+			<div style="font-size: 10px; color: #64748B;">
+				<strong>Type:</strong> ${firstContactAddress.type || 'Contact Address for ASIC use only'}<br>
+				<strong>Start Date:</strong> ${contactStartDate} | <strong>End Date:</strong> ${contactEndDate}
+			</div>
+		</div>
+`;
 	}
 
 	// Page 4 - Address Change History (get ceased addresses, limit to 2)
@@ -716,12 +724,12 @@ function extractAsicCurrentData(data) {
 		const docNo = addr.document_number || 'N/A';
 
 		addressChangeHistoryRows += `
-                    <tr>
-                        <td>${addressText}</td>
-                        <td>${changeDate}</td>
-                        <td>${docNo}</td>
-                    </tr>
-    `;
+				<tr>
+					<td>${addressText}</td>
+					<td>${changeDate}</td>
+					<td>${docNo}</td>
+				</tr>
+`;
 	});
 
 	// Page 4 - Key Personnel Summary
@@ -733,15 +741,15 @@ function extractAsicCurrentData(data) {
 		const dirStatus = dir.status === 'Current' ? '<span class="risk-low">Current</span>' : '<span class="risk-high">Ceased</span>';
 
 		directorsHtml += `
-            <div class="card" style="padding: 14px 20px; margin-bottom: 12px;">
-                <div class="card-header" style="margin-bottom: 10px;">Director</div>
-                <div style="font-size: 11px;">
-                    <strong>${dir.name || 'N/A'}</strong><br>
-                    Appointment Date: ${dirStartDate} | Address: ${dirAddress}<br>
-                    Status: ${dirStatus}
-                </div>
-            </div>
-    `;
+		<div class="card" style="padding: 14px 20px; margin-bottom: 12px;">
+			<div class="card-header" style="margin-bottom: 10px;">Director</div>
+			<div style="font-size: 11px;">
+				<strong>${dir.name || 'N/A'}</strong><br>
+				Appointment Date: ${dirStartDate} | Address: ${dirAddress}<br>
+				Status: ${dirStatus}
+			</div>
+		</div>
+`;
 	});
 
 	// Secretaries HTML
@@ -752,15 +760,15 @@ function extractAsicCurrentData(data) {
 		const secStatus = sec.status === 'Current' ? '<span class="risk-low">Current</span>' : '<span class="risk-high">Ceased</span>';
 
 		secretariesHtml += `
-            <div class="card" style="padding: 14px 20px; margin-bottom: 12px;">
-                <div class="card-header" style="margin-bottom: 10px;">Secretary</div>
-                <div style="font-size: 11px;">
-                    <strong>${sec.name || 'N/A'}</strong><br>
-                    Appointment Date: ${secStartDate} | Address: ${secAddress}<br>
-                    Status: ${secStatus}
-                </div>
-            </div>
-    `;
+		<div class="card" style="padding: 14px 20px; margin-bottom: 12px;">
+			<div class="card-header" style="margin-bottom: 10px;">Secretary</div>
+			<div style="font-size: 11px;">
+				<strong>${sec.name || 'N/A'}</strong><br>
+				Appointment Date: ${secStartDate} | Address: ${secAddress}<br>
+				Status: ${secStatus}
+			</div>
+		</div>
+`;
 	});
 
 	// Shareholders HTML
@@ -769,14 +777,14 @@ function extractAsicCurrentData(data) {
 		shareholders.forEach(shareholder => {
 			const shareAddress = shareholder.address ? shareholder.address.address : 'N/A';
 			shareholdersHtml += `
-            <div class="card" style="padding: 14px 20px; margin-bottom: 12px;">
-                <div class="card-header" style="margin-bottom: 10px;">Shareholder</div>
-                <div style="font-size: 11px;">
-                    <strong>${shareholder.name || 'N/A'}</strong><br>
-                    Address: ${shareAddress}
-                </div>
-            </div>
-      `;
+		<div class="card" style="padding: 14px 20px; margin-bottom: 12px;">
+			<div class="card-header" style="margin-bottom: 10px;">Shareholder</div>
+			<div style="font-size: 11px;">
+				<strong>${shareholder.name || 'N/A'}</strong><br>
+				Address: ${shareAddress}
+			</div>
+		</div>
+	`;
 		});
 	} else if (shareholdings.length > 0) {
 		// Group shareholdings by name
@@ -800,14 +808,14 @@ function extractAsicCurrentData(data) {
 			sharesInfo = sharesInfo.replace(/\s\|\s$/, '');
 
 			shareholdersHtml += `
-            <div class="card" style="padding: 14px 20px; margin-bottom: 12px;">
-                <div class="card-header" style="margin-bottom: 10px;">Shareholder</div>
-                <div style="font-size: 11px;">
-                    <strong>${name}</strong><br>
-                    ${sharesInfo}
-                </div>
-            </div>
-      `;
+		<div class="card" style="padding: 14px 20px; margin-bottom: 12px;">
+			<div class="card-header" style="margin-bottom: 10px;">Shareholder</div>
+			<div style="font-size: 11px;">
+				<strong>${name}</strong><br>
+				${sharesInfo}
+			</div>
+		</div>
+	`;
 		});
 	}
 
@@ -865,13 +873,13 @@ function extractAsicCurrentData(data) {
 		const docNumber = doc.document_number || 'N/A';
 
 		documentsRowsHtml += `
-                    <tr>
-                        <td><strong>${formCode}</strong></td>
-                        <td>${description}</td>
-                        <td>${formattedDate}</td>
-                        <td>${docNumber}</td>
-                    </tr>
-    `;
+				<tr>
+					<td><strong>${formCode}</strong></td>
+					<td>${description}</td>
+					<td>${formattedDate}</td>
+					<td>${docNumber}</td>
+				</tr>
+`;
 	});
 
 	// Page 7 - Board of Directors & Shareholders
@@ -917,15 +925,15 @@ function extractAsicCurrentData(data) {
 		const appointedDate = holder.start_date ? moment(holder.start_date).format('DD/MM/YYYY') : 'N/A';
 
 		directorsSecretariesRowsHtml += `
-                    <tr>
-                        <td><strong>${holder.name || 'N/A'}</strong></td>
-                        <td>${holder.position || 'N/A'}</td>
-                        <td>${appointedDate}</td>
-                        <td>${address}</td>
-                        <td>${dob}</td>
-                        <td>${placeOfBirth}</td>
-                    </tr>
-    `;
+				<tr>
+					<td><strong>${holder.name || 'N/A'}</strong></td>
+					<td>${holder.position || 'N/A'}</td>
+					<td>${appointedDate}</td>
+					<td>${address}</td>
+					<td>${dob}</td>
+					<td>${placeOfBirth}</td>
+				</tr>
+`;
 	});
 
 	// Shareholders & Ownership section - only show if data exists
@@ -1016,56 +1024,56 @@ function extractAsicCurrentData(data) {
 			const docNo = sh.document_number || 'N/A';
 
 			shareRegisterRowsHtml += `
-                    <tr>
-                        <td><strong>${name}</strong></td>
-                        <td>${address}</td>
-                        <td>${shareClass}</td>
-                        <td>${shares}</td>
-                        <td>${fullyPaid}</td>
-                        <td>${docNo}</td>
-                    </tr>
-      `;
+				<tr>
+					<td><strong>${name}</strong></td>
+					<td>${address}</td>
+					<td>${shareClass}</td>
+					<td>${shares}</td>
+					<td>${fullyPaid}</td>
+					<td>${docNo}</td>
+				</tr>
+	`;
 		});
 
 		shareholdersOwnershipSection = `
-            <div class="page-title" style="margin-top: 30px;">Shareholders &amp; Ownership</div>
-            
-            <div class="stats-grid">
-                <div class="stat-box">
-                    <div class="stat-label">Total Shareholders</div>
-                    <div class="stat-value">${totalShareholdersCount}</div>
-                </div>
-                <div class="stat-box">
-                    <div class="stat-label">Share Classes</div>
-                    <div class="stat-value">${shareClassesCount}</div>
-                </div>
-                <div class="stat-box">
-                    <div class="stat-label">Ownership Concentration</div>
-                    <div class="stat-value alert">${ownershipConcentration}</div>
-                </div>
-                <div class="stat-box">
-                    <div class="stat-label">Share Capital</div>
-                    <div class="stat-value">${formattedShareCapital}</div>
-                </div>
-            </div>
-            
-            <div class="section-title">Share Register</div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Shareholder Name</th>
-                        <th>Address</th>
-                        <th>Share Class</th>
-                        <th>Shares Held</th>
-                        <th>Fully Paid</th>
-                        <th>Document No</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${shareRegisterRowsHtml}
-                </tbody>
-            </table>
-    `;
+		<div class="page-title" style="margin-top: 30px;">Shareholders &amp; Ownership</div>
+		
+		<div class="stats-grid">
+			<div class="stat-box">
+				<div class="stat-label">Total Shareholders</div>
+				<div class="stat-value">${totalShareholdersCount}</div>
+			</div>
+			<div class="stat-box">
+				<div class="stat-label">Share Classes</div>
+				<div class="stat-value">${shareClassesCount}</div>
+			</div>
+			<div class="stat-box">
+				<div class="stat-label">Ownership Concentration</div>
+				<div class="stat-value alert">${ownershipConcentration}</div>
+			</div>
+			<div class="stat-box">
+				<div class="stat-label">Share Capital</div>
+				<div class="stat-value">${formattedShareCapital}</div>
+			</div>
+		</div>
+		
+		<div class="section-title">Share Register</div>
+		<table>
+			<thead>
+				<tr>
+					<th>Shareholder Name</th>
+					<th>Address</th>
+					<th>Share Class</th>
+					<th>Shares Held</th>
+					<th>Fully Paid</th>
+					<th>Document No</th>
+				</tr>
+			</thead>
+			<tbody>
+				${shareRegisterRowsHtml}
+			</tbody>
+		</table>
+`;
 	}
 
 	// Page 8 - Share Structure (only show if share_structures data exists)
@@ -1085,39 +1093,39 @@ function extractAsicCurrentData(data) {
 			const docNo = ss.document_number || 'N/A';
 
 			shareStructureRowsHtml += `
-                        <tr>
-                            <td><strong>${classCode}</strong></td>
-                            <td>${description}</td>
-                            <td>${numberIssued}</td>
-                            <td>${formattedAmountPaid}</td>
-                            <td>${docNo}</td>
-                        </tr>
-      `;
+					<tr>
+						<td><strong>${classCode}</strong></td>
+						<td>${description}</td>
+						<td>${numberIssued}</td>
+						<td>${formattedAmountPaid}</td>
+						<td>${docNo}</td>
+					</tr>
+	`;
 		});
 
 		shareStructureSection = `
-            <div class="section-title">Share Structure</div>
-            <div class="card">
-                <div class="card-header">Issued Share Classes</div>
-                <table style="margin-top: 12px;">
-                    <thead>
-                        <tr>
-                            <th>Class</th>
-                            <th>Description</th>
-                            <th>Number Issued</th>
-                            <th>Total Paid</th>
-                            <th>Document No</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${shareStructureRowsHtml}
-                    </tbody>
-                </table>
-                <div class="card warning" style="margin-top: 12px; font-size: 10px;">
-                    <strong>Note:</strong> For each class of shares issued by a proprietary company, ASIC records the details of the twenty members of the class based on shareholdings.
-                </div>
-            </div>
-    `;
+		<div class="section-title">Share Structure</div>
+		<div class="card">
+			<div class="card-header">Issued Share Classes</div>
+			<table style="margin-top: 12px;">
+				<thead>
+					<tr>
+						<th>Class</th>
+						<th>Description</th>
+						<th>Number Issued</th>
+						<th>Total Paid</th>
+						<th>Document No</th>
+					</tr>
+				</thead>
+				<tbody>
+					${shareStructureRowsHtml}
+				</tbody>
+			</table>
+			<div class="card warning" style="margin-top: 12px; font-size: 10px;">
+				<strong>Note:</strong> For each class of shares issued by a proprietary company, ASIC records the details of the twenty members of the class based on shareholdings.
+			</div>
+		</div>
+`;
 	}
 
 	// Generate ASIC Extract Summary HTML based on report type
@@ -1125,60 +1133,60 @@ function extractAsicCurrentData(data) {
 	if (isCurrentAndHistorical) {
 		// Two-row table for Current & Historical
 		extractSummaryHtml = `
-                <table style="width: 100%; border-collapse: collapse; margin-top: 12px;">
-                    <thead>
-                        <tr>
-                            <th style="text-align: left; padding: 8px; font-size: 11px; font-weight: 600; color: #475569; border-bottom: 1px solid #E2E8F0;">REPORT TYPE</th>
-                            <th style="text-align: center; padding: 8px; font-size: 11px; font-weight: 600; color: #475569; border-bottom: 1px solid #E2E8F0;">ADDRESSES</th>
-                            <th style="text-align: center; padding: 8px; font-size: 11px; font-weight: 600; color: #475569; border-bottom: 1px solid #E2E8F0;">DIRECTORS</th>
-                            <th style="text-align: center; padding: 8px; font-size: 11px; font-weight: 600; color: #475569; border-bottom: 1px solid #E2E8F0;">SECRETARIES</th>
-                            <th style="text-align: center; padding: 8px; font-size: 11px; font-weight: 600; color: #475569; border-bottom: 1px solid #E2E8F0;">SHAREHOLDERS</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td style="padding: 8px; font-size: 12px; font-weight: 700; color: #0F172A;">Current</td>
-                            <td style="text-align: center; padding: 8px; font-size: 18px; font-weight: 700; color: #0F172A;">${currentAddressesCount}</td>
-                            <td style="text-align: center; padding: 8px; font-size: 18px; font-weight: 700; color: #0F172A;">${currentDirectorsCount}</td>
-                            <td style="text-align: center; padding: 8px; font-size: 18px; font-weight: 700; color: #0F172A;">${currentSecretariesCount}</td>
-                            <td style="text-align: center; padding: 8px; font-size: 18px; font-weight: 700; color: #0F172A;">${currentShareholdersCount}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px; font-size: 12px; font-weight: 700; color: #0F172A;">Historic</td>
-                            <td style="text-align: center; padding: 8px; font-size: 18px; font-weight: 700; color: #0F172A;">${historicAddressesCount}</td>
-                            <td style="text-align: center; padding: 8px; font-size: 18px; font-weight: 700; color: #0F172A;">${historicDirectorsCount}</td>
-                            <td style="text-align: center; padding: 8px; font-size: 18px; font-weight: 700; color: #0F172A;">${historicSecretariesCount}</td>
-                            <td style="text-align: center; padding: 8px; font-size: 18px; font-weight: 700; color: #0F172A;">${historicShareholdersCount}</td>
-                        </tr>
-                    </tbody>
-                </table>
-    `;
+			<table style="width: 100%; border-collapse: collapse; margin-top: 12px;">
+				<thead>
+					<tr>
+						<th style="text-align: left; padding: 8px; font-size: 11px; font-weight: 600; color: #475569; border-bottom: 1px solid #E2E8F0;">REPORT TYPE</th>
+						<th style="text-align: center; padding: 8px; font-size: 11px; font-weight: 600; color: #475569; border-bottom: 1px solid #E2E8F0;">ADDRESSES</th>
+						<th style="text-align: center; padding: 8px; font-size: 11px; font-weight: 600; color: #475569; border-bottom: 1px solid #E2E8F0;">DIRECTORS</th>
+						<th style="text-align: center; padding: 8px; font-size: 11px; font-weight: 600; color: #475569; border-bottom: 1px solid #E2E8F0;">SECRETARIES</th>
+						<th style="text-align: center; padding: 8px; font-size: 11px; font-weight: 600; color: #475569; border-bottom: 1px solid #E2E8F0;">SHAREHOLDERS</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td style="padding: 8px; font-size: 12px; font-weight: 700; color: #0F172A;">Current</td>
+						<td style="text-align: center; padding: 8px; font-size: 18px; font-weight: 700; color: #0F172A;">${currentAddressesCount}</td>
+						<td style="text-align: center; padding: 8px; font-size: 18px; font-weight: 700; color: #0F172A;">${currentDirectorsCount}</td>
+						<td style="text-align: center; padding: 8px; font-size: 18px; font-weight: 700; color: #0F172A;">${currentSecretariesCount}</td>
+						<td style="text-align: center; padding: 8px; font-size: 18px; font-weight: 700; color: #0F172A;">${currentShareholdersCount}</td>
+					</tr>
+					<tr>
+						<td style="padding: 8px; font-size: 12px; font-weight: 700; color: #0F172A;">Historic</td>
+						<td style="text-align: center; padding: 8px; font-size: 18px; font-weight: 700; color: #0F172A;">${historicAddressesCount}</td>
+						<td style="text-align: center; padding: 8px; font-size: 18px; font-weight: 700; color: #0F172A;">${historicDirectorsCount}</td>
+						<td style="text-align: center; padding: 8px; font-size: 18px; font-weight: 700; color: #0F172A;">${historicSecretariesCount}</td>
+						<td style="text-align: center; padding: 8px; font-size: 18px; font-weight: 700; color: #0F172A;">${historicShareholdersCount}</td>
+					</tr>
+				</tbody>
+			</table>
+`;
 	} else {
 		// Single-row grid for regular Current reports
 		extractSummaryHtml = `
-                <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;">
-                    <div style="text-align: center;">
-                        <div class="stat-label">Report Type</div>
-                        <div style="font-size: 12px; font-weight: 700; color: #0F172A; margin-top: 6px;">${extractType}</div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div class="stat-label">Addresses</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #0F172A;">${totalAddresses}</div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div class="stat-label">Directors</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #0F172A;">${totalDirectors}</div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div class="stat-label">Secretaries</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #0F172A;">${totalSecretaries}</div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div class="stat-label">Shareholders</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #0F172A;">${totalShareholders}</div>
-                    </div>
-                </div>
-    `;
+			<div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;">
+				<div style="text-align: center;">
+					<div class="stat-label">Report Type</div>
+					<div style="font-size: 12px; font-weight: 700; color: #0F172A; margin-top: 6px;">${extractType}</div>
+				</div>
+				<div style="text-align: center;">
+					<div class="stat-label">Addresses</div>
+					<div style="font-size: 18px; font-weight: 700; color: #0F172A;">${totalAddresses}</div>
+				</div>
+				<div style="text-align: center;">
+					<div class="stat-label">Directors</div>
+					<div style="font-size: 18px; font-weight: 700; color: #0F172A;">${totalDirectors}</div>
+				</div>
+				<div style="text-align: center;">
+					<div class="stat-label">Secretaries</div>
+					<div style="font-size: 18px; font-weight: 700; color: #0F172A;">${totalSecretaries}</div>
+				</div>
+				<div style="text-align: center;">
+					<div class="stat-label">Shareholders</div>
+					<div style="font-size: 18px; font-weight: 700; color: #0F172A;">${totalShareholders}</div>
+				</div>
+			</div>
+`;
 	}
 
 	return {
@@ -1319,20 +1327,20 @@ function extractAsicHistoricalData(data) {
 			const effectiveTo = index === 0 && entityData.name ? 'Current' : (index > 0 && formerNames[index - 1] ? (entityData.name_start_at ? moment(entityData.name_start_at).format('DD/MM/YYYY') : 'N/A') : 'N/A');
 
 			historicalCompanyNamesRows += `
-                      <tr>
-                          <td>${name}</td>
-                          <td>${effectiveFrom}</td>
-                          <td>${effectiveTo}</td>
-                          <td>Name Change</td>
-                      </tr>
-      `;
+					<tr>
+						<td>${name}</td>
+						<td>${effectiveFrom}</td>
+						<td>${effectiveTo}</td>
+						<td>Name Change</td>
+					</tr>
+	`;
 		});
 	} else {
 		historicalCompanyNamesRows = `
-                    <tr>
-                        <td colspan="4" style="text-align: center; font-style: italic;">No former company names found</td>
-                    </tr>
-    `;
+				<tr>
+					<td colspan="4" style="text-align: center; font-style: italic;">No former company names found</td>
+				</tr>
+`;
 	}
 
 	// Page 9-10: Historical Registered Addresses
@@ -1354,13 +1362,13 @@ function extractAsicHistoricalData(data) {
 		const addressType = addr.type || 'N/A';
 
 		historicalAddressesRows += `
-                    <tr>
-                        <td>${addressText}</td>
-                        <td>${addressType}</td>
-                        <td>${fromDate}</td>
-                        <td>${toDate}</td>
-                    </tr>
-    `;
+				<tr>
+					<td>${addressText}</td>
+					<td>${addressType}</td>
+					<td>${fromDate}</td>
+					<td>${toDate}</td>
+				</tr>
+`;
 	});
 
 	// Page 10: Previous Officeholders (Ceased Directors & Secretaries)
@@ -1387,21 +1395,21 @@ function extractAsicHistoricalData(data) {
 			const reason = holder.end_date ? 'Resigned' : 'N/A';
 
 			previousOfficeholdersRows += `
-                      <tr>
-                          <td>${holder.name || 'N/A'}</td>
-                          <td>${holder.position || 'N/A'}</td>
-                          <td>${appointedDate}</td>
-                          <td>${ceasedDate}</td>
-                          <td>${reason}</td>
-                      </tr>
-      `;
+					<tr>
+						<td>${holder.name || 'N/A'}</td>
+						<td>${holder.position || 'N/A'}</td>
+						<td>${appointedDate}</td>
+						<td>${ceasedDate}</td>
+						<td>${reason}</td>
+					</tr>
+	`;
 		});
 	} else {
 		previousOfficeholdersRows = `
-                    <tr>
-                        <td colspan="5" style="text-align: center; font-style: italic;">No former directors or secretaries found</td>
-                    </tr>
-    `;
+				<tr>
+					<td colspan="5" style="text-align: center; font-style: italic;">No former directors or secretaries found</td>
+				</tr>
+`;
 	}
 
 	// Page 10: Historical Shareholders
@@ -1418,22 +1426,22 @@ function extractAsicHistoricalData(data) {
 			const status = sh.status || 'Ceased';
 
 			historicalShareholdersRows += `
-                      <tr>
-                          <td>${sh.name || 'N/A'}</td>
-                          <td>${shareClass}</td>
-                          <td>${shares}</td>
-                          <td>${docNo}</td>
-                          <td>${status}</td>
-                      </tr>
-      `;
+					<tr>
+						<td>${sh.name || 'N/A'}</td>
+						<td>${shareClass}</td>
+						<td>${shares}</td>
+						<td>${docNo}</td>
+						<td>${status}</td>
+					</tr>
+	`;
 		});
 	} else {
 		// If no historical shareholders in data, show empty message
 		historicalShareholdersRows = `
-                    <tr>
-                        <td colspan="5" style="text-align: center; font-style: italic;">No historical shareholder data available</td>
-                    </tr>
-    `;
+				<tr>
+					<td colspan="5" style="text-align: center; font-style: italic;">No historical shareholder data available</td>
+				</tr>
+`;
 	}
 
 	// Page 11: Historical Share Structure Changes
@@ -1458,21 +1466,21 @@ function extractAsicHistoricalData(data) {
 			const changeType = ss.change_type || 'Capital Increase';
 
 			historicalShareStructureRows += `
-                      <tr>
-                          <td>${changeDate ? moment(changeDate).format('DD/MM/YYYY') : 'N/A'}</td>
-                          <td>${shareClass}</td>
-                          <td>${shares}</td>
-                          <td>${formattedAmountPaid}</td>
-                          <td>${changeType}</td>
-                      </tr>
-      `;
+					<tr>
+						<td>${changeDate ? moment(changeDate).format('DD/MM/YYYY') : 'N/A'}</td>
+						<td>${shareClass}</td>
+						<td>${shares}</td>
+						<td>${formattedAmountPaid}</td>
+						<td>${changeType}</td>
+					</tr>
+	`;
 		});
 	} else {
 		historicalShareStructureRows = `
-                    <tr>
-                        <td colspan="5" style="text-align: center; font-style: italic;">No historical share structure changes found</td>
-                    </tr>
-    `;
+				<tr>
+					<td colspan="5" style="text-align: center; font-style: italic;">No historical share structure changes found</td>
+				</tr>
+`;
 	}
 
 	// Page 11: ASIC Documents (already extracted in currentData, but we might want to show them separately)
@@ -1528,22 +1536,22 @@ function extractAsicCompanyData(data) {
 			const status = sh.status || 'Current';
 
 			currentShareholdingsRows += `
-                    <tr>
-                        <td>${companyName}</td>
-                        <td>${acn}</td>
-                        <td>${shareClass}</td>
-                        <td>${sharesHeld}</td>
-                        <td>${address}</td>
-                        <td>${status}</td>
-                    </tr>
-      `;
+				<tr>
+					<td>${companyName}</td>
+					<td>${acn}</td>
+					<td>${shareClass}</td>
+					<td>${sharesHeld}</td>
+					<td>${address}</td>
+					<td>${status}</td>
+				</tr>
+	`;
 		});
 	} else {
 		currentShareholdingsRows = `
-                    <tr>
-                        <td colspan="6" style="text-align: center; color: #64748B; font-style: italic;">No current shareholdings found</td>
-                    </tr>
-    `;
+				<tr>
+					<td colspan="6" style="text-align: center; color: #64748B; font-style: italic;">No current shareholdings found</td>
+				</tr>
+`;
 	}
 
 	// Generate Former Shareholdings table rows
@@ -1560,22 +1568,22 @@ function extractAsicCompanyData(data) {
 			const status = sh.status || 'Ceased';
 
 			formerShareholdingsRows += `
-                    <tr>
-                        <td>${companyName}</td>
-                        <td>${acn}</td>
-                        <td>${shareClass}</td>
-                        <td>${sharesHeld}</td>
-                        <td>${address}</td>
-                        <td>${status}</td>
-                    </tr>
-      `;
+				<tr>
+					<td>${companyName}</td>
+					<td>${acn}</td>
+					<td>${shareClass}</td>
+					<td>${sharesHeld}</td>
+					<td>${address}</td>
+					<td>${status}</td>
+				</tr>
+	`;
 		});
 	} else {
 		formerShareholdingsRows = `
-                    <tr>
-                        <td colspan="6" style="text-align: center; color: #64748B; font-style: italic;">No former shareholdings found</td>
-                    </tr>
-    `;
+				<tr>
+					<td colspan="6" style="text-align: center; color: #64748B; font-style: italic;">No former shareholdings found</td>
+				</tr>
+`;
 	}
 
 	// Extract licences - can be from root level or asic_extracts
@@ -1597,23 +1605,23 @@ function extractAsicCompanyData(data) {
 			const documentNo = lic.document_number || 'N/A';
 
 			licencesRows += `
-                    <tr>
-                        <td>${licenceType}</td>
-                        <td>${licenceNo}</td>
-                        <td>${status}</td>
-                        <td>${address}</td>
-                        <td>${appointmentDate}</td>
-                        <td>${ceaseDate}</td>
-                        <td>${documentNo}</td>
-                    </tr>
-      `;
+				<tr>
+					<td>${licenceType}</td>
+					<td>${licenceNo}</td>
+					<td>${status}</td>
+					<td>${address}</td>
+					<td>${appointmentDate}</td>
+					<td>${ceaseDate}</td>
+					<td>${documentNo}</td>
+				</tr>
+	`;
 		});
 	} else {
 		licencesRows = `
-                    <tr>
-                        <td colspan="7" style="text-align: center; color: #64748B; font-style: italic;">No licences found</td>
-                    </tr>
-    `;
+				<tr>
+					<td colspan="7" style="text-align: center; color: #64748B; font-style: italic;">No licences found</td>
+				</tr>
+`;
 	}
 
 	// Extract ASIC documents - convert object to array if needed
@@ -1643,20 +1651,20 @@ function extractAsicCompanyData(data) {
 			const documentNo = doc.identifier || doc.document_number || 'N/A';
 
 			asicDocumentsRows += `
-                    <tr>
-                        <td>${docDate}</td>
-                        <td>${formCode}</td>
-                        <td>${description}</td>
-                        <td>${documentNo}</td>
-                    </tr>
-      `;
+				<tr>
+					<td>${docDate}</td>
+					<td>${formCode}</td>
+					<td>${description}</td>
+					<td>${documentNo}</td>
+				</tr>
+	`;
 		});
 	} else {
 		asicDocumentsRows = `
-                    <tr>
-                        <td colspan="4" style="text-align: center; color: #64748B; font-style: italic;">No ASIC documents found</td>
-                    </tr>
-    `;
+				<tr>
+					<td colspan="4" style="text-align: center; color: #64748B; font-style: italic;">No ASIC documents found</td>
+				</tr>
+`;
 	}
 
 	// Format ABN and ACN
@@ -1823,21 +1831,21 @@ function extractBankruptcyData(data, business) {
 		statusBadge = 'ok';
 		verificationText = 'CLEAR — No bankruptcy or personal insolvency on record';
 		whatThisMeansItems = `
-        <li>Has not declared bankruptcy</li>
-        <li>No debt agreements recorded</li>
-        <li>No personal insolvency agreements on record</li>
-        <li>Not subject to any registered insolvency proceedings</li>
-    `;
+	<li>Has not declared bankruptcy</li>
+	<li>No debt agreements recorded</li>
+	<li>No personal insolvency agreements on record</li>
+	<li>Not subject to any registered insolvency proceedings</li>
+`;
 	} else {
 		statusText = `${resultCount} Insolvency Record${resultCount > 1 ? 's' : ''} Found`;
 		statusBadge = 'critical';
 		verificationText = `⚠️ ${resultCount} active or historical insolvency record${resultCount > 1 ? 's' : ''} found`;
 		whatThisMeansItems = `
-        <li>${resultCount} insolvency record${resultCount > 1 ? 's' : ''} found on the National Personal Insolvency Index</li>
-        <li>Review details in the insolvency records section</li>
-        <li>Verify current status of each insolvency proceeding</li>
-        <li>Consider impact on current financial standing</li>
-    `;
+	<li>${resultCount} insolvency record${resultCount > 1 ? 's' : ''} found on the National Personal Insolvency Index</li>
+	<li>Review details in the insolvency records section</li>
+	<li>Verify current status of each insolvency proceeding</li>
+	<li>Consider impact on current financial standing</li>
+`;
 	}
 
 	// Generate search details HTML
@@ -1854,20 +1862,20 @@ function extractBankruptcyData(data, business) {
 		const searchDateOfBirthMatch = (firstDebtor.dateOfBirth || dateOfBirth) ? '(Exact match)' : '';
 
 		searchDetailsRows = `
-        <div class="data-item"><div class="data-label">Search Date</div><div class="data-value">${searchDateTime}</div></div>
-        <div class="data-item"><div class="data-label">Search ID</div><div class="data-value">${searchId}</div></div>
-        <div class="data-item"><div class="data-label">Family Name</div><div class="data-value">${searchSurname} (Exact match)</div></div>
-        <div class="data-item"><div class="data-label">Given Name</div><div class="data-value">${searchGivenNames.split(' ')[0] || 'N/A'} (Exact match)</div></div>
-        <div class="data-item"><div class="data-label">Middle Name</div><div class="data-value">${searchMiddleName}</div></div>
-        <div class="data-item"><div class="data-label">Date of Birth</div><div class="data-value">${searchDateOfBirth} ${searchDateOfBirthMatch}</div></div>
-        <div class="data-item" style="grid-column:1 / -1;"><div class="data-label">Insolvency Records Searched</div><div class="data-value">All records</div></div>
-    `;
+	<div class="data-item"><div class="data-label">Search Date</div><div class="data-value">${searchDateTime}</div></div>
+	<div class="data-item"><div class="data-label">Search ID</div><div class="data-value">${searchId}</div></div>
+	<div class="data-item"><div class="data-label">Family Name</div><div class="data-value">${searchSurname} (Exact match)</div></div>
+	<div class="data-item"><div class="data-label">Given Name</div><div class="data-value">${searchGivenNames.split(' ')[0] || 'N/A'} (Exact match)</div></div>
+	<div class="data-item"><div class="data-label">Middle Name</div><div class="data-value">${searchMiddleName}</div></div>
+	<div class="data-item"><div class="data-label">Date of Birth</div><div class="data-value">${searchDateOfBirth} ${searchDateOfBirthMatch}</div></div>
+	<div class="data-item" style="grid-column:1 / -1;"><div class="data-label">Insolvency Records Searched</div><div class="data-value">All records</div></div>
+`;
 	} else {
 		searchDetailsRows = `
-        <div class="data-item"><div class="data-label">Search Date</div><div class="data-value">${searchDateTime}</div></div>
-        <div class="data-item"><div class="data-label">Search ID</div><div class="data-value">${searchId}</div></div>
-        <div class="data-item" style="grid-column:1 / -1;"><div class="data-label">Insolvency Records Searched</div><div class="data-value">All records</div></div>
-    `;
+	<div class="data-item"><div class="data-label">Search Date</div><div class="data-value">${searchDateTime}</div></div>
+	<div class="data-item"><div class="data-label">Search ID</div><div class="data-value">${searchId}</div></div>
+	<div class="data-item" style="grid-column:1 / -1;"><div class="data-label">Insolvency Records Searched</div><div class="data-value">All records</div></div>
+`;
 	}
 
 	return {
@@ -1985,20 +1993,20 @@ function extractDirectorRelatedEntitiesData(data, business) {
 	if (currentDirectorships.length > 0) {
 		currentDirectorships.forEach(dir => {
 			currentDirectorshipsRows += `
-                    <tr>
-                        <td>${dir.companyName}</td>
-                        <td>${dir.acn}</td>
-                        <td>${dir.status}</td>
-                        <td>${dir.appointmentDate}</td>
-                    </tr>
-      `;
+				<tr>
+					<td>${dir.companyName}</td>
+					<td>${dir.acn}</td>
+					<td>${dir.status}</td>
+					<td>${dir.appointmentDate}</td>
+				</tr>
+	`;
 		});
 	} else {
 		currentDirectorshipsRows = `
-                    <tr>
-                        <td colspan="4" style="text-align: center; color: #64748B; font-style: italic;">No current directorships found</td>
-                    </tr>
-    `;
+				<tr>
+					<td colspan="4" style="text-align: center; color: #64748B; font-style: italic;">No current directorships found</td>
+				</tr>
+`;
 	}
 
 	// Generate Ceased Directorships table rows
@@ -2006,20 +2014,20 @@ function extractDirectorRelatedEntitiesData(data, business) {
 	if (ceasedDirectorships.length > 0) {
 		ceasedDirectorships.forEach(dir => {
 			ceasedDirectorshipsRows += `
-                    <tr>
-                        <td>${dir.companyName}</td>
-                        <td>${dir.acn}</td>
-                        <td style="color: #DC2626;">${dir.status}</td>
-                        <td>${dir.appointmentDate}</td>
-                    </tr>
-      `;
+				<tr>
+					<td>${dir.companyName}</td>
+					<td>${dir.acn}</td>
+					<td style="color: #DC2626;">${dir.status}</td>
+					<td>${dir.appointmentDate}</td>
+				</tr>
+	`;
 		});
 	} else {
 		ceasedDirectorshipsRows = `
-                    <tr>
-                        <td colspan="4" style="text-align: center; color: #64748B; font-style: italic;">No ceased directorships found</td>
-                    </tr>
-    `;
+				<tr>
+					<td colspan="4" style="text-align: center; color: #64748B; font-style: italic;">No ceased directorships found</td>
+				</tr>
+`;
 	}
 
 	// Generate Current Shareholdings (Name and DOB) table rows
@@ -2027,22 +2035,22 @@ function extractDirectorRelatedEntitiesData(data, business) {
 	if (currentShareholdingsNameAndDOB.length > 0) {
 		currentShareholdingsNameAndDOB.forEach(sh => {
 			currentShareholdingsNameAndDOBRows += `
-                    <tr>
-                        <td>${sh.companyName}</td>
-                        <td>${sh.acn}</td>
-                        <td>${sh.shareClass}</td>
-                        <td>${parseInt(sh.shares, 10).toLocaleString('en-US')}</td>
-                        <td>${sh.address}</td>
-                        <td>${sh.status}</td>
-                    </tr>
-      `;
+				<tr>
+					<td>${sh.companyName}</td>
+					<td>${sh.acn}</td>
+					<td>${sh.shareClass}</td>
+					<td>${parseInt(sh.shares, 10).toLocaleString('en-US')}</td>
+					<td>${sh.address}</td>
+					<td>${sh.status}</td>
+				</tr>
+	`;
 		});
 	} else {
 		currentShareholdingsNameAndDOBRows = `
-                    <tr>
-                        <td colspan="6" style="text-align: center; color: #64748B; font-style: italic;">No current shareholdings found</td>
-                    </tr>
-    `;
+				<tr>
+					<td colspan="6" style="text-align: center; color: #64748B; font-style: italic;">No current shareholdings found</td>
+				</tr>
+`;
 	}
 
 	// Generate Ceased Shareholdings (Name and DOB) table rows
@@ -2050,22 +2058,22 @@ function extractDirectorRelatedEntitiesData(data, business) {
 	if (ceasedShareholdingsNameAndDOB.length > 0) {
 		ceasedShareholdingsNameAndDOB.forEach(sh => {
 			ceasedShareholdingsNameAndDOBRows += `
-                    <tr>
-                        <td>${sh.companyName}</td>
-                        <td>${sh.acn}</td>
-                        <td>${sh.shareClass}</td>
-                        <td>${parseInt(sh.shares, 10).toLocaleString('en-US')}</td>
-                        <td>${sh.address}</td>
-                        <td style="color: #DC2626;">${sh.status}</td>
-                    </tr>
-      `;
+				<tr>
+					<td>${sh.companyName}</td>
+					<td>${sh.acn}</td>
+					<td>${sh.shareClass}</td>
+					<td>${parseInt(sh.shares, 10).toLocaleString('en-US')}</td>
+					<td>${sh.address}</td>
+					<td style="color: #DC2626;">${sh.status}</td>
+				</tr>
+	`;
 		});
 	} else {
 		ceasedShareholdingsNameAndDOBRows = `
-                    <tr>
-                        <td colspan="6" style="text-align: center; color: #64748B; font-style: italic;">No ceased shareholdings found</td>
-                    </tr>
-    `;
+				<tr>
+					<td colspan="6" style="text-align: center; color: #64748B; font-style: italic;">No ceased shareholdings found</td>
+				</tr>
+`;
 	}
 
 	// Generate Current Shareholdings (Name Only) table rows
@@ -2073,22 +2081,22 @@ function extractDirectorRelatedEntitiesData(data, business) {
 	if (currentShareholdingsNameOnly.length > 0) {
 		currentShareholdingsNameOnly.forEach(sh => {
 			currentShareholdingsNameOnlyRows += `
-                    <tr>
-                        <td>${sh.companyName}</td>
-                        <td>${sh.acn}</td>
-                        <td>${sh.shareClass}</td>
-                        <td>${parseInt(sh.shares, 10).toLocaleString('en-US')}</td>
-                        <td>${sh.address}</td>
-                        <td>${sh.status}</td>
-                    </tr>
-      `;
+				<tr>
+					<td>${sh.companyName}</td>
+					<td>${sh.acn}</td>
+					<td>${sh.shareClass}</td>
+					<td>${parseInt(sh.shares, 10).toLocaleString('en-US')}</td>
+					<td>${sh.address}</td>
+					<td>${sh.status}</td>
+				</tr>
+	`;
 		});
 	} else {
 		currentShareholdingsNameOnlyRows = `
-                    <tr>
-                        <td colspan="6" style="text-align: center; color: #64748B; font-style: italic;">No current shareholdings found</td>
-                    </tr>
-    `;
+				<tr>
+					<td colspan="6" style="text-align: center; color: #64748B; font-style: italic;">No current shareholdings found</td>
+				</tr>
+`;
 	}
 
 	// Generate Ceased Shareholdings (Name Only) table rows
@@ -2096,22 +2104,22 @@ function extractDirectorRelatedEntitiesData(data, business) {
 	if (ceasedShareholdingsNameOnly.length > 0) {
 		ceasedShareholdingsNameOnly.forEach(sh => {
 			ceasedShareholdingsNameOnlyRows += `
-                    <tr>
-                        <td>${sh.companyName}</td>
-                        <td>${sh.acn}</td>
-                        <td>${sh.shareClass}</td>
-                        <td>${parseInt(sh.shares, 10).toLocaleString('en-US')}</td>
-                        <td>${sh.address}</td>
-                        <td style="color: #DC2626;">${sh.status}</td>
-                    </tr>
-      `;
+				<tr>
+					<td>${sh.companyName}</td>
+					<td>${sh.acn}</td>
+					<td>${sh.shareClass}</td>
+					<td>${parseInt(sh.shares, 10).toLocaleString('en-US')}</td>
+					<td>${sh.address}</td>
+					<td style="color: #DC2626;">${sh.status}</td>
+				</tr>
+	`;
 		});
 	} else {
 		ceasedShareholdingsNameOnlyRows = `
-                    <tr>
-                        <td colspan="6" style="text-align: center; color: #64748B; font-style: italic;">No ceased shareholdings found</td>
-                    </tr>
-    `;
+				<tr>
+					<td colspan="6" style="text-align: center; color: #64748B; font-style: italic;">No ceased shareholdings found</td>
+				</tr>
+`;
 	}
 
 	// Calculate counts
@@ -2223,10 +2231,10 @@ function extractPpsrData(data, business, reportype) {
 
 	// Get collateral class type counts from searchCriteriaSummary if available, otherwise count from registrations
 	const resultCollateralClassTypeCount = searchCriteriaSummary.resultCollateralClassTypeCount || {};
-	
+
 	// Build a map of all collateral types and their counts
 	const allCollateralTypeCounts = {};
-	
+
 	// First, use the counts from resultCollateralClassTypeCount if available
 	if (Object.keys(resultCollateralClassTypeCount).length > 0) {
 		Object.keys(resultCollateralClassTypeCount).forEach(type => {
@@ -2255,7 +2263,7 @@ function extractPpsrData(data, business, reportype) {
 	// Build security breakdown text dynamically for all types
 	let securityBreakdown = '';
 	const breakdownParts = [];
-	
+
 	// Helper function to format type name for display
 	const formatTypeName = (type) => {
 		if (!type) return 'Unknown';
@@ -2274,11 +2282,11 @@ function extractPpsrData(data, business, reportype) {
 			return 'ACCOUNT SECURITIES';
 		}
 		// For other types, capitalize each word
-		return type.split(' ').map(word => 
+		return type.split(' ').map(word =>
 			word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
 		).join(' ') + ' SECURITIES';
 	};
-	
+
 	// Sort types: prioritize "All Pap No Except" first, then others alphabetically
 	const sortedTypes = Object.keys(allCollateralTypeCounts).sort((a, b) => {
 		const aLower = a.toLowerCase();
@@ -2287,7 +2295,7 @@ function extractPpsrData(data, business, reportype) {
 		if (bLower.includes('all pap')) return 1;
 		return a.localeCompare(b);
 	});
-	
+
 	// Build breakdown for each type
 	sortedTypes.forEach(type => {
 		const count = allCollateralTypeCounts[type];
@@ -2296,7 +2304,7 @@ function extractPpsrData(data, business, reportype) {
 			breakdownParts.push(`${count} × ${formattedType}`);
 		}
 	});
-	
+
 	securityBreakdown = breakdownParts.join('</br>');
 	if (securityBreakdown === '') {
 		securityBreakdown = 'No data available';
@@ -2305,9 +2313,9 @@ function extractPpsrData(data, business, reportype) {
 	// Helper function to format a single collateral type name
 	const formatCollateralTypeName = (type) => {
 		if (!type) return 'General Security';
-		
+
 		const typeLower = type.toLowerCase().trim();
-		
+
 		// Handle common variations
 		if (typeLower.includes('all pap') || typeLower.includes('allpap')) {
 			return 'Blanket Security';
@@ -2327,31 +2335,31 @@ function extractPpsrData(data, business, reportype) {
 		if (typeLower.includes('financial property')) {
 			return 'Financial Property';
 		}
-		
+
 		// Capitalize each word for other types
-		return type.split(' ').map(word => 
+		return type.split(' ').map(word =>
 			word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
 		).join(' ');
 	};
-	
+
 	// Build secured parties summary grouped by party AND collateral type
 	// This creates separate entries for each collateral type per secured party
 	const securedPartiesByTypeMap = new Map();
-	
+
 	registrations.forEach(r => {
 		const partySummary = r.securedPartySummary || 'Unknown';
 		const collateralType = r.collateralClassType || 'Unknown';
-		
+
 		// Create a unique key combining party name and collateral type
 		const key = `${partySummary}|||${collateralType}`;
-		
+
 		const entry = securedPartiesByTypeMap.get(key) || {
 			partyName: partySummary,
 			collateralType: collateralType,
 			count: 0,
 			registrations: []
 		};
-		
+
 		entry.count += 1;
 		entry.registrations.push(r);
 		securedPartiesByTypeMap.set(key, entry);
@@ -2360,62 +2368,62 @@ function extractPpsrData(data, business, reportype) {
 	// Helper function to determine asset text for a specific type
 	const getAssetTextForType = (count, collateralType) => {
 		const typeLower = (collateralType || '').toLowerCase();
-		
+
 		// Check if it's a vehicle type
 		if (typeLower.includes('motor vehicle') || typeLower.includes('motorvehicle')) {
 			return `${count} ${count === 1 ? 'Vehicle' : 'Vehicles'}`;
 		}
-		
+
 		// Check if it's a blanket security (All Pap No Except)
 		if (typeLower.includes('all pap') || typeLower.includes('allpap')) {
 			return 'All Company Assets';
 		}
-		
+
 		// For other types, show count
 		return `${count} ${count === 1 ? 'Asset' : 'Assets'}`;
 	};
-	
+
 	// Helper function to determine priority based on collateral type
 	const getPriorityForType = (collateralType, registrations) => {
 		const typeLower = (collateralType || '').toLowerCase();
-		
+
 		// Blanket securities (All Pap No Except) are always CRITICAL
 		if (typeLower.includes('all pap') || typeLower.includes('allpap')) {
 			return 'CRITICAL';
 		}
-		
+
 		// Check if any of the registrations for this type is a blanket security
 		const hasBlanket = registrations.some(r => {
 			const rType = (r.collateralClassType || '').toLowerCase();
 			return rType.includes('all pap') || rType.includes('allpap');
 		});
-		
+
 		if (hasBlanket) {
 			return 'CRITICAL';
 		}
-		
+
 		return 'HIGH';
 	};
 
 	// Convert map to array and sort: Blanket Security first, then by party name, then by type
 	const securedPartiesArray = Array.from(securedPartiesByTypeMap.values());
-	
+
 	// Sort: Blanket Security first, then alphabetically by party name, then by type
 	securedPartiesArray.sort((a, b) => {
 		const aTypeLower = (a.collateralType || '').toLowerCase();
 		const bTypeLower = (b.collateralType || '').toLowerCase();
-		
+
 		const aIsBlanket = aTypeLower.includes('all pap') || aTypeLower.includes('allpap');
 		const bIsBlanket = bTypeLower.includes('all pap') || bTypeLower.includes('allpap');
-		
+
 		// Blanket securities first
 		if (aIsBlanket && !bIsBlanket) return -1;
 		if (!aIsBlanket && bIsBlanket) return 1;
-		
+
 		// Then sort by party name
 		const nameCompare = a.partyName.localeCompare(b.partyName);
 		if (nameCompare !== 0) return nameCompare;
-		
+
 		// Then by type
 		return a.collateralType.localeCompare(b.collateralType);
 	});
@@ -2423,25 +2431,25 @@ function extractPpsrData(data, business, reportype) {
 	// Generate secured parties at a glance HTML
 	let securedPartiesRows = '';
 	let rowIndex = 0;
-	
+
 	for (const entry of securedPartiesArray) {
 		const typeLabel = formatCollateralTypeName(entry.collateralType);
 		const assetText = getAssetTextForType(entry.count, entry.collateralType);
 		const priority = getPriorityForType(entry.collateralType, entry.registrations);
 
 		securedPartiesRows += `
-                <div class="data-grid" style="grid-template-columns: 2fr 1.5fr 1fr 1fr; gap: 12px;">
-                    <div class="data-value">${entry.partyName}</div>
-                    <div class="data-value">${typeLabel}</div>
-                    <div class="data-value">${assetText}</div>
-                    <div><span class="badge ${priority.toLowerCase()}">${priority}</span></div>
-                </div>
-    `;
+			<div class="data-grid" style="grid-template-columns: 2fr 1.5fr 1fr 1fr; gap: 12px;">
+				<div class="data-value">${entry.partyName}</div>
+				<div class="data-value">${typeLabel}</div>
+				<div class="data-value">${assetText}</div>
+				<div><span class="badge ${priority.toLowerCase()}">${priority}</span></div>
+			</div>
+`;
 		// Add divider between rows (but not after the last row, and limit to first few rows)
 		securedPartiesRows += '<div class="divider" style="margin: 12px 0;"></div>';
 		rowIndex++;
 	}
-	
+
 	if (securedPartiesRows === '') {
 		securedPartiesRows = '<div class="data-value" style="text-align: center; color: #64748B; font-style: italic; grid-column: 1 / -1;">No data available</div>';
 	}
@@ -2458,31 +2466,31 @@ function extractPpsrData(data, business, reportype) {
 			: 'No expiry date';
 
 		criticalSecurityHtml = `
-      <div class="card alert">
-          <div class="card-header">[CRITICAL] - Blanket Security Interest</div>
-          <div style="font-size: 11px; line-height: 1.7; color: #1E293B; margin-bottom: 16px;">
-              <strong>${criticalSecurity.securedPartySummary || 'N/A'}</strong> holds an unrestricted security over <strong>ALL present and after-acquired property</strong> with <strong>${endDate === 'No expiry date' ? 'no end date' : 'end date: ' + endDate}</strong>. This is the most significant security interest on the register.
-          </div>
-          <div class="data-grid" style="grid-template-columns: repeat(2, 1fr);">
-              <div class="data-item">
-                  <div class="data-label">Registration</div>
-                  <div class="data-value">${criticalSecurity.registrationNumber || 'N/A'}</div>
-              </div>
-              <div class="data-item">
-                  <div class="data-label">Started</div>
-                  <div class="data-value">${startDate}</div>
-              </div>
-              <div class="data-item">
-                  <div class="data-label">Expires</div>
-                  <div class="data-value">${endDate}</div>
-              </div>
-              <div class="data-item">
-                  <div class="data-label">Scope</div>
-                  <div class="data-value">Everything the company owns or will own</div>
-              </div>
-          </div>
-      </div>
-    `;
+	<div class="card alert">
+		<div class="card-header">[CRITICAL] - Blanket Security Interest</div>
+		<div style="font-size: 11px; line-height: 1.7; color: #1E293B; margin-bottom: 16px;">
+			<strong>${criticalSecurity.securedPartySummary || 'N/A'}</strong> holds an unrestricted security over <strong>ALL present and after-acquired property</strong> with <strong>${endDate === 'No expiry date' ? 'no end date' : 'end date: ' + endDate}</strong>. This is the most significant security interest on the register.
+		</div>
+		<div class="data-grid" style="grid-template-columns: repeat(2, 1fr);">
+			<div class="data-item">
+				<div class="data-label">Registration</div>
+				<div class="data-value">${criticalSecurity.registrationNumber || 'N/A'}</div>
+			</div>
+			<div class="data-item">
+				<div class="data-label">Started</div>
+				<div class="data-value">${startDate}</div>
+			</div>
+			<div class="data-item">
+				<div class="data-label">Expires</div>
+				<div class="data-value">${endDate}</div>
+			</div>
+			<div class="data-item">
+				<div class="data-label">Scope</div>
+				<div class="data-value">Everything the company owns or will own</div>
+			</div>
+		</div>
+	</div>
+`;
 	} else {
 		criticalSecurityHtml = '<div class="card" style="border: 2px solid #E2E8F0;"><div class="data-value" style="text-align: center; color: #64748B; font-style: italic; padding: 20px;">No data available</div></div>';
 	}
@@ -2509,14 +2517,14 @@ function extractPpsrData(data, business, reportype) {
 	let registrationPagesHtml = '';
 	if (registrations.length === 0) {
 		registrationPagesHtml = `
-        <!-- PAGE 4: NO REGISTRATIONS -->
-        <div class="page">
-            <div class="section-title">Registration Details</div>
-            <div class="card" style="border: 2px solid #E2E8F0;">
-                <div class="data-value" style="text-align: center; color: #64748B; font-style: italic; padding: 40px;">No data available</div>
-            </div>
-        </div>
-    `;
+	<!-- PAGE 4: NO REGISTRATIONS -->
+	<div class="page">
+		<div class="section-title">Registration Details</div>
+		<div class="card" style="border: 2px solid #E2E8F0;">
+			<div class="data-value" style="text-align: center; color: #64748B; font-style: italic; padding: 40px;">No data available</div>
+		</div>
+	</div>
+`;
 	}
 	registrations.forEach((reg, index) => { // Limit to 7 registrations (pages 4-10)
 		const regNum = index + 1;
@@ -2565,114 +2573,114 @@ function extractPpsrData(data, business, reportype) {
 		const vehicleDescription = reg.vehicleDescriptiveText || 'Unknown/Unknown/Unknown';
 
 		registrationPagesHtml += `
-        <div class="page">
-            
-            
-            <div class="section-title">Registration #${regNum} - ${isVehicle ? 'Motor Vehicle' : (isBlanket ? 'General Security' : collateralType)}</div>  
-            ${isBlanket ? `
-            <div class="card alert" style="margin-bottom: 20px;">
-                <div style="font-size: 11px; line-height: 1.7; color: #1E293B;">
-                    <strong>IMPORTANT:</strong> This registration provides ${reg.securedPartySummary || 'the secured party'} with security over EVERYTHING the company owns or acquires. This is the most comprehensive security interest on file.
-                </div>
-            </div>
-            ` : ''}
-            
-            <div class="card" style="border: 2px solid #CBD5E1;">
-                <div class="data-grid" style="grid-template-columns: repeat(2, 1fr);">
-                    <div class="data-item">
-                        <div class="data-label">Registration Number</div>
-                        <div class="data-value">${reg.registrationNumber || 'N/A'}</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Secured Party</div>
-                        <div class="data-value">${reg.securedPartySummary || 'N/A'}</div>
-                    </div>
-                    ${securedPartyAcn !== 'N/A' ? `
-                    <div class="data-item">
-                        <div class="data-label">ACN</div>
-                        <div class="data-value">${securedPartyAcn}</div>
-                    </div>
-                    ` : ''}
-                    ${isVehicle && vin ? `
-                    <div class="data-item">
-                        <div class="data-label">${serialNumberType || 'VIN'}</div>
-                        <div class="data-value">${vin}</div>
-                    </div>
-                    ` : ''}
-                    ${isVehicle && !vin && serialNumberType ? `
-                    <div class="data-item">
-                        <div class="data-label">Serial Number</div>
-                        <div class="data-value">${reg.serialNumber || 'N/A'}</div>
-                    </div>
-                    <div class="data-item" style="grid-column: 1 / -1;">
-                        <div class="data-label">Serial Number Type</div>
-                        <div class="data-value">${serialNumberType}</div>
-                    </div>
-                    ` : ''}
-                    <div class="data-item">
-                        <div class="data-label">Registration Start</div>
-                        <div class="data-value">${regStart}</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Registration End</div>
-                        <div class="data-value" style="${!reg.registrationEndTime ? 'font-weight: 700;' : ''}">${regEnd}</div>
-                    </div>
-                    ${lastChanged !== 'N/A' ? `
-                    <div class="data-item">
-                        <div class="data-label">Last Changed</div>
-                        <div class="data-value">${lastChanged}</div>
-                    </div>
-                    ` : ''}
-                    <div class="data-item">
-                        <div class="data-label">Collateral Type</div>
-                        <div class="data-value">${reg.collateralSummary || collateralType}</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">PMSI</div>
-                        <div class="data-value">${pmsi}</div>
-                    </div>
-                    ${collateralDesc !== 'N/A' && !isBlanket ? `
-                    <div class="data-item" style="grid-column: 1 / -1;">
-                        <div class="data-label">Collateral Description</div>
-                        <div class="data-value">${collateralDesc}</div>
-                    </div>
-                    ` : ''}
-                    ${isBlanket ? `
-                    <div class="data-item" style="grid-column: 1 / -1;">
-                        <div class="data-label">Collateral Type</div>
-                        <div class="data-value" style="font-weight: 600;">All present and after-acquired property - No exceptions</div>
-                    </div>
-                    ` : ''}
-                    ${proceedsDesc !== 'N/A' ? `
-                    <div class="data-item" style="grid-column: 1 / -1;">
-                        <div class="data-label">Proceeds</div>
-                        <div class="data-value">${proceedsDesc}</div>
-                    </div>
-                    ` : ''}
-                    ${isVehicle && vehicleDescription ? `
-                    <div class="data-item" style="grid-column: 1 / -1;">
-                        <div class="data-label">Vehicle Description</div>
-                        <div class="data-value">${vehicleDescription}</div>
-                    </div>
-                    ` : ''}
-                    <div class="data-item">
-                        <div class="data-label">Contact Email</div>
-                        <div class="data-value">${contactEmail}</div>
-                    </div>
-                    ${contactFax ? `
-                    <div class="data-item" style="grid-column: 1 / -1;">
-                        <div class="data-label">Contact Email / Fax</div>
-                        <div class="data-value">${contactEmail} / Fax: ${contactFax}</div>
-                    </div>
-                    ` : ''}
-                    <div class="data-item">
-                        <div class="data-label">Contact Address</div>
-                        <div class="data-value">${contactAddress}</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
+	<div class="page">
+		
+		
+		<div class="section-title">Registration #${regNum} - ${isVehicle ? 'Motor Vehicle' : (isBlanket ? 'General Security' : collateralType)}</div>  
+		${isBlanket ? `
+		<div class="card alert" style="margin-bottom: 20px;">
+			<div style="font-size: 11px; line-height: 1.7; color: #1E293B;">
+				<strong>IMPORTANT:</strong> This registration provides ${reg.securedPartySummary || 'the secured party'} with security over EVERYTHING the company owns or acquires. This is the most comprehensive security interest on file.
+			</div>
+		</div>
+		` : ''}
+		
+		<div class="card" style="border: 2px solid #CBD5E1;">
+			<div class="data-grid" style="grid-template-columns: repeat(2, 1fr);">
+				<div class="data-item">
+					<div class="data-label">Registration Number</div>
+					<div class="data-value">${reg.registrationNumber || 'N/A'}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Secured Party</div>
+					<div class="data-value">${reg.securedPartySummary || 'N/A'}</div>
+				</div>
+				${securedPartyAcn !== 'N/A' ? `
+				<div class="data-item">
+					<div class="data-label">ACN</div>
+					<div class="data-value">${securedPartyAcn}</div>
+				</div>
+				` : ''}
+				${isVehicle && vin ? `
+				<div class="data-item">
+					<div class="data-label">${serialNumberType || 'VIN'}</div>
+					<div class="data-value">${vin}</div>
+				</div>
+				` : ''}
+				${isVehicle && !vin && serialNumberType ? `
+				<div class="data-item">
+					<div class="data-label">Serial Number</div>
+					<div class="data-value">${reg.serialNumber || 'N/A'}</div>
+				</div>
+				<div class="data-item" style="grid-column: 1 / -1;">
+					<div class="data-label">Serial Number Type</div>
+					<div class="data-value">${serialNumberType}</div>
+				</div>
+				` : ''}
+				<div class="data-item">
+					<div class="data-label">Registration Start</div>
+					<div class="data-value">${regStart}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Registration End</div>
+					<div class="data-value" style="${!reg.registrationEndTime ? 'font-weight: 700;' : ''}">${regEnd}</div>
+				</div>
+				${lastChanged !== 'N/A' ? `
+				<div class="data-item">
+					<div class="data-label">Last Changed</div>
+					<div class="data-value">${lastChanged}</div>
+				</div>
+				` : ''}
+				<div class="data-item">
+					<div class="data-label">Collateral Type</div>
+					<div class="data-value">${reg.collateralSummary || collateralType}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">PMSI</div>
+					<div class="data-value">${pmsi}</div>
+				</div>
+				${collateralDesc !== 'N/A' && !isBlanket ? `
+				<div class="data-item" style="grid-column: 1 / -1;">
+					<div class="data-label">Collateral Description</div>
+					<div class="data-value">${collateralDesc}</div>
+				</div>
+				` : ''}
+				${isBlanket ? `
+				<div class="data-item" style="grid-column: 1 / -1;">
+					<div class="data-label">Collateral Type</div>
+					<div class="data-value" style="font-weight: 600;">All present and after-acquired property - No exceptions</div>
+				</div>
+				` : ''}
+				${proceedsDesc !== 'N/A' ? `
+				<div class="data-item" style="grid-column: 1 / -1;">
+					<div class="data-label">Proceeds</div>
+					<div class="data-value">${proceedsDesc}</div>
+				</div>
+				` : ''}
+				${isVehicle && vehicleDescription ? `
+				<div class="data-item" style="grid-column: 1 / -1;">
+					<div class="data-label">Vehicle Description</div>
+					<div class="data-value">${vehicleDescription}</div>
+				</div>
+				` : ''}
+				<div class="data-item">
+					<div class="data-label">Contact Email</div>
+					<div class="data-value">${contactEmail}</div>
+				</div>
+				${contactFax ? `
+				<div class="data-item" style="grid-column: 1 / -1;">
+					<div class="data-label">Contact Email / Fax</div>
+					<div class="data-value">${contactEmail} / Fax: ${contactFax}</div>
+				</div>
+				` : ''}
+				<div class="data-item">
+					<div class="data-label">Contact Address</div>
+					<div class="data-value">${contactAddress}</div>
+				</div>
+			</div>
+		</div>
+	</div>
+`;
 	});
 
 	// Generate secured party contacts for Page 11
@@ -2693,131 +2701,131 @@ function extractPpsrData(data, business, reportype) {
 	uniqueSecuredParties.forEach(party => {
 		const faxDisplay = party.fax !== '-' ? `Fax: ${party.fax}` : '-';
 		securedPartyContactsRows += `
-                <div class="data-grid" style="grid-template-columns: 2fr 2fr 1.5fr; gap: 12px; margin-bottom: 12px;">
-                    <div class="data-value">${party.name}</div>
-                    <div class="data-value" style="font-size: ${party.email.length > 30 ? '9px' : '10px'};">${party.email}</div>
-                    <div class="data-value" style="font-size: ${faxDisplay.length > 15 ? '9px' : '10px'};">${faxDisplay}</div>
-                </div>
-    `;
+			<div class="data-grid" style="grid-template-columns: 2fr 2fr 1.5fr; gap: 12px; margin-bottom: 12px;">
+				<div class="data-value">${party.name}</div>
+				<div class="data-value" style="font-size: ${party.email.length > 30 ? '9px' : '10px'};">${party.email}</div>
+				<div class="data-value" style="font-size: ${faxDisplay.length > 15 ? '9px' : '10px'};">${faxDisplay}</div>
+			</div>
+`;
 	});
 
 	// Generate Page 11 - Glossary & Contacts
 	const glossaryPageHtml = `
-        <!-- PAGE 11: GLOSSARY & CONTACTS -->
-        <div class="page">
-          
-            
-            <div class="page-title" style="font-size: 18px; margin-bottom: 16px;">Glossary of Terms</div>
-            
-            <div class="card info" style="margin-bottom: 10px;">
-                <div class="data-label" style="margin-bottom: 6px;">PPSR - Personal Property Securities Register</div>
-                <div class="text-sm">A national online register of security interests in personal property in Australia</div>
-            </div>
-            
-            <div class="card info" style="margin-bottom: 10px;">
-                <div class="data-label" style="margin-bottom: 6px;">PMSI - Purchase Money Security Interest</div>
-                <div class="text-sm">A special type of security where the lender financed the specific purchase of the asset</div>
-            </div>
-            
-            <div class="card info" style="margin-bottom: 10px;">
-                <div class="data-label" style="margin-bottom: 6px;">Grantor</div>
-                <div class="text-sm">The party granting the security interest (${entityName || 'N/A'})</div>
-            </div>
-            
-            <div class="card info" style="margin-bottom: 10px;">
-                <div class="data-label" style="margin-bottom: 6px;">Secured Party</div>
-                <div class="text-sm">The lender or financier holding the security interest</div>
-            </div>
-            
-            <div class="card info" style="margin-bottom: 10px;">
-                <div class="data-label" style="margin-bottom: 6px;">Collateral</div>
-                <div class="text-sm">The property securing the debt</div>
-            </div>
-            
-            <div class="card info" style="margin-bottom: 10px;">
-                <div class="data-label" style="margin-bottom: 6px;">After-Acquired Property</div>
-                <div class="text-sm">Property obtained after the security agreement, but still covered by it</div>
-            </div>
-            
-            <div class="card info" style="margin-bottom: 10px;">
-                <div class="data-label" style="margin-bottom: 6px;">Proceeds</div>
-                <div class="text-sm">What's received when collateral is sold, including insurance payouts</div>
-            </div>
-            
-            <div class="section-title" style="margin-top: 24px;">Secured Party Contacts</div>
-            
-            <div class="card" style="border: 2px solid #E2E8F0;">
-                <div class="data-grid" style="grid-template-columns: 2fr 2fr 1.5fr; gap: 12px;">
-                    <div class="data-label">Institution</div>
-                    <div class="data-label">Email</div>
-                    <div class="data-label">Phone / Fax</div>
-                </div>
-                <div class="divider" style="margin: 12px 0;"></div>
-                ${securedPartyContactsRows || '<div class="data-value" style="text-align: center; color: #64748B; font-style: italic; grid-column: 1 / -1;">No secured party contacts available</div>'}
-            </div>
-        </div>
-  `;
+	<!-- PAGE 11: GLOSSARY & CONTACTS -->
+	<div class="page">
+		
+		
+		<div class="page-title" style="font-size: 18px; margin-bottom: 16px;">Glossary of Terms</div>
+		
+		<div class="card info" style="margin-bottom: 10px;">
+			<div class="data-label" style="margin-bottom: 6px;">PPSR - Personal Property Securities Register</div>
+			<div class="text-sm">A national online register of security interests in personal property in Australia</div>
+		</div>
+		
+		<div class="card info" style="margin-bottom: 10px;">
+			<div class="data-label" style="margin-bottom: 6px;">PMSI - Purchase Money Security Interest</div>
+			<div class="text-sm">A special type of security where the lender financed the specific purchase of the asset</div>
+		</div>
+		
+		<div class="card info" style="margin-bottom: 10px;">
+			<div class="data-label" style="margin-bottom: 6px;">Grantor</div>
+			<div class="text-sm">The party granting the security interest (${entityName || 'N/A'})</div>
+		</div>
+		
+		<div class="card info" style="margin-bottom: 10px;">
+			<div class="data-label" style="margin-bottom: 6px;">Secured Party</div>
+			<div class="text-sm">The lender or financier holding the security interest</div>
+		</div>
+		
+		<div class="card info" style="margin-bottom: 10px;">
+			<div class="data-label" style="margin-bottom: 6px;">Collateral</div>
+			<div class="text-sm">The property securing the debt</div>
+		</div>
+		
+		<div class="card info" style="margin-bottom: 10px;">
+			<div class="data-label" style="margin-bottom: 6px;">After-Acquired Property</div>
+			<div class="text-sm">Property obtained after the security agreement, but still covered by it</div>
+		</div>
+		
+		<div class="card info" style="margin-bottom: 10px;">
+			<div class="data-label" style="margin-bottom: 6px;">Proceeds</div>
+			<div class="text-sm">What's received when collateral is sold, including insurance payouts</div>
+		</div>
+		
+		<div class="section-title" style="margin-top: 24px;">Secured Party Contacts</div>
+		
+		<div class="card" style="border: 2px solid #E2E8F0;">
+			<div class="data-grid" style="grid-template-columns: 2fr 2fr 1.5fr; gap: 12px;">
+				<div class="data-label">Institution</div>
+				<div class="data-label">Email</div>
+				<div class="data-label">Phone / Fax</div>
+			</div>
+			<div class="divider" style="margin: 12px 0;"></div>
+			${securedPartyContactsRows || '<div class="data-value" style="text-align: center; color: #64748B; font-style: italic; grid-column: 1 / -1;">No secured party contacts available</div>'}
+		</div>
+	</div>
+`;
 
 	// Generate Page 12 - Document Information
 	const documentInfoPageHtml = `
-        <!-- PAGE 12: DOCUMENT INFORMATION -->
-        <div class="page">
-            
-            
-            <div class="page-title">Document Information</div>
-            
-            <div class="card primary">
-                <div class="card-header">SEARCH DETAILS</div>
-                <div class="data-grid" style="grid-template-columns: repeat(2, 1fr);">
-                    <div class="data-item">
-                        <div class="data-label">Source</div>
-                        <div class="data-value">Australian Financial Security Authority (AFSA)</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Register</div>
-                        <div class="data-value">Personal Property Securities Register (PPSR)</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Search Number</div>
-                        <div class="data-value">${searchNumber}</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Search Performed</div>
-                        <div class="data-value">${searchDateTime} (Canberra Time)</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="section-title" style="margin-top: 30px;">Contact PPSR</div>
-            
-            <div class="card" style="border: 2px solid #CBD5E1;">
-                <div class="data-grid" style="grid-template-columns: 1fr;">
-                    <div class="data-item">
-                        <div class="data-label">Email</div>
-                        <div class="data-value">enquiries@ppsr.gov.au</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Phone</div>
-                        <div class="data-value">1300 00 77 77</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Website</div>
-                        <div class="data-value">www.ppsr.gov.au</div>
-                    </div>
-                    <div class="data-item">
-                        <div class="data-label">Mail</div>
-                        <div class="data-value">GPO Box 1944, Adelaide SA 5001</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="card warning" style="margin-top: 30px;">
-                <div class="text-sm" style="line-height: 1.8;">
-                    <strong>Important Notice:</strong> This report is based on PPSR data current as at the search date. Security interests may have been added, removed, or modified since this search was performed.
-                </div>
-            </div>
-        </div>
-  `;
+	<!-- PAGE 12: DOCUMENT INFORMATION -->
+	<div class="page">
+		
+		
+		<div class="page-title">Document Information</div>
+		
+		<div class="card primary">
+			<div class="card-header">SEARCH DETAILS</div>
+			<div class="data-grid" style="grid-template-columns: repeat(2, 1fr);">
+				<div class="data-item">
+					<div class="data-label">Source</div>
+					<div class="data-value">Australian Financial Security Authority (AFSA)</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Register</div>
+					<div class="data-value">Personal Property Securities Register (PPSR)</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Search Number</div>
+					<div class="data-value">${searchNumber}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Search Performed</div>
+					<div class="data-value">${searchDateTime} (Canberra Time)</div>
+				</div>
+			</div>
+		</div>
+		
+		<div class="section-title" style="margin-top: 30px;">Contact PPSR</div>
+		
+		<div class="card" style="border: 2px solid #CBD5E1;">
+			<div class="data-grid" style="grid-template-columns: 1fr;">
+				<div class="data-item">
+					<div class="data-label">Email</div>
+					<div class="data-value">enquiries@ppsr.gov.au</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Phone</div>
+					<div class="data-value">1300 00 77 77</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Website</div>
+					<div class="data-value">www.ppsr.gov.au</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Mail</div>
+					<div class="data-value">GPO Box 1944, Adelaide SA 5001</div>
+				</div>
+			</div>
+		</div>
+		
+		<div class="card warning" style="margin-top: 30px;">
+			<div class="text-sm" style="line-height: 1.8;">
+				<strong>Important Notice:</strong> This report is based on PPSR data current as at the search date. Security interests may have been added, removed, or modified since this search was performed.
+			</div>
+		</div>
+	</div>
+`;
 
 	return {
 		// Cover page
@@ -2850,7 +2858,6 @@ function extractPpsrData(data, business, reportype) {
 		companyName: entityName || 'N/A'
 	};
 }
-
 
 // Extract data for Director Court Report
 function extractDirectorCourtData(data, business) {
@@ -2887,107 +2894,72 @@ function extractDirectorCourtData(data, business) {
 		directorName = firstRecord.fullname || (firstRecord.given_name + ' ' + firstRecord.surname) || 'N/A';
 	}
 
-	const reportDate = moment().format('DD MMMM YYYY');
-
 	// Build criminal court rows
 	let criminalCourtRows = '';
 	if (isCriminalNotOrdered) {
 		criminalCourtRows = `
-                    <tr>
-                        <td colspan="8" style="text-align: center; padding: 20px; color: #94A3B8;">Criminal court search not ordered</td>
-                    </tr>`;
+				<tr>
+					<td colspan="8" style="text-align: center; padding: 20px; color: #94A3B8;">Criminal court search not ordered</td>
+				</tr>`;
 	} else if (criminalRecords.length > 0) {
 		criminalRecords.forEach((record, index) => {
 			const formattedDate = record.date ? moment(record.date).format('DD MMM YYYY') : 'N/A';
 			criminalCourtRows += `
-                    <tr>
-                        <td>${index + 1}</td>
-                        <td>${record.state || 'N/A'}</td>
-                        <td>${formattedDate}</td>
-                        <td>${record.listing_type || 'N/A'}</td>
-                        <td>${record.court || 'N/A'}</td>
-                        <td>${record.court_room || record.location || 'N/A'}</td>
-                        <td>${record.case_no || 'N/A'}</td>
-                        <td>${record.case_title || 'N/A'}</td>
-                    </tr>`;
+				<tr>
+					<td>${index + 1}</td>
+					<td>${record.state || 'N/A'}</td>
+					<td>${formattedDate}</td>
+					<td>${record.listing_type || 'N/A'}</td>
+					<td>${record.court || 'N/A'}</td>
+					<td>${record.court_room || record.location || 'N/A'}</td>
+					<td>${record.case_no || 'N/A'}</td>
+					<td>${record.case_title || 'N/A'}</td>
+				</tr>`;
 		});
 	} else {
 		criminalCourtRows = `
-                    <tr>
-                        <td colspan="8" style="text-align: center; padding: 20px; color: #94A3B8;">No criminal court records found</td>
-                    </tr>`;
+				<tr>
+					<td colspan="8" style="text-align: center; padding: 20px; color: #94A3B8;">No criminal court records found</td>
+				</tr>`;
 	}
 
 	// Build civil court rows
 	let civilCourtRows = '';
 	if (isCivilNotOrdered) {
 		civilCourtRows = `
-                    <tr>
-                        <td colspan="8" style="text-align: center; padding: 20px; color: #94A3B8;">Civil court search not ordered</td>
-                    </tr>`;
+				<tr>
+					<td colspan="8" style="text-align: center; padding: 20px; color: #94A3B8;">Civil court search not ordered</td>
+				</tr>`;
 	} else if (civilRecords.length > 0) {
 		civilRecords.forEach((record, index) => {
 			const formattedDate = record.date ? moment(record.date).format('DD MMM YYYY') : 'N/A';
 			const additionalInfo = record.additional_info1 || record.additional_info || 'N/A';
 			civilCourtRows += `
-                    <tr>
-                        <td>${index + 1}</td>
-                        <td>${record.state || 'N/A'}</td>
-                        <td>${formattedDate}</td>
-                        <td>${record.listing_type || 'N/A'}</td>
-                        <td>${record.court || 'N/A'}</td>
-                        <td>${record.case_title || 'N/A'}</td>
-                        <td>${record.case_no || 'N/A'}</td>
-                        <td>${additionalInfo}</td>
-                    </tr>`;
+				<tr>
+					<td>${index + 1}</td>
+					<td>${record.state || 'N/A'}</td>
+					<td>${formattedDate}</td>
+					<td>${record.listing_type || 'N/A'}</td>
+					<td>${record.court || 'N/A'}</td>
+					<td>${record.case_title || 'N/A'}</td>
+					<td>${record.case_no || 'N/A'}</td>
+					<td>${additionalInfo}</td>
+				</tr>`;
 		});
 	} else {
 		civilCourtRows = `
-                    <tr>
-                        <td colspan="8" style="text-align: center; padding: 20px; color: #94A3B8;">No civil court records found</td>
-                    </tr>`;
-	}
-
-	// Extract given name and surname from search word if available, otherwise from first record
-	let directorGivenName = 'N/A';
-	let directorSurname = 'N/A';
-
-	if (searchWord) {
-		// Try to parse the search word (format: "SURNAME, Given Names" or "Given Names SURNAME")
-		const nameParts = searchWord.split(',').map(part => part.trim());
-		if (nameParts.length === 2) {
-			// Format: "SURNAME, Given Names"
-			directorSurname = nameParts[0] || 'N/A';
-			directorGivenName = nameParts[1] || 'N/A';
-		} else {
-			// Format: "Given Names SURNAME" or just "Name"
-			const words = searchWord.split(' ').filter(w => w.trim());
-			if (words.length > 1) {
-				directorSurname = words[words.length - 1] || 'N/A';
-				directorGivenName = words.slice(0, -1).join(' ') || 'N/A';
-			} else {
-				directorGivenName = searchWord;
-			}
-		}
-	} else {
-		directorGivenName = firstRecord.given_name || 'N/A';
-		directorSurname = firstRecord.surname || 'N/A';
+				<tr>
+					<td colspan="8" style="text-align: center; padding: 20px; color: #94A3B8;">No civil court records found</td>
+				</tr>`;
 	}
 
 	return {
 		director_name: directorName,
-		report_date: reportDate,
-		director_given_name: directorGivenName,
-		director_surname: directorSurname,
 		total_records: totalRecords,
 		total_criminal_records: isCriminalNotOrdered ? 0 : totalCriminalRecords,
 		total_civil_records: isCivilNotOrdered ? 0 : totalCivilRecords,
 		criminal_court_rows: criminalCourtRows,
 		civil_court_rows: civilCourtRows,
-		companyName: directorName, // For compatibility with existing template system
-		acn: 'N/A',
-		abn: 'N/A',
-		company_type: 'director-court'
 	};
 }
 
@@ -3011,19 +2983,19 @@ function extractpropertyData(data) {
 	const identityBlock = realPropertySegment.IdentityBlock || {};
 	const registryBlock = realPropertySegment.RegistryBlock || {};
 	const ownership = registryBlock.Ownership || {};
-	
+
 	// Recursive function to extract all owners from ownership structure
 	// Handles both direct Owners array and nested TenantsInCommon structure
 	const extractAllOwners = (obj) => {
 		if (!obj || typeof obj !== 'object') return [];
-		
+
 		const owners = [];
-		
+
 		// If this object has an Owners array directly, add them
 		if (Array.isArray(obj.Owners)) {
 			owners.push(...obj.Owners);
 		}
-		
+
 		// If this object has TenantsInCommon array, recursively extract owners from each tenant
 		if (Array.isArray(obj.TenantsInCommon)) {
 			obj.TenantsInCommon.forEach(tenant => {
@@ -3033,10 +3005,10 @@ function extractpropertyData(data) {
 				}
 			});
 		}
-		
+
 		return owners;
 	};
-	
+
 	const owners = extractAllOwners(ownership);
 
 	const escapeHtml = (value) => {
@@ -3239,72 +3211,72 @@ function extractpropertyData(data) {
 
 	const propertyAttributesCard = hasCotalityData
 		? `
-    <div class="card">
-      <div class="card-header">PROPERTY DETAILS</div>
-      <div class="data-grid" style="grid-template-columns: repeat(4, 1fr);">
-        <div class="data-item"><div class="data-label">Bedrooms</div><div class="data-value">${escapeHtml(String(propertyBedsValue))}</div></div>
-        <div class="data-item"><div class="data-label">Bathrooms</div><div class="data-value">${escapeHtml(String(propertyBathsValue))}</div></div>
-        <div class="data-item"><div class="data-label">Car Spaces</div><div class="data-value">${escapeHtml(String(propertyCarSpacesValue))}</div></div>
-        <div class="data-item"><div class="data-label">Lock-Up Garages</div><div class="data-value">${escapeHtml(String(propertyLockupGaragesValue))}</div></div>
-        <div class="data-item"><div class="data-label">Land Area</div><div class="data-value">${escapeHtml(propertyLandAreaValue)}</div></div>
-        <div class="data-item"><div class="data-label">Land Area Source</div><div class="data-value">${escapeHtml(propertyLandAreaSourceValue)}</div></div>
-        <div class="data-item"><div class="data-label">Property Type</div><div class="data-value">${escapeHtml(propertyTypeValue)}</div></div>
-        <div class="data-item"><div class="data-label">Property Subtype</div><div class="data-value">${escapeHtml(propertySubTypeValue)}</div></div>
-        <div class="data-item"><div class="data-label">Zoning</div><div class="data-value">${escapeHtml(propertyZoning)}</div></div>
-        <div class="data-item"><div class="data-label">Local Government</div><div class="data-value">${escapeHtml(propertyLocalGovernmentValue)}</div></div>
-        <div class="data-item"><div class="data-label">Active Property</div><div class="data-value">${escapeHtml(propertyIsActiveValue)}</div></div>
-        <div class="data-item"><div class="data-label">Year Built</div><div class="data-value">${escapeHtml(String(propertyYearBuiltValue))}</div></div>
-      </div>
-    </div>
+<div class="card">
+	<div class="card-header">PROPERTY DETAILS</div>
+	<div class="data-grid" style="grid-template-columns: repeat(4, 1fr);">
+	<div class="data-item"><div class="data-label">Bedrooms</div><div class="data-value">${escapeHtml(String(propertyBedsValue))}</div></div>
+	<div class="data-item"><div class="data-label">Bathrooms</div><div class="data-value">${escapeHtml(String(propertyBathsValue))}</div></div>
+	<div class="data-item"><div class="data-label">Car Spaces</div><div class="data-value">${escapeHtml(String(propertyCarSpacesValue))}</div></div>
+	<div class="data-item"><div class="data-label">Lock-Up Garages</div><div class="data-value">${escapeHtml(String(propertyLockupGaragesValue))}</div></div>
+	<div class="data-item"><div class="data-label">Land Area</div><div class="data-value">${escapeHtml(propertyLandAreaValue)}</div></div>
+	<div class="data-item"><div class="data-label">Land Area Source</div><div class="data-value">${escapeHtml(propertyLandAreaSourceValue)}</div></div>
+	<div class="data-item"><div class="data-label">Property Type</div><div class="data-value">${escapeHtml(propertyTypeValue)}</div></div>
+	<div class="data-item"><div class="data-label">Property Subtype</div><div class="data-value">${escapeHtml(propertySubTypeValue)}</div></div>
+	<div class="data-item"><div class="data-label">Zoning</div><div class="data-value">${escapeHtml(propertyZoning)}</div></div>
+	<div class="data-item"><div class="data-label">Local Government</div><div class="data-value">${escapeHtml(propertyLocalGovernmentValue)}</div></div>
+	<div class="data-item"><div class="data-label">Active Property</div><div class="data-value">${escapeHtml(propertyIsActiveValue)}</div></div>
+	<div class="data-item"><div class="data-label">Year Built</div><div class="data-value">${escapeHtml(String(propertyYearBuiltValue))}</div></div>
+	</div>
+</div>
 `
 		: '';
 
 	const propertyOverviewPage = `
-  <div class="page">
-    <div class="page-title">Property Overview</div>
-    <div class="card">
-      <div class="card-header">REGISTERED PROPRIETOR</div>
-      <div class="data-grid" style="grid-template-columns: repeat(2, 1fr);">
-        <div class="data-item"><div class="data-label">Property Address</div><div class="data-value">${escapeHtml(propertyAddress)}</div></div>
-        <div class="data-item"><div class="data-label">Owner(s)</div><div class="data-value">${ownerNamesHtml}</div></div>
-        <div class="data-item"><div class="data-label">Tenancy</div><div class="data-value">${escapeHtml(ownerTenancyValue)}</div></div>
-        <div class="data-item"><div class="data-label">Owner Type</div><div class="data-value">${escapeHtml(ownerTypeValue)}</div></div>
-      </div>
-    </div>
-    ${propertyAttributesCard}
-  </div>
+<div class="page">
+<div class="page-title">Property Overview</div>
+<div class="card">
+	<div class="card-header">REGISTERED PROPRIETOR</div>
+	<div class="data-grid" style="grid-template-columns: repeat(2, 1fr);">
+	<div class="data-item"><div class="data-label">Property Address</div><div class="data-value">${escapeHtml(propertyAddress)}</div></div>
+	<div class="data-item"><div class="data-label">Owner(s)</div><div class="data-value">${ownerNamesHtml}</div></div>
+	<div class="data-item"><div class="data-label">Tenancy</div><div class="data-value">${escapeHtml(ownerTenancyValue)}</div></div>
+	<div class="data-item"><div class="data-label">Owner Type</div><div class="data-value">${escapeHtml(ownerTypeValue)}</div></div>
+	</div>
+</div>
+${propertyAttributesCard}
+</div>
 `;
 
 	const propertyValuationPage = includeValuation
 		? `
-  <div class="page">
-    <div class="brand-header">
-      <div class="doc-id">Report Date: ${escapeHtml(reportDate)}</div>
-    </div>
-    <div class="page-title">Property Valuation</div>
-    <div class="card">
-      <div class="data-grid" style="grid-template-columns: repeat(3, 1fr);">
-        <div class="data-item"><div class="data-label">Automated Valuation Estimate</div><div class="data-value">${escapeHtml(propertyAvmEstimateValue)}</div></div>
-        <div class="data-item"><div class="data-label">Estimated Price Range</div><div class="data-value">${escapeHtml(propertyEstimatedRangeValue)}</div></div>
-        <div class="data-item"><div class="data-label">Valuation Date</div><div class="data-value">${escapeHtml(propertyValuationDateValue)}</div></div>
-      </div>
-      <div class="data-item" style="margin-top:10px;"><div class="data-label">Confidence Level</div><div class="data-value"><span class="pill">${escapeHtml(propertyConfidenceLevelValue)}</span></div></div>
-      <div class="section-subtitle" style="margin-top:12px;">Important</div>
-      <div class="text-sm">
-        An automated valuation model estimate is statistically derived and should not be relied upon as a professional valuation or an accurate representation of market value.
-      </div>
-    </div>
+<div class="page">
+<div class="brand-header">
+	<div class="doc-id">Report Date: ${escapeHtml(reportDate)}</div>
+</div>
+<div class="page-title">Property Valuation</div>
+<div class="card">
+	<div class="data-grid" style="grid-template-columns: repeat(3, 1fr);">
+	<div class="data-item"><div class="data-label">Automated Valuation Estimate</div><div class="data-value">${escapeHtml(propertyAvmEstimateValue)}</div></div>
+	<div class="data-item"><div class="data-label">Estimated Price Range</div><div class="data-value">${escapeHtml(propertyEstimatedRangeValue)}</div></div>
+	<div class="data-item"><div class="data-label">Valuation Date</div><div class="data-value">${escapeHtml(propertyValuationDateValue)}</div></div>
+	</div>
+	<div class="data-item" style="margin-top:10px;"><div class="data-label">Confidence Level</div><div class="data-value"><span class="pill">${escapeHtml(propertyConfidenceLevelValue)}</span></div></div>
+	<div class="section-subtitle" style="margin-top:12px;">Important</div>
+	<div class="text-sm">
+	An automated valuation model estimate is statistically derived and should not be relied upon as a professional valuation or an accurate representation of market value.
+	</div>
+</div>
 
-    <div class="section-title">Sales History</div>
-    <div class="card">
-      <table>
-        <thead><tr><th style="width:160px;">Sale Date</th><th style="width:160px;">Sale Price</th><th>Sale Type</th></tr></thead>
-        <tbody>
-          ${propertySalesHistoryRows}
-        </tbody>
-      </table>
-    </div>
-  </div>
+<div class="section-title">Sales History</div>
+<div class="card">
+	<table>
+	<thead><tr><th style="width:160px;">Sale Date</th><th style="width:160px;">Sale Price</th><th>Sale Type</th></tr></thead>
+	<tbody>
+		${propertySalesHistoryRows}
+	</tbody>
+	</table>
+</div>
+</div>
 `
 		: '';
 
@@ -3468,14 +3440,14 @@ function extractLandTitleOrganisationData(data, bussiness) {
 			: 'N/A';
 
 		executiveSummaryHtml = `
-    <div class="card">
-      <div class="data-grid" style="grid-template-columns: repeat(4, 1fr);">
-        <div class="data-item"><div class="data-label">Current Properties</div><div class="data-value">${currentCount} ${currentCount === 1 ? 'property' : 'properties'} currently owned</div></div>
-        <div class="data-item"><div class="data-label">Past Properties</div><div class="data-value">${historicalCount} ${historicalCount === 1 ? 'property' : 'properties'} previously owned</div></div>
-        <div class="data-item"><div class="data-label">Primary Property</div><div class="data-value">${escapeHtml(primaryAddress)}</div></div>
-        <div class="data-item"><div class="data-label">Estimated Value</div><div class="data-value">${escapeHtml(estimatedValue)}</div></div>
-      </div>
-    </div>`;
+<div class="card">
+	<div class="data-grid" style="grid-template-columns: repeat(4, 1fr);">
+	<div class="data-item"><div class="data-label">Current Properties</div><div class="data-value">${currentCount} ${currentCount === 1 ? 'property' : 'properties'} currently owned</div></div>
+	<div class="data-item"><div class="data-label">Past Properties</div><div class="data-value">${historicalCount} ${historicalCount === 1 ? 'property' : 'properties'} previously owned</div></div>
+	<div class="data-item"><div class="data-label">Primary Property</div><div class="data-value">${escapeHtml(primaryAddress)}</div></div>
+	<div class="data-item"><div class="data-label">Estimated Value</div><div class="data-value">${escapeHtml(estimatedValue)}</div></div>
+	</div>
+</div>`;
 	}
 
 	// Generate Title Search Information sections
@@ -3522,37 +3494,37 @@ function extractLandTitleOrganisationData(data, bussiness) {
 					: '<li style="color:#94A3B8;">No encumbrances recorded</li>';
 
 				return `
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">Property Title Details - ${escapeHtml(titleRef)}</div>
-        <div class="data-grid" style="grid-template-columns: repeat(3, 1fr);">
-          <div class="data-item"><div class="data-label">Title Reference</div><div class="data-value">${escapeHtml(titleRef)}</div></div>
-          <div class="data-item"><div class="data-label">Search Date</div><div class="data-value">${escapeHtml(searchDate)}</div></div>
-          <div class="data-item"><div class="data-label">Edition Date</div><div class="data-value">${escapeHtml(editionDate)}</div></div>
-          ${folio !== 'N/A' ? `<div class="data-item"><div class="data-label">Folio</div><div class="data-value">${escapeHtml(folio)}</div></div>` : ''}
-          ${volume !== 'N/A' ? `<div class="data-item"><div class="data-label">Volume</div><div class="data-value">${escapeHtml(volume)}</div></div>` : ''}
-          ${parish !== 'N/A' ? `<div class="data-item"><div class="data-label">Parish</div><div class="data-value">${escapeHtml(parish)}</div></div>` : ''}
-          ${county !== 'N/A' ? `<div class="data-item"><div class="data-label">County</div><div class="data-value">${escapeHtml(county)}</div></div>` : ''}
-          ${transferRef !== 'N/A' ? `<div class="data-item"><div class="data-label">Transfer Number</div><div class="data-value">${escapeHtml(transferRef)}</div></div>` : ''}
-        </div>
-      </div>
-      
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">Schedule of Parcels</div>
-        <table>
-          <thead><tr><th>Lot Description</th><th>Title Diagram</th></tr></thead>
-          <tbody>${scheduleRows}</tbody>
-        </table>
-      </div>
-      
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">Encumbrances and Notifications</div>
-        <ol class="text-sm" style="margin-left:18px; line-height:1.8;">${encumbrancesList}</ol>
-      </div>`;
+	<div class="card" style="margin-bottom: 20px;">
+	<div class="card-header">Property Title Details - ${escapeHtml(titleRef)}</div>
+	<div class="data-grid" style="grid-template-columns: repeat(3, 1fr);">
+		<div class="data-item"><div class="data-label">Title Reference</div><div class="data-value">${escapeHtml(titleRef)}</div></div>
+		<div class="data-item"><div class="data-label">Search Date</div><div class="data-value">${escapeHtml(searchDate)}</div></div>
+		<div class="data-item"><div class="data-label">Edition Date</div><div class="data-value">${escapeHtml(editionDate)}</div></div>
+		${folio !== 'N/A' ? `<div class="data-item"><div class="data-label">Folio</div><div class="data-value">${escapeHtml(folio)}</div></div>` : ''}
+		${volume !== 'N/A' ? `<div class="data-item"><div class="data-label">Volume</div><div class="data-value">${escapeHtml(volume)}</div></div>` : ''}
+		${parish !== 'N/A' ? `<div class="data-item"><div class="data-label">Parish</div><div class="data-value">${escapeHtml(parish)}</div></div>` : ''}
+		${county !== 'N/A' ? `<div class="data-item"><div class="data-label">County</div><div class="data-value">${escapeHtml(county)}</div></div>` : ''}
+		${transferRef !== 'N/A' ? `<div class="data-item"><div class="data-label">Transfer Number</div><div class="data-value">${escapeHtml(transferRef)}</div></div>` : ''}
+	</div>
+	</div>
+	
+	<div class="card" style="margin-bottom: 20px;">
+	<div class="card-header">Schedule of Parcels</div>
+	<table>
+		<thead><tr><th>Lot Description</th><th>Title Diagram</th></tr></thead>
+		<tbody>${scheduleRows}</tbody>
+	</table>
+	</div>
+	
+	<div class="card" style="margin-bottom: 20px;">
+	<div class="card-header">Encumbrances and Notifications</div>
+	<ol class="text-sm" style="margin-left:18px; line-height:1.8;">${encumbrancesList}</ol>
+	</div>`;
 			}).join('');
 
 			currentTitleSearchHtml = `
-    <div class="section-title">Title Search Information - Current Ownership</div>
-    ${titleSearchSections}`;
+<div class="section-title">Title Search Information - Current Ownership</div>
+${titleSearchSections}`;
 		}
 
 		// Historical Title Search Information
@@ -3589,34 +3561,34 @@ function extractLandTitleOrganisationData(data, bussiness) {
 					: '<li style="color:#94A3B8;">No encumbrances recorded</li>';
 
 				return `
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">Property Title Details - ${escapeHtml(titleRef)}</div>
-        <div class="data-grid" style="grid-template-columns: repeat(3, 1fr);">
-          <div class="data-item"><div class="data-label">Title Reference</div><div class="data-value">${escapeHtml(titleRef)}</div></div>
-          <div class="data-item"><div class="data-label">Search Date</div><div class="data-value">${escapeHtml(searchDate)}</div></div>
-          <div class="data-item"><div class="data-label">Edition Date</div><div class="data-value">${escapeHtml(editionDate)}</div></div>
-          ${folio !== 'N/A' ? `<div class="data-item"><div class="data-label">Folio</div><div class="data-value">${escapeHtml(folio)}</div></div>` : ''}
-          ${volume !== 'N/A' ? `<div class="data-item"><div class="data-label">Volume</div><div class="data-value">${escapeHtml(volume)}</div></div>` : ''}
-        </div>
-      </div>
-      
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">Schedule of Parcels</div>
-        <table>
-          <thead><tr><th>Lot Description</th><th>Title Diagram</th></tr></thead>
-          <tbody>${scheduleRows}</tbody>
-        </table>
-      </div>
-      
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">Encumbrances and Notifications</div>
-        <ol class="text-sm" style="margin-left:18px; line-height:1.8;">${encumbrancesList}</ol>
-      </div>`;
+	<div class="card" style="margin-bottom: 20px;">
+	<div class="card-header">Property Title Details - ${escapeHtml(titleRef)}</div>
+	<div class="data-grid" style="grid-template-columns: repeat(3, 1fr);">
+		<div class="data-item"><div class="data-label">Title Reference</div><div class="data-value">${escapeHtml(titleRef)}</div></div>
+		<div class="data-item"><div class="data-label">Search Date</div><div class="data-value">${escapeHtml(searchDate)}</div></div>
+		<div class="data-item"><div class="data-label">Edition Date</div><div class="data-value">${escapeHtml(editionDate)}</div></div>
+		${folio !== 'N/A' ? `<div class="data-item"><div class="data-label">Folio</div><div class="data-value">${escapeHtml(folio)}</div></div>` : ''}
+		${volume !== 'N/A' ? `<div class="data-item"><div class="data-label">Volume</div><div class="data-value">${escapeHtml(volume)}</div></div>` : ''}
+	</div>
+	</div>
+	
+	<div class="card" style="margin-bottom: 20px;">
+	<div class="card-header">Schedule of Parcels</div>
+	<table>
+		<thead><tr><th>Lot Description</th><th>Title Diagram</th></tr></thead>
+		<tbody>${scheduleRows}</tbody>
+	</table>
+	</div>
+	
+	<div class="card" style="margin-bottom: 20px;">
+	<div class="card-header">Encumbrances and Notifications</div>
+	<ol class="text-sm" style="margin-left:18px; line-height:1.8;">${encumbrancesList}</ol>
+	</div>`;
 			}).join('');
 
 			historicalTitleSearchHtml = `
-    <div class="section-title">Title Search Information - Past Ownership</div>
-    ${titleSearchSections}`;
+<div class="section-title">Title Search Information - Past Ownership</div>
+${titleSearchSections}`;
 		}
 	}
 
@@ -3657,32 +3629,32 @@ function extractLandTitleOrganisationData(data, bussiness) {
 				const titleRef = order?.RealPropertySegment?.[0]?.IdentityBlock?.TitleReference || 'N/A';
 
 				return `
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">Property Valuation - ${escapeHtml(titleRef)}</div>
-        <div class="data-grid" style="grid-template-columns: repeat(3, 1fr);">
-          <div class="data-item"><div class="data-label">Automated Valuation Estimate</div><div class="data-value">${escapeHtml(avmEstimate)}</div></div>
-          <div class="data-item"><div class="data-label">Estimated Price Range</div><div class="data-value">${escapeHtml(priceRange)}</div></div>
-          <div class="data-item"><div class="data-label">Valuation Date</div><div class="data-value">${escapeHtml(valuationDate)}</div></div>
-        </div>
-        <div class="data-item" style="margin-top:10px;"><div class="data-label">Confidence Level</div><div class="data-value"><span class="pill">${escapeHtml(confidenceLevel)}</span></div></div>
-        <div class="section-subtitle" style="margin-top:12px;">Important</div>
-        <div class="text-sm">
-          An automated valuation model estimate is statistically derived and should not be relied upon as a professional valuation or an accurate representation of market value.
-        </div>
-      </div>
-      
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">Sales History - ${escapeHtml(titleRef)}</div>
-        <table>
-          <thead><tr><th style="width:160px;">Sale Date</th><th style="width:160px;">Sale Price</th><th>Sale Type</th></tr></thead>
-          <tbody>${salesHistoryRows}</tbody>
-        </table>
-      </div>`;
+	<div class="card" style="margin-bottom: 20px;">
+	<div class="card-header">Property Valuation - ${escapeHtml(titleRef)}</div>
+	<div class="data-grid" style="grid-template-columns: repeat(3, 1fr);">
+		<div class="data-item"><div class="data-label">Automated Valuation Estimate</div><div class="data-value">${escapeHtml(avmEstimate)}</div></div>
+		<div class="data-item"><div class="data-label">Estimated Price Range</div><div class="data-value">${escapeHtml(priceRange)}</div></div>
+		<div class="data-item"><div class="data-label">Valuation Date</div><div class="data-value">${escapeHtml(valuationDate)}</div></div>
+	</div>
+	<div class="data-item" style="margin-top:10px;"><div class="data-label">Confidence Level</div><div class="data-value"><span class="pill">${escapeHtml(confidenceLevel)}</span></div></div>
+	<div class="section-subtitle" style="margin-top:12px;">Important</div>
+	<div class="text-sm">
+		An automated valuation model estimate is statistically derived and should not be relied upon as a professional valuation or an accurate representation of market value.
+	</div>
+	</div>
+	
+	<div class="card" style="margin-bottom: 20px;">
+	<div class="card-header">Sales History - ${escapeHtml(titleRef)}</div>
+	<table>
+		<thead><tr><th style="width:160px;">Sale Date</th><th style="width:160px;">Sale Price</th><th>Sale Type</th></tr></thead>
+		<tbody>${salesHistoryRows}</tbody>
+	</table>
+	</div>`;
 			}).join('');
 
 			currentValuationHtml = `
-    <div class="section-title">Property Valuation & Sales History - Current Ownership</div>
-    ${valuationSections}`;
+<div class="section-title">Property Valuation & Sales History - Current Ownership</div>
+${valuationSections}`;
 		}
 
 		// Historical Property Valuation
@@ -3717,32 +3689,32 @@ function extractLandTitleOrganisationData(data, bussiness) {
 				const titleRef = order?.RealPropertySegment?.[0]?.IdentityBlock?.TitleReference || 'N/A';
 
 				return `
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">Property Valuation - ${escapeHtml(titleRef)}</div>
-        <div class="data-grid" style="grid-template-columns: repeat(3, 1fr);">
-          <div class="data-item"><div class="data-label">Automated Valuation Estimate</div><div class="data-value">${escapeHtml(avmEstimate)}</div></div>
-          <div class="data-item"><div class="data-label">Estimated Price Range</div><div class="data-value">${escapeHtml(priceRange)}</div></div>
-          <div class="data-item"><div class="data-label">Valuation Date</div><div class="data-value">${escapeHtml(valuationDate)}</div></div>
-        </div>
-        <div class="data-item" style="margin-top:10px;"><div class="data-label">Confidence Level</div><div class="data-value"><span class="pill">${escapeHtml(confidenceLevel)}</span></div></div>
-        <div class="section-subtitle" style="margin-top:12px;">Important</div>
-        <div class="text-sm">
-          An automated valuation model estimate is statistically derived and should not be relied upon as a professional valuation or an accurate representation of market value.
-        </div>
-      </div>
-      
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">Sales History - ${escapeHtml(titleRef)}</div>
-        <table>
-          <thead><tr><th style="width:160px;">Sale Date</th><th style="width:160px;">Sale Price</th><th>Sale Type</th></tr></thead>
-          <tbody>${salesHistoryRows}</tbody>
-        </table>
-      </div>`;
+	<div class="card" style="margin-bottom: 20px;">
+	<div class="card-header">Property Valuation - ${escapeHtml(titleRef)}</div>
+	<div class="data-grid" style="grid-template-columns: repeat(3, 1fr);">
+		<div class="data-item"><div class="data-label">Automated Valuation Estimate</div><div class="data-value">${escapeHtml(avmEstimate)}</div></div>
+		<div class="data-item"><div class="data-label">Estimated Price Range</div><div class="data-value">${escapeHtml(priceRange)}</div></div>
+		<div class="data-item"><div class="data-label">Valuation Date</div><div class="data-value">${escapeHtml(valuationDate)}</div></div>
+	</div>
+	<div class="data-item" style="margin-top:10px;"><div class="data-label">Confidence Level</div><div class="data-value"><span class="pill">${escapeHtml(confidenceLevel)}</span></div></div>
+	<div class="section-subtitle" style="margin-top:12px;">Important</div>
+	<div class="text-sm">
+		An automated valuation model estimate is statistically derived and should not be relied upon as a professional valuation or an accurate representation of market value.
+	</div>
+	</div>
+	
+	<div class="card" style="margin-bottom: 20px;">
+	<div class="card-header">Sales History - ${escapeHtml(titleRef)}</div>
+	<table>
+		<thead><tr><th style="width:160px;">Sale Date</th><th style="width:160px;">Sale Price</th><th>Sale Type</th></tr></thead>
+		<tbody>${salesHistoryRows}</tbody>
+	</table>
+	</div>`;
 			}).join('');
 
 			historicalValuationHtml = `
-    <div class="section-title">Property Valuation & Sales History - Past Ownership</div>
-    ${valuationSections}`;
+<div class="section-title">Property Valuation & Sales History - Past Ownership</div>
+${valuationSections}`;
 		}
 	}
 
@@ -3909,21 +3881,21 @@ function extractSoleTraderCheckData(data, bussiness) {
 			}
 
 			soleTraderTableRows += `
-        <tr>
-          <td><strong>${formattedAbn}</strong></td>
-          <td>${abnStatus}</td>
-          <td>${orgName}</td>
-          <td>${stateCode}</td>
-          <td>${postcode}</td>
-        </tr>
-      `;
+	<tr>
+		<td><strong>${formattedAbn}</strong></td>
+		<td>${abnStatus}</td>
+		<td>${orgName}</td>
+		<td>${stateCode}</td>
+		<td>${postcode}</td>
+	</tr>
+	`;
 		});
 	} else {
 		soleTraderTableRows = `
-      <tr>
-        <td colspan="8" style="text-align: center; font-style: italic;">No search results found</td>
-      </tr>
-    `;
+	<tr>
+	<td colspan="8" style="text-align: center; font-style: italic;">No search results found</td>
+	</tr>
+`;
 	}
 
 	return {
@@ -4126,12 +4098,12 @@ function extractRegoPpsrData(data, business) {
 		// Generate history table rows
 		const historyEntries = Array.from(historyMap.values()).slice(0, 10); // Limit to 10 most recent
 		registrationHistoryRows = historyEntries.map(entry => `
-			<tr>
-				<td>${escapeHtml(entry.changeNumber)}</td>
-				<td>${escapeHtml(entry.type)}</td>
-				<td>${escapeHtml(entry.dateTime)}</td>
-			</tr>
-		`).join('');
+		<tr>
+			<td>${escapeHtml(entry.changeNumber)}</td>
+			<td>${escapeHtml(entry.type)}</td>
+			<td>${escapeHtml(entry.dateTime)}</td>
+		</tr>
+	`).join('');
 
 		if (registrationHistoryRows === '') {
 			registrationHistoryRows = '<tr><td colspan="3" style="text-align: center;">No registration history available.</td></tr>';
@@ -4196,59 +4168,59 @@ function extractRegoPpsrData(data, business) {
 
 			// Generate PPSR Registration section HTML
 			ppsrRegistrationsHtml += `
-			<div class="card primary">
-				<div class="card-header">${registrationKind.toUpperCase()} - ${escapeHtml(regNumber)}</div>
-				<div class="data-grid">
-					<div class="data-item">
-						<div class="data-label">Registration Number</div>
-						<div class="data-value">${escapeHtml(regNumber)}</div>
-					</div>
-					<div class="data-item">
-						<div class="data-label">Change Number</div>
-						<div class="data-value">${escapeHtml(changeNum)}</div>
-					</div>
-					<div class="data-item">
-						<div class="data-label">Registration Kind</div>
-						<div class="data-value">${escapeHtml(registrationKind)}</div>
-					</div>
-					<div class="data-item">
-						<div class="data-label">Status</div>
-						<div class="data-value">${statusBadge}</div>
-					</div>
-					<div class="data-item">
-						<div class="data-label">Start Date</div>
-						<div class="data-value">${escapeHtml(startDate)}</div>
-					</div>
-					<div class="data-item">
-						<div class="data-label">End Date</div>
-						<div class="data-value">${escapeHtml(endDate)}</div>
-					</div>
-					<div class="data-item">
-						<div class="data-label">Last Changed</div>
-						<div class="data-value">${escapeHtml(lastChanged)}</div>
-					</div>
-					<div class="data-item">
-						<div class="data-label">Transitional</div>
-						<div class="data-value">${isTransitional ? 'Yes' : 'No'}</div>
-					</div>
-					<div class="data-item">
-						<div class="data-label">Collateral Type</div>
-						<div class="data-value">${escapeHtml(collateralType)}</div>
-					</div>
-					<div class="data-item">
-						<div class="data-label">Collateral Class</div>
-						<div class="data-value">${escapeHtml(collateralClass)}</div>
-					</div>
-					<div class="data-item">
-						<div class="data-label">PMSI</div>
-						<div class="data-value">${isPmsi ? 'Yes' : 'No'}</div>
-					</div>
-					<div class="data-item">
-						<div class="data-label">Proceeds</div>
-						<div class="data-value">${areProceedsClaimed ? escapeHtml(proceedsDesc || 'All present and after acquired property') : 'No'}</div>
-					</div>
+		<div class="card primary">
+			<div class="card-header">${registrationKind.toUpperCase()} - ${escapeHtml(regNumber)}</div>
+			<div class="data-grid">
+				<div class="data-item">
+					<div class="data-label">Registration Number</div>
+					<div class="data-value">${escapeHtml(regNumber)}</div>
 				</div>
-			</div>`;
+				<div class="data-item">
+					<div class="data-label">Change Number</div>
+					<div class="data-value">${escapeHtml(changeNum)}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Registration Kind</div>
+					<div class="data-value">${escapeHtml(registrationKind)}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Status</div>
+					<div class="data-value">${statusBadge}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Start Date</div>
+					<div class="data-value">${escapeHtml(startDate)}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">End Date</div>
+					<div class="data-value">${escapeHtml(endDate)}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Last Changed</div>
+					<div class="data-value">${escapeHtml(lastChanged)}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Transitional</div>
+					<div class="data-value">${isTransitional ? 'Yes' : 'No'}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Collateral Type</div>
+					<div class="data-value">${escapeHtml(collateralType)}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Collateral Class</div>
+					<div class="data-value">${escapeHtml(collateralClass)}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">PMSI</div>
+					<div class="data-value">${isPmsi ? 'Yes' : 'No'}</div>
+				</div>
+				<div class="data-item">
+					<div class="data-label">Proceeds</div>
+					<div class="data-value">${areProceedsClaimed ? escapeHtml(proceedsDesc || 'All present and after acquired property') : 'No'}</div>
+				</div>
+			</div>
+		</div>`;
 
 			// Generate Secured Parties HTML for this registration
 			const securedParties = Array.isArray(registration.securedParties) ? registration.securedParties : [];
@@ -4292,40 +4264,40 @@ function extractRegoPpsrData(data, business) {
 					}
 
 					securedPartiesHtml += `
-					<div class="card">
-						<div class="card-header">${escapeHtml(partyName)}</div>
-						<div class="data-grid">
-							${party.organisationName ? `
-							<div class="data-item">
-								<div class="data-label">Organisation Name</div>
-								<div class="data-value">${escapeHtml(partyName)}</div>
-							</div>
-							${orgNumberType === 'ACN' && orgNumber ? `
-							<div class="data-item">
-								<div class="data-label">ACN</div>
-								<div class="data-value">${escapeHtml(orgNumber)}</div>
-							</div>
-							` : ''}
-							` : `
-							<div class="data-item">
-								<div class="data-label">Individual Name</div>
-								<div class="data-value">${escapeHtml(partyName)}</div>
-							</div>
-							`}
-							<div class="data-item">
-								<div class="data-label">Contact Name</div>
-								<div class="data-value">${escapeHtml(contactName)}</div>
-							</div>
-							<div class="data-item">
-								<div class="data-label">Email</div>
-								<div class="data-value">${escapeHtml(email)}</div>
-							</div>
-							<div class="data-item">
-								<div class="data-label">Physical Address</div>
-								<div class="data-value">${addressHtml}</div>
-							</div>
+				<div class="card">
+					<div class="card-header">${escapeHtml(partyName)}</div>
+					<div class="data-grid">
+						${party.organisationName ? `
+						<div class="data-item">
+							<div class="data-label">Organisation Name</div>
+							<div class="data-value">${escapeHtml(partyName)}</div>
 						</div>
-					</div>`;
+						${orgNumberType === 'ACN' && orgNumber ? `
+						<div class="data-item">
+							<div class="data-label">ACN</div>
+							<div class="data-value">${escapeHtml(orgNumber)}</div>
+						</div>
+						` : ''}
+						` : `
+						<div class="data-item">
+							<div class="data-label">Individual Name</div>
+							<div class="data-value">${escapeHtml(partyName)}</div>
+						</div>
+						`}
+						<div class="data-item">
+							<div class="data-label">Contact Name</div>
+							<div class="data-value">${escapeHtml(contactName)}</div>
+						</div>
+						<div class="data-item">
+							<div class="data-label">Email</div>
+							<div class="data-value">${escapeHtml(email)}</div>
+						</div>
+						<div class="data-item">
+							<div class="data-label">Physical Address</div>
+							<div class="data-value">${addressHtml}</div>
+						</div>
+					</div>
+				</div>`;
 				});
 			}
 		});
@@ -4334,22 +4306,22 @@ function extractRegoPpsrData(data, business) {
 	// If no registrations, provide default/empty HTML
 	if (ppsrRegistrationsHtml === '') {
 		ppsrRegistrationsHtml = `
-			<div class="card primary">
-				<div class="card-header">No PPSR Registrations Found</div>
-				<div style="padding: 20px; text-align: center; color: #64748B;">
-					No security interests registered on this vehicle.
-				</div>
-			</div>`;
+		<div class="card primary">
+			<div class="card-header">No PPSR Registrations Found</div>
+			<div style="padding: 20px; text-align: center; color: #64748B;">
+				No security interests registered on this vehicle.
+			</div>
+		</div>`;
 	}
 
 	if (securedPartiesHtml === '') {
 		securedPartiesHtml = `
-			<div class="card">
-				<div class="card-header">No Secured Parties</div>
-				<div style="padding: 20px; text-align: center; color: #64748B;">
-					No secured parties found.
-				</div>
-			</div>`;
+		<div class="card">
+			<div class="card-header">No Secured Parties</div>
+			<div style="padding: 20px; text-align: center; color: #64748B;">
+				No secured parties found.
+			</div>
+		</div>`;
 	}
 
 	if (registrationHistoryRows === '') {
@@ -4499,14 +4471,14 @@ function extractLandTitleIndividualData(data, bussiness) {
 			: 'N/A';
 
 		executiveSummaryHtml = `
-    <div class="card">
-      <div class="data-grid" style="grid-template-columns: repeat(4, 1fr);">
-        <div class="data-item"><div class="data-label">Current Properties</div><div class="data-value">${currentCount} ${currentCount === 1 ? 'property' : 'properties'} currently owned</div></div>
-        <div class="data-item"><div class="data-label">Past Properties</div><div class="data-value">${historicalCount} ${historicalCount === 1 ? 'property' : 'properties'} previously owned</div></div>
-        <div class="data-item"><div class="data-label">Primary Property</div><div class="data-value">${escapeHtml(primaryAddress)}</div></div>
-        <div class="data-item"><div class="data-label">Estimated Value</div><div class="data-value">${escapeHtml(estimatedValue)}</div></div>
-      </div>
-    </div>`;
+<div class="card">
+	<div class="data-grid" style="grid-template-columns: repeat(4, 1fr);">
+	<div class="data-item"><div class="data-label">Current Properties</div><div class="data-value">${currentCount} ${currentCount === 1 ? 'property' : 'properties'} currently owned</div></div>
+	<div class="data-item"><div class="data-label">Past Properties</div><div class="data-value">${historicalCount} ${historicalCount === 1 ? 'property' : 'properties'} previously owned</div></div>
+	<div class="data-item"><div class="data-label">Primary Property</div><div class="data-value">${escapeHtml(primaryAddress)}</div></div>
+	<div class="data-item"><div class="data-label">Estimated Value</div><div class="data-value">${escapeHtml(estimatedValue)}</div></div>
+	</div>
+</div>`;
 	}
 
 	// Generate Title Search Information sections
@@ -4553,37 +4525,37 @@ function extractLandTitleIndividualData(data, bussiness) {
 					: '<li style="color:#94A3B8;">No encumbrances recorded</li>';
 
 				return `
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">Property Title Details - ${escapeHtml(titleRef)}</div>
-        <div class="data-grid" style="grid-template-columns: repeat(3, 1fr);">
-          <div class="data-item"><div class="data-label">Title Reference</div><div class="data-value">${escapeHtml(titleRef)}</div></div>
-          <div class="data-item"><div class="data-label">Search Date</div><div class="data-value">${escapeHtml(searchDate)}</div></div>
-          <div class="data-item"><div class="data-label">Edition Date</div><div class="data-value">${escapeHtml(editionDate)}</div></div>
-          ${folio !== 'N/A' ? `<div class="data-item"><div class="data-label">Folio</div><div class="data-value">${escapeHtml(folio)}</div></div>` : ''}
-          ${volume !== 'N/A' ? `<div class="data-item"><div class="data-label">Volume</div><div class="data-value">${escapeHtml(volume)}</div></div>` : ''}
-          ${parish !== 'N/A' ? `<div class="data-item"><div class="data-label">Parish</div><div class="data-value">${escapeHtml(parish)}</div></div>` : ''}
-          ${county !== 'N/A' ? `<div class="data-item"><div class="data-label">County</div><div class="data-value">${escapeHtml(county)}</div></div>` : ''}
-          ${transferRef !== 'N/A' ? `<div class="data-item"><div class="data-label">Transfer Number</div><div class="data-value">${escapeHtml(transferRef)}</div></div>` : ''}
-        </div>
-      </div>
-      
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">Schedule of Parcels</div>
-        <table>
-          <thead><tr><th>Lot Description</th><th>Title Diagram</th></tr></thead>
-          <tbody>${scheduleRows}</tbody>
-        </table>
-      </div>
-      
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">Encumbrances and Notifications</div>
-        <ol class="text-sm" style="margin-left:18px; line-height:1.8;">${encumbrancesList}</ol>
-      </div>`;
+	<div class="card" style="margin-bottom: 20px;">
+	<div class="card-header">Property Title Details - ${escapeHtml(titleRef)}</div>
+	<div class="data-grid" style="grid-template-columns: repeat(3, 1fr);">
+		<div class="data-item"><div class="data-label">Title Reference</div><div class="data-value">${escapeHtml(titleRef)}</div></div>
+		<div class="data-item"><div class="data-label">Search Date</div><div class="data-value">${escapeHtml(searchDate)}</div></div>
+		<div class="data-item"><div class="data-label">Edition Date</div><div class="data-value">${escapeHtml(editionDate)}</div></div>
+		${folio !== 'N/A' ? `<div class="data-item"><div class="data-label">Folio</div><div class="data-value">${escapeHtml(folio)}</div></div>` : ''}
+		${volume !== 'N/A' ? `<div class="data-item"><div class="data-label">Volume</div><div class="data-value">${escapeHtml(volume)}</div></div>` : ''}
+		${parish !== 'N/A' ? `<div class="data-item"><div class="data-label">Parish</div><div class="data-value">${escapeHtml(parish)}</div></div>` : ''}
+		${county !== 'N/A' ? `<div class="data-item"><div class="data-label">County</div><div class="data-value">${escapeHtml(county)}</div></div>` : ''}
+		${transferRef !== 'N/A' ? `<div class="data-item"><div class="data-label">Transfer Number</div><div class="data-value">${escapeHtml(transferRef)}</div></div>` : ''}
+	</div>
+	</div>
+	
+	<div class="card" style="margin-bottom: 20px;">
+	<div class="card-header">Schedule of Parcels</div>
+	<table>
+		<thead><tr><th>Lot Description</th><th>Title Diagram</th></tr></thead>
+		<tbody>${scheduleRows}</tbody>
+	</table>
+	</div>
+	
+	<div class="card" style="margin-bottom: 20px;">
+	<div class="card-header">Encumbrances and Notifications</div>
+	<ol class="text-sm" style="margin-left:18px; line-height:1.8;">${encumbrancesList}</ol>
+	</div>`;
 			}).join('');
 
 			currentTitleSearchHtml = `
-    <div class="section-title">Title Search Information - Current Ownership</div>
-    ${titleSearchSections}`;
+<div class="section-title">Title Search Information - Current Ownership</div>
+${titleSearchSections}`;
 		}
 
 		// Historical Title Search Information
@@ -4620,34 +4592,34 @@ function extractLandTitleIndividualData(data, bussiness) {
 					: '<li style="color:#94A3B8;">No encumbrances recorded</li>';
 
 				return `
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">Property Title Details - ${escapeHtml(titleRef)}</div>
-        <div class="data-grid" style="grid-template-columns: repeat(3, 1fr);">
-          <div class="data-item"><div class="data-label">Title Reference</div><div class="data-value">${escapeHtml(titleRef)}</div></div>
-          <div class="data-item"><div class="data-label">Search Date</div><div class="data-value">${escapeHtml(searchDate)}</div></div>
-          <div class="data-item"><div class="data-label">Edition Date</div><div class="data-value">${escapeHtml(editionDate)}</div></div>
-          ${folio !== 'N/A' ? `<div class="data-item"><div class="data-label">Folio</div><div class="data-value">${escapeHtml(folio)}</div></div>` : ''}
-          ${volume !== 'N/A' ? `<div class="data-item"><div class="data-label">Volume</div><div class="data-value">${escapeHtml(volume)}</div></div>` : ''}
-        </div>
-      </div>
-      
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">Schedule of Parcels</div>
-        <table>
-          <thead><tr><th>Lot Description</th><th>Title Diagram</th></tr></thead>
-          <tbody>${scheduleRows}</tbody>
-        </table>
-      </div>
-      
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">Encumbrances and Notifications</div>
-        <ol class="text-sm" style="margin-left:18px; line-height:1.8;">${encumbrancesList}</ol>
-      </div>`;
+	<div class="card" style="margin-bottom: 20px;">
+	<div class="card-header">Property Title Details - ${escapeHtml(titleRef)}</div>
+	<div class="data-grid" style="grid-template-columns: repeat(3, 1fr);">
+		<div class="data-item"><div class="data-label">Title Reference</div><div class="data-value">${escapeHtml(titleRef)}</div></div>
+		<div class="data-item"><div class="data-label">Search Date</div><div class="data-value">${escapeHtml(searchDate)}</div></div>
+		<div class="data-item"><div class="data-label">Edition Date</div><div class="data-value">${escapeHtml(editionDate)}</div></div>
+		${folio !== 'N/A' ? `<div class="data-item"><div class="data-label">Folio</div><div class="data-value">${escapeHtml(folio)}</div></div>` : ''}
+		${volume !== 'N/A' ? `<div class="data-item"><div class="data-label">Volume</div><div class="data-value">${escapeHtml(volume)}</div></div>` : ''}
+	</div>
+	</div>
+	
+	<div class="card" style="margin-bottom: 20px;">
+	<div class="card-header">Schedule of Parcels</div>
+	<table>
+		<thead><tr><th>Lot Description</th><th>Title Diagram</th></tr></thead>
+		<tbody>${scheduleRows}</tbody>
+	</table>
+	</div>
+	
+	<div class="card" style="margin-bottom: 20px;">
+	<div class="card-header">Encumbrances and Notifications</div>
+	<ol class="text-sm" style="margin-left:18px; line-height:1.8;">${encumbrancesList}</ol>
+	</div>`;
 			}).join('');
 
 			historicalTitleSearchHtml = `
-    <div class="section-title">Title Search Information - Past Ownership</div>
-    ${titleSearchSections}`;
+<div class="section-title">Title Search Information - Past Ownership</div>
+${titleSearchSections}`;
 		}
 	}
 
@@ -4688,32 +4660,32 @@ function extractLandTitleIndividualData(data, bussiness) {
 				const titleRef = order?.RealPropertySegment?.[0]?.IdentityBlock?.TitleReference || 'N/A';
 
 				return `
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">Property Valuation - ${escapeHtml(titleRef)}</div>
-        <div class="data-grid" style="grid-template-columns: repeat(3, 1fr);">
-          <div class="data-item"><div class="data-label">Automated Valuation Estimate</div><div class="data-value">${escapeHtml(avmEstimate)}</div></div>
-          <div class="data-item"><div class="data-label">Estimated Price Range</div><div class="data-value">${escapeHtml(priceRange)}</div></div>
-          <div class="data-item"><div class="data-label">Valuation Date</div><div class="data-value">${escapeHtml(valuationDate)}</div></div>
-        </div>
-        <div class="data-item" style="margin-top:10px;"><div class="data-label">Confidence Level</div><div class="data-value"><span class="pill">${escapeHtml(confidenceLevel)}</span></div></div>
-        <div class="section-subtitle" style="margin-top:12px;">Important</div>
-        <div class="text-sm">
-          An automated valuation model estimate is statistically derived and should not be relied upon as a professional valuation or an accurate representation of market value.
-        </div>
-      </div>
-      
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">Sales History - ${escapeHtml(titleRef)}</div>
-        <table>
-          <thead><tr><th style="width:160px;">Sale Date</th><th style="width:160px;">Sale Price</th><th>Sale Type</th></tr></thead>
-          <tbody>${salesHistoryRows}</tbody>
-        </table>
-      </div>`;
+	<div class="card" style="margin-bottom: 20px;">
+	<div class="card-header">Property Valuation - ${escapeHtml(titleRef)}</div>
+	<div class="data-grid" style="grid-template-columns: repeat(3, 1fr);">
+		<div class="data-item"><div class="data-label">Automated Valuation Estimate</div><div class="data-value">${escapeHtml(avmEstimate)}</div></div>
+		<div class="data-item"><div class="data-label">Estimated Price Range</div><div class="data-value">${escapeHtml(priceRange)}</div></div>
+		<div class="data-item"><div class="data-label">Valuation Date</div><div class="data-value">${escapeHtml(valuationDate)}</div></div>
+	</div>
+	<div class="data-item" style="margin-top:10px;"><div class="data-label">Confidence Level</div><div class="data-value"><span class="pill">${escapeHtml(confidenceLevel)}</span></div></div>
+	<div class="section-subtitle" style="margin-top:12px;">Important</div>
+	<div class="text-sm">
+		An automated valuation model estimate is statistically derived and should not be relied upon as a professional valuation or an accurate representation of market value.
+	</div>
+	</div>
+	
+	<div class="card" style="margin-bottom: 20px;">
+	<div class="card-header">Sales History - ${escapeHtml(titleRef)}</div>
+	<table>
+		<thead><tr><th style="width:160px;">Sale Date</th><th style="width:160px;">Sale Price</th><th>Sale Type</th></tr></thead>
+		<tbody>${salesHistoryRows}</tbody>
+	</table>
+	</div>`;
 			}).join('');
 
 			currentValuationHtml = `
-    <div class="section-title">Property Valuation & Sales History - Current Ownership</div>
-    ${valuationSections}`;
+<div class="section-title">Property Valuation & Sales History - Current Ownership</div>
+${valuationSections}`;
 		}
 
 		// Historical Property Valuation
@@ -4748,32 +4720,32 @@ function extractLandTitleIndividualData(data, bussiness) {
 				const titleRef = order?.RealPropertySegment?.[0]?.IdentityBlock?.TitleReference || 'N/A';
 
 				return `
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">Property Valuation - ${escapeHtml(titleRef)}</div>
-        <div class="data-grid" style="grid-template-columns: repeat(3, 1fr);">
-          <div class="data-item"><div class="data-label">Automated Valuation Estimate</div><div class="data-value">${escapeHtml(avmEstimate)}</div></div>
-          <div class="data-item"><div class="data-label">Estimated Price Range</div><div class="data-value">${escapeHtml(priceRange)}</div></div>
-          <div class="data-item"><div class="data-label">Valuation Date</div><div class="data-value">${escapeHtml(valuationDate)}</div></div>
-        </div>
-        <div class="data-item" style="margin-top:10px;"><div class="data-label">Confidence Level</div><div class="data-value"><span class="pill">${escapeHtml(confidenceLevel)}</span></div></div>
-        <div class="section-subtitle" style="margin-top:12px;">Important</div>
-        <div class="text-sm">
-          An automated valuation model estimate is statistically derived and should not be relied upon as a professional valuation or an accurate representation of market value.
-        </div>
-      </div>
-      
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">Sales History - ${escapeHtml(titleRef)}</div>
-        <table>
-          <thead><tr><th style="width:160px;">Sale Date</th><th style="width:160px;">Sale Price</th><th>Sale Type</th></tr></thead>
-          <tbody>${salesHistoryRows}</tbody>
-        </table>
-      </div>`;
+	<div class="card" style="margin-bottom: 20px;">
+	<div class="card-header">Property Valuation - ${escapeHtml(titleRef)}</div>
+	<div class="data-grid" style="grid-template-columns: repeat(3, 1fr);">
+		<div class="data-item"><div class="data-label">Automated Valuation Estimate</div><div class="data-value">${escapeHtml(avmEstimate)}</div></div>
+		<div class="data-item"><div class="data-label">Estimated Price Range</div><div class="data-value">${escapeHtml(priceRange)}</div></div>
+		<div class="data-item"><div class="data-label">Valuation Date</div><div class="data-value">${escapeHtml(valuationDate)}</div></div>
+	</div>
+	<div class="data-item" style="margin-top:10px;"><div class="data-label">Confidence Level</div><div class="data-value"><span class="pill">${escapeHtml(confidenceLevel)}</span></div></div>
+	<div class="section-subtitle" style="margin-top:12px;">Important</div>
+	<div class="text-sm">
+		An automated valuation model estimate is statistically derived and should not be relied upon as a professional valuation or an accurate representation of market value.
+	</div>
+	</div>
+	
+	<div class="card" style="margin-bottom: 20px;">
+	<div class="card-header">Sales History - ${escapeHtml(titleRef)}</div>
+	<table>
+		<thead><tr><th style="width:160px;">Sale Date</th><th style="width:160px;">Sale Price</th><th>Sale Type</th></tr></thead>
+		<tbody>${salesHistoryRows}</tbody>
+	</table>
+	</div>`;
 			}).join('');
 
 			historicalValuationHtml = `
-    <div class="section-title">Property Valuation & Sales History - Past Ownership</div>
-    ${valuationSections}`;
+<div class="section-title">Property Valuation & Sales History - Past Ownership</div>
+${valuationSections}`;
 		}
 	}
 
@@ -4891,53 +4863,53 @@ function extracttrademarkData(data, bussiness) {
 
 	// Build table header rows
 	const trademarkTableHeader = `
-		<tr>
-			<th style="width: 10%;">Trademark ID</th>
-			<th style="width: 20%;">Mark</th>
-			<th style="width: 12%;">Status</th>
-			<th style="width: 10%;">Filing Date</th>
-			<th style="width: 10%;">Acceptance Date</th>
-			<th style="width: 10%;">Priority Date</th>
-			<th style="width: 10%;">Renewal Due Date</th>
-			<th style="width: 18%;">Entered on Register</th>
-		</tr>
-	`;
+	<tr>
+		<th style="width: 10%;">Trademark ID</th>
+		<th style="width: 20%;">Mark</th>
+		<th style="width: 12%;">Status</th>
+		<th style="width: 10%;">Filing Date</th>
+		<th style="width: 10%;">Acceptance Date</th>
+		<th style="width: 10%;">Priority Date</th>
+		<th style="width: 10%;">Renewal Due Date</th>
+		<th style="width: 18%;">Entered on Register</th>
+	</tr>
+`;
 
 	const goodsServicesTableHeader = `
-		<tr>
-			<th style="width: 10%;">Trademark ID</th>
-			<th style="width: 10%;">Class</th>
-			<th style="width: 80%;">Description</th>
-		</tr>
-	`;
+	<tr>
+		<th style="width: 10%;">Trademark ID</th>
+		<th style="width: 10%;">Class</th>
+		<th style="width: 80%;">Description</th>
+	</tr>
+`;
 
 	const ownerTableHeader = `
-		<tr>
-			<th style="width: 10%;">Trademark ID</th>
-			<th style="width: 25%;">Owner Name</th>
-			<th style="width: 15%;">ABN</th>
-			<th style="width: 15%;">ACN</th>
-			<th style="width: 35%;">Address</th>
-		</tr>
-	`;
+	<tr>
+		<th style="width: 10%;">Trademark ID</th>
+		<th style="width: 25%;">Owner Name</th>
+		<th style="width: 15%;">ABN</th>
+		<th style="width: 15%;">ACN</th>
+		<th style="width: 35%;">Address</th>
+	</tr>
+`;
 
 	const addressForServiceTableHeader = `
-		<tr>
-			<th style="width: 10%;">Trademark ID</th>
-			<th style="width: 25%;">Name</th>
-			<th style="width: 15%;">ABN</th>
-			<th style="width: 15%;">ACN</th>
-			<th style="width: 35%;">Address</th>
-		</tr>
-	`;
+	<tr>
+		<th style="width: 10%;">Trademark ID</th>
+		<th style="width: 25%;">Name</th>
+		<th style="width: 15%;">ABN</th>
+		<th style="width: 15%;">ACN</th>
+		<th style="width: 35%;">Address</th>
+	</tr>
+`;
 
 	const historyTableHeader = `
-		<tr>
-			<th style="width: 10%;">Trademark ID</th>
-			<th style="width: 60%;">Event</th>
-			<th style="width: 30%;">Date</th>
-		</tr>
-	`;
+	<tr>
+		<th style="width: 10%;">Trademark ID</th>
+		<th style="width: 60%;">Event</th>
+		<th style="width: 30%;">Date</th>
+	</tr>
+`;
 
 	// If count is 0, return empty data structure (no headers, no tables)
 	if (count === 0) {
@@ -4953,10 +4925,10 @@ function extracttrademarkData(data, bussiness) {
 			trademarkCount: 0,
 			trademarkTableHeader: '',
 			trademarkTableRows: `
-				<tr>
-					<td colspan="8" style="text-align: center; padding: 40px; color: #64748B; font-style: italic;">No trademarks found for the search query "${escapeHtml(searchQuery)}"</td>
-				</tr>
-			`,
+			<tr>
+				<td colspan="8" style="text-align: center; padding: 40px; color: #64748B; font-style: italic;">No trademarks found for the search query "${escapeHtml(searchQuery)}"</td>
+			</tr>
+		`,
 			goodsServicesTableHeader: '',
 			goodsServicesTableRows: '',
 			ownerTableHeader: '',
@@ -4999,17 +4971,17 @@ function extracttrademarkData(data, bussiness) {
 
 		// Main trademark details table row
 		trademarkTableRows += `
-			<tr>
-				<td style="font-weight: 600;">${escapeHtml(tmNumber)}</td>
-				<td>${escapeHtml(tmWords)}</td>
-				<td style="color: #059669; font-weight: 600;">${escapeHtml(tmStatusGroup)}</td>
-				<td>${escapeHtml(tmFilingDate)}</td>
-				<td>${escapeHtml(tmAcceptanceDate)}</td>
-				<td>${escapeHtml(tmPriorityDate)}</td>
-				<td>${escapeHtml(tmRenewalDueDate)}</td>
-				<td>${escapeHtml(tmEnteredOnRegisterDate)}</td>
-			</tr>
-		`;
+		<tr>
+			<td style="font-weight: 600;">${escapeHtml(tmNumber)}</td>
+			<td>${escapeHtml(tmWords)}</td>
+			<td style="color: #059669; font-weight: 600;">${escapeHtml(tmStatusGroup)}</td>
+			<td>${escapeHtml(tmFilingDate)}</td>
+			<td>${escapeHtml(tmAcceptanceDate)}</td>
+			<td>${escapeHtml(tmPriorityDate)}</td>
+			<td>${escapeHtml(tmRenewalDueDate)}</td>
+			<td>${escapeHtml(tmEnteredOnRegisterDate)}</td>
+		</tr>
+	`;
 
 		// Owner information table rows
 		const owners = tm.owner || [];
@@ -5031,22 +5003,22 @@ function extracttrademarkData(data, bussiness) {
 					addressStr = addressParts.join(', ');
 				}
 				ownerTableRows += `
-					<tr>
-						<td>${escapeHtml(tmNumber)}</td>
-						<td>${escapeHtml(ownerName)}</td>
-						<td>${ownerAbn !== 'N/A' ? escapeHtml(ownerAbn) : 'N/A'}</td>
-						<td>${ownerAcn !== 'N/A' ? escapeHtml(ownerAcn) : 'N/A'}</td>
-						<td>${escapeHtml(addressStr)}</td>
-					</tr>
-				`;
+				<tr>
+					<td>${escapeHtml(tmNumber)}</td>
+					<td>${escapeHtml(ownerName)}</td>
+					<td>${ownerAbn !== 'N/A' ? escapeHtml(ownerAbn) : 'N/A'}</td>
+					<td>${ownerAcn !== 'N/A' ? escapeHtml(ownerAcn) : 'N/A'}</td>
+					<td>${escapeHtml(addressStr)}</td>
+				</tr>
+			`;
 			});
 		} else {
 			ownerTableRows += `
-				<tr>
-					<td>${escapeHtml(tmNumber)}</td>
-					<td colspan="4">N/A</td>
-				</tr>
-			`;
+			<tr>
+				<td>${escapeHtml(tmNumber)}</td>
+				<td colspan="4">N/A</td>
+			</tr>
+		`;
 		}
 
 		// Goods and Services table rows
@@ -5057,20 +5029,20 @@ function extracttrademarkData(data, bussiness) {
 				const descriptions = gs.descriptionText || [];
 				const descriptionText = descriptions.length > 0 ? descriptions.map(desc => escapeHtml(desc)).join(', ') : 'N/A';
 				goodsServicesTableRows += `
-					<tr>
-						<td>${escapeHtml(tmNumber)}</td>
-						<td>${escapeHtml(classNum)}</td>
-						<td style="font-size: 9px; line-height: 1.4;">${descriptionText}</td>
-					</tr>
-				`;
+				<tr>
+					<td>${escapeHtml(tmNumber)}</td>
+					<td>${escapeHtml(classNum)}</td>
+					<td style="font-size: 9px; line-height: 1.4;">${descriptionText}</td>
+				</tr>
+			`;
 			});
 		} else {
 			goodsServicesTableRows += `
-				<tr>
-					<td>${escapeHtml(tmNumber)}</td>
-					<td colspan="2">N/A</td>
-				</tr>
-			`;
+			<tr>
+				<td>${escapeHtml(tmNumber)}</td>
+				<td colspan="2">N/A</td>
+			</tr>
+		`;
 		}
 
 		// Address for Service table rows
@@ -5093,22 +5065,22 @@ function extracttrademarkData(data, bussiness) {
 					afsAddressStr = afsAddressParts.join(', ');
 				}
 				addressForServiceTableRows += `
-					<tr>
-						<td>${escapeHtml(tmNumber)}</td>
-						<td>${escapeHtml(afsName)}</td>
-						<td>${afsAbn !== 'N/A' ? escapeHtml(afsAbn) : 'N/A'}</td>
-						<td>${afsAcn !== 'N/A' ? escapeHtml(afsAcn) : 'N/A'}</td>
-						<td>${escapeHtml(afsAddressStr)}</td>
-					</tr>
-				`;
+				<tr>
+					<td>${escapeHtml(tmNumber)}</td>
+					<td>${escapeHtml(afsName)}</td>
+					<td>${afsAbn !== 'N/A' ? escapeHtml(afsAbn) : 'N/A'}</td>
+					<td>${afsAcn !== 'N/A' ? escapeHtml(afsAcn) : 'N/A'}</td>
+					<td>${escapeHtml(afsAddressStr)}</td>
+				</tr>
+			`;
 			});
 		} else {
 			addressForServiceTableRows += `
-				<tr>
-					<td>${escapeHtml(tmNumber)}</td>
-					<td colspan="4">N/A</td>
-				</tr>
-			`;
+			<tr>
+				<td>${escapeHtml(tmNumber)}</td>
+				<td colspan="4">N/A</td>
+			</tr>
+		`;
 		}
 
 		// History and Publication Details table rows
@@ -5118,56 +5090,56 @@ function extracttrademarkData(data, bussiness) {
 				const histDate = formatDate(hist.date);
 				const histDisplayName = hist.displayName || 'N/A';
 				historyTableRows += `
-					<tr>
-						<td>${escapeHtml(tmNumber)}</td>
-						<td>${escapeHtml(histDisplayName)}</td>
-						<td>${escapeHtml(histDate)}</td>
-					</tr>
-				`;
+				<tr>
+					<td>${escapeHtml(tmNumber)}</td>
+					<td>${escapeHtml(histDisplayName)}</td>
+					<td>${escapeHtml(histDate)}</td>
+				</tr>
+			`;
 			});
 		} else {
 			historyTableRows += `
-				<tr>
-					<td>${escapeHtml(tmNumber)}</td>
-					<td colspan="2">N/A</td>
-				</tr>
-			`;
+			<tr>
+				<td>${escapeHtml(tmNumber)}</td>
+				<td colspan="2">N/A</td>
+			</tr>
+		`;
 		}
 	});
 
 	// If no trademarks, add empty row message
 	if (trademarkTableRows === '') {
 		trademarkTableRows = `
-			<tr>
-				<td colspan="8" style="text-align: center; padding: 40px; color: #64748B; font-style: italic;">No trademarks found for the search query "${escapeHtml(searchQuery)}"</td>
-			</tr>
-		`;
+		<tr>
+			<td colspan="8" style="text-align: center; padding: 40px; color: #64748B; font-style: italic;">No trademarks found for the search query "${escapeHtml(searchQuery)}"</td>
+		</tr>
+	`;
 	}
 
 	// Build search statistics HTML
 	const statusAgg = aggregations.status || {};
 	const searchTypeAgg = aggregations.quickSearchType || {};
-	
+
 	const searchStatisticsHtml = `
-		<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
-			<div>
-				<div style="font-size: 8px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Registered Trademarks</div>
-				<div style="font-size: 13px; font-weight: 600; color: #059669;">${statusAgg.REGISTERED || 0}</div>
-			</div>
-			<div>
-				<div style="font-size: 8px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Never Registered</div>
-				<div style="font-size: 13px; font-weight: 600; color: #64748B;">${statusAgg.NEVER_REGISTERED || 0}</div>
-			</div>
-			<div>
-				<div style="font-size: 8px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Pending Applications</div>
-				<div style="font-size: 13px; font-weight: 600; color: #64748B;">${statusAgg.PENDING || 0}</div>
-			</div>
-			<div>
-				<div style="font-size: 8px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Refused/Removed</div>
-				<div style="font-size: 13px; font-weight: 600; color: #64748B;">${(statusAgg.REFUSED || 0) + (statusAgg.REMOVED || 0)}</div>
-			</div>
+	<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+		<div>
+			<div style="font-size: 8px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Registered Trademarks</div>
+			<div style="font-size: 13px; font-weight: 600; color: #059669;">${statusAgg.REGISTERED || 0}</div>
 		</div>
-	`;
+		<div>
+			<div style="font-size: 8px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Never Registered</div>
+			<div style="font-size: 13px; font-weight: 600; color: #64748B;">${statusAgg.NEVER_REGISTERED || 0}</div>
+		</div>
+		<div>
+			<div style="font-size: 8px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Pending Applications</div>
+			<div style="font-size: 13px; font-weight: 600; color: #64748B;">${statusAgg.PENDING || 0}</div>
+		</div>
+		<div>
+			<div style="font-size: 8px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Refused/Removed</div>
+			<div style="font-size: 13px; font-weight: 600; color: #64748B;">${(statusAgg.REFUSED || 0) + (statusAgg.REMOVED || 0)}</div>
+		</div>
+	</div>
+`;
 
 	return {
 		uuid: uuid,
@@ -5250,23 +5222,23 @@ function extractUnclaimedMoneyData(data, bussiness) {
 			const referenceNumber = escapeHtml(String(record.detailID || 'N/A'));
 
 			unclaimedMoneyTableRows += `
-				<tr>
-					<td>${accountName}</td>
-					<td>${businessName}</td>
-					<td>${amount}</td>
-					<td>${status}</td>
-					<td>${address}</td>
-					<td>${SourceEntity}</td>
-					<td>${referenceNumber}</td>
-				</tr>
-			`;
+			<tr>
+				<td>${accountName}</td>
+				<td>${businessName}</td>
+				<td>${amount}</td>
+				<td>${status}</td>
+				<td>${address}</td>
+				<td>${SourceEntity}</td>
+				<td>${referenceNumber}</td>
+			</tr>
+		`;
 		});
 	} else {
 		unclaimedMoneyTableRows = `
-			<tr>
-				<td colspan="7" style="text-align: center; padding: 40px; color: #64748B; font-style: italic;">No data found</td>
-			</tr>
-		`;
+		<tr>
+			<td colspan="7" style="text-align: center; padding: 40px; color: #64748B; font-style: italic;">No data found</td>
+		</tr>
+	`;
 	}
 
 	const totalRecords = unclaimedMoneyData ? unclaimedMoneyData.length : 0;
@@ -5378,52 +5350,20 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 		throw new Error(`Failed to extract data for report type: ${reportype}`);
 	}
 
-	// For land title address reports, show the searched address in the cover header
-	if (reportype === 'land-title-address') {
-		headerIdentifier = extractSearchWord(bussiness, reportype);
-		replaceVar('property_report_address_title', headerIdentifier);
-	}
-
-	// Ensure acn and abn fields ALWAYS exist - set defaults if missing
-	// Use hasOwnProperty to check if property exists, then check value
-	if (!extractedData.hasOwnProperty('acn') || extractedData.acn === undefined || extractedData.acn === null) {
-		extractedData.acn = 'N/A';
-	}
-	if (!extractedData.hasOwnProperty('abn') || extractedData.abn === undefined || extractedData.abn === null) {
-		extractedData.abn = 'N/A';
-	}
-
-	// Now safely format ACN and ABN - they are guaranteed to be strings at this point
-	// For bankruptcy reports, they're 'N/A', so the formatting check will fail and return 'N/A'
 	let formattedAcn = 'N/A';
 	let formattedAbn = 'N/A';
 
 	// Only format if they're valid numbers (not 'N/A')
 	if (extractedData.acn && typeof extractedData.acn === 'string' && extractedData.acn !== 'N/A') {
-		const cleanAcn = extractedData.acn.replace(/\s/g, '');
-		if (cleanAcn.length === 9 && /^\d+$/.test(cleanAcn)) {
-			formattedAcn = cleanAcn.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3');
-		} else {
-			formattedAcn = extractedData.acn;
-		}
+		formattedAcn = fmtAcn(extractedData.acn);
 	}
 
 	if (extractedData.abn && typeof extractedData.abn === 'string' && extractedData.abn !== 'N/A') {
-		const cleanAbn = extractedData.abn.replace(/\s/g, '');
-		if (cleanAbn.length === 11 && /^\d+$/.test(cleanAbn)) {
-			formattedAbn = cleanAbn.replace(/(\d{2})(\d{3})(\d{3})(\d{3})/, '$1 $2 $3 $4');
-		} else {
-			formattedAbn = extractedData.abn;
-		}
+		formattedAbn = fmtAbn(extractedData.abn);
 	}
 
 	// Current date for report
-	const reportDate = new Date().toLocaleDateString('en-GB', {
-		day: 'numeric',
-		month: 'long',
-		year: 'numeric'
-	});
-
+	const reportDate = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 	const current_date_and_time = moment().format('DD MMMM YYYY');
 
 	// Support both ${variable} and {{variable}} syntax
@@ -5431,69 +5371,170 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 
 	// Helper function to replace variables in both syntaxes
 	const replaceVar = (pattern, value) => {
-		// Convert value to string, handle undefined/null safely
 		const safeValue = value != null ? String(value) : '';
-		// Replace ${variable} syntax
 		updatedHtml = updatedHtml.replace(new RegExp(`\\$\\{${pattern}\\}`, 'g'), safeValue);
-		// Replace {{variable}} syntax
 		updatedHtml = updatedHtml.replace(new RegExp(`\\{\\{${pattern}\\}\\}`, 'g'), safeValue);
 	};
 
-	// Replace common variables
-	replaceVar('acn', formattedAcn);
-	replaceVar('abn', formattedAbn);
-	replaceVar('companyName', extractedData.companyName || 'N/A');
-	replaceVar('company_type', extractedData.company_type || 'N/A');
+	if (reportype === 'sole-trader-check') {
+		replaceVar('fullName', extractedData.fullName || extractedData.searchName || 'N/A');
+		replaceVar('soleTraderTableRows', extractedData.soleTraderTableRows || '');
+	}
+
+	if (reportype === 'trademark') {
+		replaceVar('trademark_uuid', extractedData.uuid || 'N/A');
+		replaceVar('trademark_company_name', extractedData.companyName || 'N/A');
+		replaceVar('trademark_search_query', extractedData.searchQuery || 'N/A');
+		replaceVar('trademark_report_date', extractedData.reportDate || 'N/A');
+		replaceVar('trademark_report_date_time', extractedData.reportDateTime || 'N/A');
+		replaceVar('trademark_abn', extractedData.abn || 'N/A');
+		replaceVar('trademark_acn', extractedData.acn || 'N/A');
+		replaceVar('trademark_count', extractedData.count || 0);
+		replaceVar('trademark_table_header', extractedData.trademarkTableHeader || '');
+		replaceVar('trademark_table_rows', extractedData.trademarkTableRows || '');
+		replaceVar('trademark_goods_services_table_header', extractedData.goodsServicesTableHeader || '');
+		replaceVar('trademark_goods_services_table_rows', extractedData.goodsServicesTableRows || '');
+		replaceVar('trademark_owner_table_header', extractedData.ownerTableHeader || '');
+		replaceVar('trademark_owner_table_rows', extractedData.ownerTableRows || '');
+		replaceVar('trademark_address_for_service_table_header', extractedData.addressForServiceTableHeader || '');
+		replaceVar('trademark_address_for_service_table_rows', extractedData.addressForServiceTableRows || '');
+		replaceVar('trademark_history_table_header', extractedData.historyTableHeader || '');
+		replaceVar('trademark_history_table_rows', extractedData.historyTableRows || '');
+		replaceVar('trademark_search_statistics_html', extractedData.searchStatisticsHtml || '');
+		replaceVar('trademark_aggregations_registered', extractedData.aggregationsRegistered || 0);
+		replaceVar('trademark_aggregations_never_registered', extractedData.aggregationsNeverRegistered || 0);
+		replaceVar('trademark_aggregations_pending', extractedData.aggregationsPending || 0);
+		replaceVar('trademark_aggregations_refused', extractedData.aggregationsRefused || 0);
+		replaceVar('trademark_aggregations_removed', extractedData.aggregationsRemoved || 0);
+		replaceVar('trademark_aggregations_word', extractedData.aggregationsWord || 0);
+		replaceVar('trademark_aggregations_name', extractedData.aggregationsName || 0);
+	}
+
+	if (reportype === 'unclaimed-money') {
+		replaceVar('fullName', extractedData.fullName || extractedData.searchName || 'N/A');
+		replaceVar('unclaimedMoneyTableRows', extractedData.unclaimedMoneyTableRows || '');
+	}
+
+	if (reportype === 'director-court' || reportype === 'director-court-civil' || reportype === 'director-court-criminal') {
+		replaceVar('director_name', extractedData.director_name || '');
+		replaceVar('total_records', extractedData.total_records || '0');
+		replaceVar('total_criminal_records', extractedData.total_criminal_records || '0');
+		replaceVar('total_civil_records', extractedData.total_civil_records || '0');
+		replaceVar('criminal_court_rows', extractedData.criminal_court_rows || '');
+		replaceVar('civil_court_rows', extractedData.civil_court_rows || '');
+	}
+
+	if (reportype === 'rego-ppsr') {
+		replaceVar('vehicleMakeModel', extractedData.vehicleMakeModel || 'N/A');
+		replaceVar('registrationPlate', extractedData.registrationPlate || 'N/A');
+		replaceVar('certificateNumber', extractedData.certificateNumber || 'N/A');
+		replaceVar('searchNumber', extractedData.searchNumber || 'N/A');
+		replaceVar('vin', extractedData.vin || 'N/A');
+		replaceVar('registrationState', extractedData.registrationState || 'N/A');
+		replaceVar('ppsrStatusBadge', extractedData.ppsrStatusBadge || '');
+		replaceVar('make', extractedData.make || 'N/A');
+		replaceVar('model', extractedData.model || 'N/A');
+		replaceVar('colour', extractedData.colour || 'N/A');
+		replaceVar('bodyType', extractedData.bodyType || 'N/A');
+		replaceVar('vehicleType', extractedData.vehicleType || 'N/A');
+		replaceVar('engineNumber', extractedData.engineNumber || 'N/A');
+		replaceVar('registrationExpiry', extractedData.registrationExpiry || 'N/A');
+		replaceVar('complianceDate', extractedData.complianceDate || 'N/A');
+		replaceVar('ppsrRegistrationsHtml', extractedData.ppsrRegistrationsHtml || '');
+		replaceVar('securedPartiesHtml', extractedData.securedPartiesHtml || '');
+		replaceVar('registrationHistoryRows', extractedData.registrationHistoryRows || '');
+		replaceVar('writtenOffStatusMessage', extractedData.writtenOffStatusMessage || '');
+		replaceVar('stolenStatusMessage', extractedData.stolenStatusMessage || '');
+		// replaceVar('compliancePlate', extractedData.compliancePlate || 'N/A');
+		// replaceVar('yearOfManufacture', extractedData.yearOfManufacture || 'N/A');
+		// replaceVar('registrationStatus', extractedData.registrationStatus || 'N/A');
+		
+	}
+
+	if (reportype === 'director-related' || reportype === 'director-related-historical') {
+		replaceVar('cover_director_name', extractedData.cover_director_name || 'N/A');
+		replaceVar('cover_company_name', extractedData.cover_company_name || 'N/A');
+		replaceVar('cover_company_acn', extractedData.cover_company_acn || 'N/A');
+		replaceVar('director_name', extractedData.director_name || 'N/A');
+		replaceVar('director_date_of_birth', extractedData.director_date_of_birth || 'N/A');
+		replaceVar('director_address', extractedData.director_address || 'N/A');
+		replaceVar('directorships_count', extractedData.directorships_count || '0');
+		replaceVar('shareholdings_count', extractedData.shareholdings_count || '0');
+		replaceVar('current_directorships_rows', extractedData.current_directorships_rows || '');
+		replaceVar('ceased_directorships_rows', extractedData.ceased_directorships_rows || '');
+		replaceVar('current_shareholdings_name_dob_rows', extractedData.current_shareholdings_name_dob_rows || '');
+		replaceVar('ceased_shareholdings_name_dob_rows', extractedData.ceased_shareholdings_name_dob_rows || '');
+		replaceVar('current_shareholdings_name_only_rows', extractedData.current_shareholdings_name_only_rows || '');
+		replaceVar('ceased_shareholdings_name_only_rows', extractedData.ceased_shareholdings_name_only_rows || '');
+		//replaceVar('document_id', extractedData.document_id || 'N/A');
+		//replaceVar('cover_report_date', extractedData.cover_report_date || 'N/A');
+		//replaceVar('director_report_date', extractedData.director_report_date || 'N/A');
+		//replaceVar('data_extract_date', extractedData.data_extract_date || 'N/A');
+	}
+
+	if(reportype === 'ato') {
+		replaceVar('current_tax_debt_amount', extractedData.current_tax_debt_amount || '');
+		replaceVar('current_tax_debt_updated_line', extractedData.current_tax_debt_updated_line || '');
+		//replaceVar('current_tax_debt_ato_updated_at', extractedData.current_tax_debt_ato_updated_at || '');
+	}
+
+	replaceVar('totalRecords', extractedData.totalRecords || 0); // UNCLAIMED - SOLETRADERS
+	replaceVar('companyName', extractedData.companyName || 'N/A'); // ATO
+	replaceVar('acn', formattedAcn); // ATO
+	replaceVar('abn', formattedAbn); // ATO
+	replaceVar('abn_state', extractedData.abn_state || ''); // ATO
+	replaceVar('abn_status', extractedData.abn_status || ''); // ATO
+	replaceVar('entity_abr_gst_status', extractedData.entity_abr_gst_status || ''); // ATO
+	replaceVar('entity_organisation_type', extractedData.entity_organisation_type || ''); // ATO
+	replaceVar('entity_asic_date_of_registration', extractedData.entity_asic_date_of_registration || ''); // ATO
+	replaceVar('entity_review_date', extractedData.entity_review_date || ''); // ATO
+	replaceVar('entity_registered_in', extractedData.entity_registered_in || ''); // ATO
+	replaceVar('entity_document_number', extractedData.entity_document_number || ''); // ATO
+
 	replaceVar('reportDate', reportDate);
 	replaceVar('current_date_and_time', current_date_and_time);
 
-	replaceVar('firstName', extractedData.firstName || '');
-	replaceVar('lastName', extractedData.lastName || '');
-	replaceVar('fullName', extractedData.fullName || extractedData.searchName || 'N/A');
-	replaceVar('searchName', extractedData.searchName || extractedData.fullName || 'N/A');
-	replaceVar('soleTraderTableRows', extractedData.soleTraderTableRows || '');
-	replaceVar('unclaimedMoneyTableRows', extractedData.unclaimedMoneyTableRows || '');
-	replaceVar('totalRecords', extractedData.totalRecords || 0);
 
 
-	replaceVar('reportDate', extractedData.reportDate || '');
-	replaceVar('searchDateTime', extractedData.searchDateTime || '');
-	replaceVar('vin', extractedData.vin || 'N/A');
-	replaceVar('registrationPlate', extractedData.registrationPlate || 'N/A');
-	replaceVar('registrationState', extractedData.registrationState || 'N/A');
-	replaceVar('make', extractedData.make || 'N/A');
-	replaceVar('model', extractedData.model || 'N/A');
-	replaceVar('vehicleMakeModel', extractedData.vehicleMakeModel || 'N/A');
-	replaceVar('colour', extractedData.colour || 'N/A');
-	replaceVar('bodyType', extractedData.bodyType || 'N/A');
-	replaceVar('vehicleType', extractedData.vehicleType || 'N/A');
-	replaceVar('engineNumber', extractedData.engineNumber || 'N/A');
-	replaceVar('certificateNumber', extractedData.certificateNumber || 'N/A');
-	replaceVar('searchNumber', extractedData.searchNumber || 'N/A');
-	replaceVar('ppsrStatusBadge', extractedData.ppsrStatusBadge || '');
-	replaceVar('registrationExpiry', extractedData.registrationExpiry || 'N/A');
-	replaceVar('registrationStatus', extractedData.registrationStatus || 'N/A');
-	replaceVar('complianceDate', extractedData.complianceDate || 'N/A');
-	replaceVar('compliancePlate', extractedData.compliancePlate || 'N/A');
-	replaceVar('yearOfManufacture', extractedData.yearOfManufacture || 'N/A');
-	replaceVar('stolenStatusMessage', extractedData.stolenStatusMessage || '');
-	replaceVar('writtenOffStatusMessage', extractedData.writtenOffStatusMessage || '');
-	replaceVar('ppsrRegistrationsHtml', extractedData.ppsrRegistrationsHtml || '');
-	replaceVar('securedPartiesHtml', extractedData.securedPartiesHtml || '');
-	replaceVar('registrationHistoryRows', extractedData.registrationHistoryRows || '');
 
-	// Replace entity variables
-	replaceVar('abn_state', extractedData.abn_state || '');
-	replaceVar('abn_status', extractedData.abn_status || '');
+
+
+
 	replaceVar('entity_abn', extractedData.entity_abn || '');
 	replaceVar('entity_acn', extractedData.entity_acn || '');
 	replaceVar('entity_name', extractedData.entity_name || '');
-	replaceVar('entity_review_date', extractedData.entity_review_date || '');
-	replaceVar('entity_registered_in', extractedData.entity_registered_in || '');
-	replaceVar('entity_abr_gst_status', extractedData.entity_abr_gst_status || '');
-	replaceVar('entity_document_number', extractedData.entity_document_number || '');
-	replaceVar('entity_organisation_type', extractedData.entity_organisation_type || '');
-	replaceVar('entity_asic_date_of_registration', extractedData.entity_asic_date_of_registration || '');
+	replaceVar('company_type', extractedData.company_type || 'N/A');
+	replaceVar('reportDate', extractedData.reportDate || '');
+	replaceVar('searchDateTime', extractedData.searchDateTime || '');
+	replaceVar('firstName', extractedData.firstName || ''); // N/A
+	replaceVar('lastName', extractedData.lastName || ''); // N/A
+	replaceVar('searchName', extractedData.searchName || extractedData.fullName || 'N/A'); // N/A
+	replaceVar('director_given_name', extractedData.director_given_name || '');
+	replaceVar('director_surname', extractedData.director_surname || '');
+
+
+	if (reportype === 'land-title-address') {
+		headerIdentifier = extractSearchWord(bussiness, reportype);
+		replaceVar('property_report_address_title', headerIdentifier);
+	}
+
+	if (!extractedData.hasOwnProperty('acn') || extractedData.acn === undefined || extractedData.acn === null) {
+		extractedData.acn = 'N/A';
+	}
+	if (!extractedData.hasOwnProperty('abn') || extractedData.abn === undefined || extractedData.abn === null) {
+		extractedData.abn = 'N/A';
+	}
+
+
+
+	
+
+
+	
+
+
+	// Replace entity variables
+	
 
 	// ASIC Current specific variables
 	replaceVar('entity_asic_status', extractedData.entity_asic_status || '');
@@ -5599,30 +5640,6 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 	replaceVar('document_search_id', extractedData.document_search_id || 'N/A');
 	replaceVar('document_search_date', extractedData.document_search_date || 'N/A');
 
-	// Director Related Entities specific variables
-	replaceVar('cover_director_name', extractedData.cover_director_name || 'N/A');
-	replaceVar('cover_report_date', extractedData.cover_report_date || 'N/A');
-	replaceVar('cover_company_name', extractedData.cover_company_name || 'N/A');
-	replaceVar('cover_company_acn', extractedData.cover_company_acn || 'N/A');
-	replaceVar('director_name', extractedData.director_name || 'N/A');
-	replaceVar('director_date_of_birth', extractedData.director_date_of_birth || 'N/A');
-	replaceVar('director_address', extractedData.director_address || 'N/A');
-	replaceVar('director_report_date', extractedData.director_report_date || 'N/A');
-	replaceVar('directorships_count', extractedData.directorships_count || '0');
-	replaceVar('shareholdings_count', extractedData.shareholdings_count || '0');
-	replaceVar('data_extract_date', extractedData.data_extract_date || 'N/A');
-	replaceVar('current_directorships_rows', extractedData.current_directorships_rows || '');
-	replaceVar('ceased_directorships_rows', extractedData.ceased_directorships_rows || '');
-	replaceVar('current_shareholdings_name_dob_rows', extractedData.current_shareholdings_name_dob_rows || '');
-	replaceVar('ceased_shareholdings_name_dob_rows', extractedData.ceased_shareholdings_name_dob_rows || '');
-	replaceVar('current_shareholdings_name_only_rows', extractedData.current_shareholdings_name_only_rows || '');
-	replaceVar('ceased_shareholdings_name_only_rows', extractedData.ceased_shareholdings_name_only_rows || '');
-	replaceVar('document_id', extractedData.document_id || 'N/A');
-
-	// Replace ATO-specific variables
-	replaceVar('current_tax_debt_amount', extractedData.current_tax_debt_amount || '');
-	replaceVar('current_tax_debt_ato_updated_at', extractedData.current_tax_debt_ato_updated_at || '');
-	replaceVar('current_tax_debt_updated_line', extractedData.current_tax_debt_updated_line || '');
 
 	// Replace court-specific variables
 	replaceVar('caseNumber', extractedData.caseNumber || '');
@@ -5649,15 +5666,7 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 	replaceVar('hearings_rows', extractedData.hearings_rows || '');
 	replaceVar('documents_rows', extractedData.documents_rows || '');
 
-	// Replace director-court specific variables
-	replaceVar('director_name', extractedData.director_name || '');
-	replaceVar('director_given_name', extractedData.director_given_name || '');
-	replaceVar('director_surname', extractedData.director_surname || '');
-	replaceVar('total_records', extractedData.total_records || '0');
-	replaceVar('total_criminal_records', extractedData.total_criminal_records || '0');
-	replaceVar('total_civil_records', extractedData.total_civil_records || '0');
-	replaceVar('criminal_court_rows', extractedData.criminal_court_rows || '');
-	replaceVar('civil_court_rows', extractedData.civil_court_rows || '');
+	
 
 
 	replaceVar('person_full_name', extractedData.person_full_name);
@@ -5702,38 +5711,9 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 	replaceVar('CompanyFullName', extractedData.CompanyFullName);
 	replaceVar('abn', extractedData.abn);
 
-	// Trademark-specific variables
-	if (reportype === 'trademark') {
-		replaceVar('trademark_uuid', extractedData.uuid || 'N/A');
-		replaceVar('trademark_company_name', extractedData.companyName || 'N/A');
-		replaceVar('trademark_search_query', extractedData.searchQuery || 'N/A');
-		replaceVar('trademark_report_date', extractedData.reportDate || 'N/A');
-		replaceVar('trademark_report_date_time', extractedData.reportDateTime || 'N/A');
-		replaceVar('trademark_abn', extractedData.abn || 'N/A');
-		replaceVar('trademark_acn', extractedData.acn || 'N/A');
-		replaceVar('trademark_count', extractedData.count || 0);
-		replaceVar('trademark_table_header', extractedData.trademarkTableHeader || '');
-		replaceVar('trademark_table_rows', extractedData.trademarkTableRows || '');
-		replaceVar('trademark_goods_services_table_header', extractedData.goodsServicesTableHeader || '');
-		replaceVar('trademark_goods_services_table_rows', extractedData.goodsServicesTableRows || '');
-		replaceVar('trademark_owner_table_header', extractedData.ownerTableHeader || '');
-		replaceVar('trademark_owner_table_rows', extractedData.ownerTableRows || '');
-		replaceVar('trademark_address_for_service_table_header', extractedData.addressForServiceTableHeader || '');
-		replaceVar('trademark_address_for_service_table_rows', extractedData.addressForServiceTableRows || '');
-		replaceVar('trademark_history_table_header', extractedData.historyTableHeader || '');
-		replaceVar('trademark_history_table_rows', extractedData.historyTableRows || '');
-		replaceVar('trademark_search_statistics_html', extractedData.searchStatisticsHtml || '');
-		replaceVar('trademark_aggregations_registered', extractedData.aggregationsRegistered || 0);
-		replaceVar('trademark_aggregations_never_registered', extractedData.aggregationsNeverRegistered || 0);
-		replaceVar('trademark_aggregations_pending', extractedData.aggregationsPending || 0);
-		replaceVar('trademark_aggregations_refused', extractedData.aggregationsRefused || 0);
-		replaceVar('trademark_aggregations_removed', extractedData.aggregationsRemoved || 0);
-		replaceVar('trademark_aggregations_word', extractedData.aggregationsWord || 0);
-		replaceVar('trademark_aggregations_name', extractedData.aggregationsName || 0);
-	}
-
 	return updatedHtml;
 }
+
 
 // Function to generate PDF from HTML
 async function generatePDF(htmlContent, outputPath) {
@@ -5786,31 +5766,31 @@ async function generatePDF(htmlContent, outputPath) {
 			},
 			displayHeaderFooter: true,
 			headerTemplate: `
-				 <div style="
-    font-size: 9px;
-    width: 100%;
-    box-sizing: border-box;
-    padding: 4mm 20mm 3mm 20mm; 
-    border-bottom: 1px solid #E2E8F0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  "><img style="height: 60px;"
-                        src="data:image/png;base64,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"
-                        alt="Credion"></div>
-			`,
+				<div style="
+font-size: 9px;
+width: 100%;
+box-sizing: border-box;
+padding: 4mm 20mm 3mm 20mm; 
+border-bottom: 1px solid #E2E8F0;
+display: flex;
+justify-content: space-between;
+align-items: center;
+"><img style="height: 60px;"
+					src="data:image/png;base64,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"
+					alt="Credion"></div>
+		`,
 			footerTemplate: `
-				 <div style="
-    font-size: 9px;
-    width: 100%;
-    box-sizing: border-box;
-    padding: 3mm 5mm 0 5mm;
-    text-align: right;
-    color: #64748B;
-  ">
-    Page <span class="pageNumber"></span> of <span class="totalPages"></span>
-  </div>
-			`,
+				<div style="
+font-size: 9px;
+width: 100%;
+box-sizing: border-box;
+padding: 3mm 5mm 0 5mm;
+text-align: right;
+color: #64748B;
+">
+Page <span class="pageNumber"></span> of <span class="totalPages"></span>
+</div>
+		`,
 			preferCSSPageSize: true
 		});
 
