@@ -555,11 +555,10 @@ function extractAsicCurrentData(data) {
 	// Document number for header
 	const documentNumber = entityData.document_number || data.document_number || 'N/A';
 
-	// Extract data from asic_extracts for Pages 3 and 4
+
 	const asicExtracts = rdata.asic_extracts || data.asic_extracts || [];
 	const firstExtract = asicExtracts.length > 0 ? asicExtracts[0] : null;
 
-	// Page 3 - ASIC Extract Summary
 	const extractType = firstExtract?.type || 'Current';
 	const addresses = firstExtract?.addresses || [];
 	const contactAddresses = firstExtract?.contact_addresses || [];
@@ -1182,24 +1181,6 @@ function extractAsicCurrentData(data) {
     `;
 	}
 
-	// Calculate total pages dynamically
-	// Base pages: 1 (Cover), 2 (Report Summary), 3 (Company Info), 4 (Address History), 5 (Documents Part 1), 7 (Directors)
-	// Conditional: 8 (Share Structure) - only if shareStructures exist
-	// Note: Page 6 is just a continuation of Page 5 table, not a separate page
-	let totalPages = 7; // Base pages
-	if (shareStructures.length > 0) {
-		totalPages = 8; // Add Share Structure page if data exists
-	}
-
-	// Generate page number strings for each page
-	const page1Number = `Page 1 of ${totalPages}`;
-	const page2Number = `Page 2 of ${totalPages}`;
-	const page3Number = `Page 3 of ${totalPages}`;
-	const page4Number = `Page 4 of ${totalPages}`;
-	const page5Number = `Page 5 of ${totalPages}`;
-	const page7Number = `Page 7 of ${totalPages}`;
-	const page8Number = shareStructures.length > 0 ? `Page 8 of ${totalPages}` : '';
-
 	return {
 		company_type: 'asic-current',
 		acn: formattedAcn,
@@ -1269,16 +1250,6 @@ function extractAsicCurrentData(data) {
 
 		// Page 8 - Share Structure
 		share_structure_section: shareStructureSection,
-
-		// Page Numbers (dynamic)
-		page_number_1: page1Number,
-		page_number_2: page2Number,
-		page_number_3: page3Number,
-		page_number_4: page4Number,
-		page_number_5: page5Number,
-		page_number_7: page7Number,
-		page_number_8: page8Number,
-		total_pages: totalPages,
 
 		// Legacy fields (kept for backward compatibility)
 		entity_abr_gst_status: gstStatus,
@@ -1511,22 +1482,6 @@ function extractAsicHistoricalData(data) {
 	const extractDate = firstExtract?.created_at || entityData.asic_date_of_registration || new Date();
 	const formattedExtractDate = moment(extractDate).format('DD/MM/YYYY');
 
-	// Calculate total pages dynamically
-	// Base pages: 1-8 (same as current), 9 (Historical Extract), 10 (Historical Continued), 11 (Historical Share Structure & Documents)
-	let totalPages = 11;
-
-	// Generate page number strings
-	const page1Number = `Page 1 of ${totalPages}`;
-	const page2Number = `Page 2 of ${totalPages}`;
-	const page3Number = `Page 3 of ${totalPages}`;
-	const page4Number = `Page 4 of ${totalPages}`;
-	const page5Number = `Page 5 of ${totalPages}`;
-	const page7Number = `Page 7 of ${totalPages}`;
-	const page8Number = shareStructures.length > 0 ? `Page 8 of ${totalPages}` : '';
-	const page9Number = `Page 9 of ${totalPages}`;
-	const page10Number = `Page 10 of ${totalPages}`;
-	const page11Number = `Page 11 of ${totalPages}`;
-
 	return {
 		...currentData, // Include all data from pages 1-8
 
@@ -1541,19 +1496,6 @@ function extractAsicHistoricalData(data) {
 
 		// Page 11 - Historical Share Structure & Documents
 		historical_share_structure_rows: historicalShareStructureRows,
-
-		// Page Numbers (dynamic)
-		page_number_1: page1Number,
-		page_number_2: page2Number,
-		page_number_3: page3Number,
-		page_number_4: page4Number,
-		page_number_5: page5Number,
-		page_number_7: page7Number,
-		page_number_8: page8Number,
-		page_number_9: page9Number,
-		page_number_10: page10Number,
-		page_number_11: page11Number,
-		total_pages: totalPages,
 	};
 }
 
@@ -1740,12 +1682,6 @@ function extractAsicCompanyData(data) {
 	const reportDate = moment().format('DD MMM YYYY');
 	const reportDateTime = moment().format('DD MMM YYYY, h:mma');
 
-	// Calculate total pages (base 4 pages for now)
-	const totalPages = 4;
-	const page2Number = `Page 2 of ${totalPages}`;
-	const page3Number = `Page 3 of ${totalPages}`;
-	const page4Number = `Page 4 of ${totalPages}`;
-
 	return {
 		// Cover page (Page 1)
 		cover_company_name: entityData.name || 'N/A', // CSS will handle uppercase transformation
@@ -1781,11 +1717,6 @@ function extractAsicCompanyData(data) {
 		// Page 4 - Licences & ASIC Documents
 		licences_rows: licencesRows,
 		asic_documents_rows: asicDocumentsRows,
-
-		// Page numbers
-		page_number_2: page2Number,
-		page_number_3: page3Number,
-		page_number_4: page4Number,
 
 		// Legacy/placeholder fields
 		company_type: 'asic-company',
@@ -1939,10 +1870,6 @@ function extractBankruptcyData(data, business) {
     `;
 	}
 
-	// Calculate total pages (base 4 pages + pages for each insolvency record if any)
-	const basePages = 4;
-	const totalPages = basePages;
-
 	return {
 		// Cover page (Page 1)
 		cover_search_id: searchId,
@@ -1962,10 +1889,6 @@ function extractBankruptcyData(data, business) {
 		document_search_id: searchId,
 		document_search_date: searchDateTime,
 
-		// Page numbers
-		page_number_2: `Page 2 of ${totalPages}`,
-		page_number_3: `Page 3 of ${totalPages}`,
-		page_number_4: `Page 4 of ${totalPages}`,
 
 		// Legacy/placeholder fields
 		company_type: 'director-bankruptcy',
@@ -2199,8 +2122,6 @@ function extractDirectorRelatedEntitiesData(data, business) {
 	const reportDate = moment().format('DD MMMM YYYY');
 	const reportDateTime = moment().format('DD MMMM YYYY, h:mma');
 
-	// Calculate total pages (base 4 pages)
-	const totalPages = 4;
 
 	// Extract company info for cover (from first directorship or entity)
 	const companyName = currentDirectorships.length > 0
@@ -2236,10 +2157,6 @@ function extractDirectorRelatedEntitiesData(data, business) {
 		current_shareholdings_name_only_rows: currentShareholdingsNameOnlyRows,
 		ceased_shareholdings_name_only_rows: ceasedShareholdingsNameOnlyRows,
 
-		// Page numbers
-		page_number_2: `Page 2 of ${totalPages}`,
-		page_number_3: `Page 3 of ${totalPages}`,
-		page_number_4: `Page 4 of ${totalPages}`,
 
 		// Document ID (using UUID or director name)
 		document_id: rdata.uuid || directorName,
@@ -2588,10 +2505,6 @@ function extractPpsrData(data, business, reportype) {
 		vehicleExpiryTimeline = 'No data available';
 	}
 
-	// Calculate total pages: 3 base pages + registration pages (max 7) + 2 (glossary + document info) = max 12
-	const numRegistrationPages = registrations.length === 0 ? 1 : Math.min(registrations.length, 7); // If no registrations, add 1 page for "No data available"
-	const totalPages = 3 + numRegistrationPages + 2; // Always include Pages 11 and 12
-
 	// Generate registration detail pages HTML (one page per registration, starting from page 4)
 	let registrationPagesHtml = '';
 	if (registrations.length === 0) {
@@ -2920,14 +2833,12 @@ function extractPpsrData(data, business, reportype) {
 		search_status: activeRegistrations.length === resultCount ? 'All registrations current and valid' : `${activeRegistrations.length} active, ${resultCount - activeRegistrations.length} expired`,
 		security_breakdown: securityBreakdown,
 		secured_parties_rows: securedPartiesRows,
-		page_number_2: `Page 2 of ${totalPages}`,
 
 		// Page 3 - Key Risk Indicators
 		critical_security_section: criticalSecurityHtml,
 		vehicle_finance_count: motorVehicles.length,
 		vehicle_finance_financiers_count: new Set(motorVehicles.map(v => v.securedPartySummary)).size,
 		vehicle_expiry_timeline: vehicleExpiryTimeline,
-		page_number_3: `Page 3 of ${totalPages}`,
 
 		// Registration pages (4-10) + Glossary (11) + Document Info (12)
 		registration_pages: registrationPagesHtml + glossaryPageHtml + documentInfoPageHtml,
@@ -3875,12 +3786,6 @@ function extractLandTitleOrganisationData(data, bussiness) {
 		historicalPortfolioRows = '<tr><td colspan="5" style="text-align:center; padding: 12px; color: #94A3B8;">No past properties</td></tr>';
 	}
 
-	// Determine page numbers based on content
-	let totalPages = 6; // Base pages: cover, executive summary, title search, portfolio, disclaimers
-	if (addOn && showTitleSearchInfo) {
-		totalPages += 2; // Add pages for valuation sections
-	}
-
 	return {
 		CompanyFullName: CompanyFullName,
 		abn: Abn,
@@ -3902,12 +3807,6 @@ function extractLandTitleOrganisationData(data, bussiness) {
 		show_executive_summary: showExecutiveSummary ? 'block' : 'none',
 		show_title_search_info: showTitleSearchInfo ? 'block' : 'none',
 		show_valuation_sections: (addOn && showTitleSearchInfo) ? 'block' : 'none',
-		page_number_2: 'Page 2 of ' + totalPages,
-		page_number_3: 'Page 3 of ' + totalPages,
-		page_number_4: 'Page 4 of ' + totalPages,
-		page_number_5: 'Page 5 of ' + totalPages,
-		page_number_6: 'Page 6 of ' + totalPages,
-		total_pages: String(totalPages)
 	};
 }
 
@@ -4918,12 +4817,6 @@ function extractLandTitleIndividualData(data, bussiness) {
 		historicalPortfolioRows = '<tr><td colspan="5" style="text-align:center; padding: 12px; color: #94A3B8;">No past properties</td></tr>';
 	}
 
-	// Determine page numbers based on content
-	let totalPages = 6; // Base pages: cover, executive summary, title search, portfolio, disclaimers
-	if (addOn && showTitleSearchInfo) {
-		totalPages += 2; // Add pages for valuation sections
-	}
-
 	return {
 		person_full_name: personFullName,
 		report_date: reportDate,
@@ -4944,12 +4837,6 @@ function extractLandTitleIndividualData(data, bussiness) {
 		show_executive_summary: showExecutiveSummary ? 'block' : 'none',
 		show_title_search_info: showTitleSearchInfo ? 'block' : 'none',
 		show_valuation_sections: (addOn && showTitleSearchInfo) ? 'block' : 'none',
-		page_number_2: 'Page 2 of ' + totalPages,
-		page_number_3: 'Page 3 of ' + totalPages,
-		page_number_4: 'Page 4 of ' + totalPages,
-		page_number_5: 'Page 5 of ' + totalPages,
-		page_number_6: 'Page 6 of ' + totalPages,
-		total_pages: String(totalPages)
 	};
 }
 
@@ -5661,19 +5548,6 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 	// Page 8 - Share Structure variables
 	replaceVar('share_structure_section', extractedData.share_structure_section || '');
 
-	// Page Numbers (dynamic)
-	replaceVar('page_number_1', extractedData.page_number_1 || 'Page 1 of 7');
-	replaceVar('page_number_2', extractedData.page_number_2 || 'Page 2 of 7');
-	replaceVar('page_number_3', extractedData.page_number_3 || 'Page 3 of 7');
-	replaceVar('page_number_4', extractedData.page_number_4 || 'Page 4 of 7');
-	replaceVar('page_number_5', extractedData.page_number_5 || 'Page 5 of 7');
-	replaceVar('page_number_7', extractedData.page_number_7 || 'Page 7 of 7');
-	replaceVar('page_number_8', extractedData.page_number_8 || '');
-	replaceVar('page_number_9', extractedData.page_number_9 || 'Page 9 of 11');
-	replaceVar('page_number_10', extractedData.page_number_10 || 'Page 10 of 11');
-	replaceVar('page_number_11', extractedData.page_number_11 || 'Page 11 of 11');
-	replaceVar('total_pages', extractedData.total_pages || '7');
-
 	// ASIC Historical specific variables (Pages 9-11)
 	replaceVar('historical_extract_date', extractedData.historical_extract_date || 'N/A');
 	replaceVar('historical_company_names_rows', extractedData.historical_company_names_rows || '');
@@ -5693,8 +5567,6 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 	replaceVar('former_shareholdings_rows', extractedData.former_shareholdings_rows || '');
 	replaceVar('licences_rows', extractedData.licences_rows || '');
 	replaceVar('asic_documents_rows', extractedData.asic_documents_rows || '');
-	replaceVar('page_number_3', extractedData.page_number_3 || 'Page 3 of 4');
-	replaceVar('page_number_4', extractedData.page_number_4 || 'Page 4 of 4');
 
 	// PPSR specific variables
 	replaceVar('cover_entity_name', extractedData.cover_entity_name || 'N/A');
