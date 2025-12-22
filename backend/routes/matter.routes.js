@@ -420,7 +420,7 @@ router.delete('/:matterId', authenticateToken, async (req, res) => {
 router.post('/watchlist/sync', authenticateToken, async (req, res) => {
   try {
     const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
-    const watchlistId = '3835';
+    const watchlistId = '3876';
     const apiUrl = `https://alares.com.au/api/watchlists/${watchlistId}/entities`;
 
     // Fetch watchlist entities from external API
@@ -548,7 +548,7 @@ router.post('/watchlist/sync', authenticateToken, async (req, res) => {
 // Payment endpoint for watchlist notifications
 router.post('/watchlist/pay', authenticateToken, async (req, res) => {
   try {
-    const { abn, reportType, matterId, userReportId } = req.body;
+    const { abn, reportword, reportType, matterId, userReportId } = req.body;
     const userId = req.userId;
 
     if (!abn) {
@@ -569,6 +569,7 @@ router.post('/watchlist/pay', authenticateToken, async (req, res) => {
 
     const business = {
       Abn: abn,
+      Name: reportword,
       isCompany: 'ORGANISATION'
     };
 

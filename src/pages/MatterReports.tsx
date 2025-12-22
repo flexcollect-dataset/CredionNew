@@ -42,6 +42,7 @@ const MatterReports: React.FC = () => {
   const [notificationPage, setNotificationPage] = useState(1);
   const [notificationTotalPages, setNotificationTotalPages] = useState(1);
   const [selectedReportAbn, setSelectedReportAbn] = useState<string | null>(null);
+  const [selectedReportword, setselectedReportword] = useState<string | null>(null);
   const [selectedReportType, setSelectedReportType] = useState<string | null>(null);
   const [selectedUserReportId, setSelectedUserReportId] = useState<number | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
@@ -127,6 +128,7 @@ const MatterReports: React.FC = () => {
 
     setSelectedEntityId(entityId);
     setSelectedReportAbn(abn);
+    setselectedReportword(report.searchWord);
     setSelectedReportType(report.reportType || null);
     setSelectedUserReportId(report.id);
     setNotificationPage(1);
@@ -157,6 +159,7 @@ const MatterReports: React.FC = () => {
     setNotificationsModalOpen(false);
     setSelectedEntityId(null);
     setSelectedReportAbn(null);
+    setselectedReportword(null);
     setNotifications([]);
     setNotificationPage(1);
   };
@@ -930,6 +933,7 @@ const MatterReports: React.FC = () => {
                   try {
                     const response = await apiService.payForWatchlistReport(
                       selectedReportAbn,
+                      selectedReportword,
                       selectedReportType,
                       matterId ? Number(matterId) : undefined,
                       selectedUserReportId

@@ -731,7 +731,7 @@ class ApiService {
 		}
 	}
 
-	async payForWatchlistReport(abn: string, reportType: string, matterId?: number, userReportId?: number): Promise<{
+	async payForWatchlistReport(abn: string, reportword:string, reportType: string, matterId?: number, userReportId?: number): Promise<{
 		success: boolean;
 		message: string;
 		pdfFilename?: string;
@@ -745,7 +745,7 @@ class ApiService {
 				error?: string;
 			}>('/api/matters/watchlist/pay', {
 				method: 'POST',
-				body: JSON.stringify({ abn, reportType, matterId, userReportId }),
+				body: JSON.stringify({ abn, reportword, reportType, matterId, userReportId }),
 			});
 
 			return response;
@@ -801,7 +801,7 @@ class ApiService {
 		message?: string;
 	}> {
 		const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
-		const apiUrl = `https://alares.com.au/api/watchlists/3835/notifications?entity_id=${entityId}&page=${page}`;
+		const apiUrl = `https://alares.com.au/api/watchlists/3876/notifications?entity_id=${entityId}&page=${page}`;
 
 		try {
 			const response = await fetch(apiUrl, {
