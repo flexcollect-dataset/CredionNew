@@ -128,7 +128,7 @@ const MatterReports: React.FC = () => {
 
     setSelectedEntityId(entityId);
     setSelectedReportAbn(abn);
-    setselectedReportword(report.searchWord);
+    setselectedReportword(report.searchWord || null);
     setSelectedReportType(report.reportType || null);
     setSelectedUserReportId(report.id);
     setNotificationPage(1);
@@ -933,7 +933,7 @@ const MatterReports: React.FC = () => {
                   try {
                     const response = await apiService.payForWatchlistReport(
                       selectedReportAbn,
-                      selectedReportword,
+                      selectedReportword || '',
                       selectedReportType,
                       matterId ? Number(matterId) : undefined,
                       selectedUserReportId
