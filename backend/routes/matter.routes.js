@@ -420,7 +420,7 @@ router.delete('/:matterId', authenticateToken, async (req, res) => {
 router.post('/watchlist/sync', authenticateToken, async (req, res) => {
   try {
     const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
-    const watchlistId = '3876';
+    const watchlistId = '3835';
     const apiUrl = `https://alares.com.au/api/watchlists/${watchlistId}/entities`;
 
     // Fetch watchlist entities from external API

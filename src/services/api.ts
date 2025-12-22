@@ -801,7 +801,7 @@ class ApiService {
 		message?: string;
 	}> {
 		const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
-		const apiUrl = `https://alares.com.au/api/watchlists/3876/notifications?entity_id=${entityId}&page=${page}`;
+		const apiUrl = `https://alares.com.au/api/watchlists/3835/notifications?entity_id=${entityId}&page=${page}`;
 
 		try {
 			const response = await fetch(apiUrl, {

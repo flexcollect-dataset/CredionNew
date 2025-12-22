@@ -4876,6 +4876,7 @@ setLandTitleOrganisationSearchTerm(displayText);
       // Download each PDF
       for (const filename of pdfFilenames) {
         let downloadUrl: string;
+        console.log(filename);
         downloadUrl = `https://credion-reports.s3.ap-southeast-2.amazonaws.com/${filename}`;
 
 
@@ -5406,7 +5407,7 @@ setLandTitleOrganisationSearchTerm(displayText);
             const reportResponse = await apiService.createReport(reportData);
             //const reportResponse: any = null;
             // Extract PDF filename from response
-            const pdfFilename = (reportResponse as any)?.report;
+            const pdfFilename = (reportResponse as any)?.report.pdfFilename;
 
             if (pdfFilename && typeof pdfFilename === 'string') {
               // Add PDF filename to the array
@@ -5607,7 +5608,7 @@ setLandTitleOrganisationSearchTerm(displayText);
 								//const reportResponse: any = null;
 								// Extract PDF filename from response
 								// The response always has the filename in the 'report' property and always ends with .pdf
-								const pdfFilename = (reportResponse as any)?.report;
+								const pdfFilename = (reportResponse as any)?.report.pdfFilename;
 
 								if (pdfFilename && typeof pdfFilename === 'string') {
 									// Add PDF filename to the array
@@ -5722,8 +5723,9 @@ setLandTitleOrganisationSearchTerm(displayText);
           const reportResponse = await apiService.createReport(reportData);
           //const reportResponse: any = null;
           // Extract PDF filename from response
-          const pdfFilename = (reportResponse as any)?.report;
-
+          console.log(reportResponse);
+          const pdfFilename = (reportResponse as any)?.report.pdfFilename;
+            console.log(reportResponse);
           if (pdfFilename && typeof pdfFilename === 'string') {
             // Add PDF filename to the array
             setPdfFilenames(prev => [...prev, pdfFilename]);
