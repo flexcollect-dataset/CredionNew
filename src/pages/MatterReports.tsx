@@ -936,7 +936,8 @@ const MatterReports: React.FC = () => {
                       selectedReportword || '',
                       selectedReportType,
                       matterId ? Number(matterId) : undefined,
-                      selectedUserReportId
+                      selectedUserReportId,
+                      notifications.length > 0 ? notifications : undefined
                     );
 
                     if (response.success) {

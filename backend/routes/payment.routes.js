@@ -532,20 +532,54 @@ router.post('/get-report-data', async (req, res) => {
 
 
 async function asic_report_data(uuid) {
-	//Now call GET API to fetch the report data
-	await delay(5000);
+	//Now call GET API to fetch the report data with retry logic
 	const getApiUrl = `https://alares.com.au/api/reports/${uuid}/json`;
 	const bearerToken = 'pIIDIt6acqekKFZ9a7G4w4hEoFDqCSMfF6CNjx5lCUnB6OF22nnQgGkEWGhv';
-
-	const response = await axios.get(getApiUrl, {
-		headers: {
-			'Authorization': `Bearer ${bearerToken}`,
-			'Content-Type': 'application/json'
-		},
-		timeout: 30000 // 30 second timeout
-	});
-	response.data.uuid = uuid;
-	return response;
+	
+	const maxRetries = 5;
+	const initialDelay = 3000; // Start with 3 seconds
+	const maxDelay = 15000; // Max 15 seconds between retries
+	const requestTimeout = 30000; // 30 seconds per request
+	
+	for (let attempt = 0; attempt < maxRetries; attempt++) {
+		try {
+			// Wait before retry (except first attempt)
+			if (attempt > 0) {
+				const delayTime = Math.min(initialDelay * Math.pow(2, attempt - 1), maxDelay);
+				console.log(`Retrying report fetch for UUID ${uuid}, attempt ${attempt + 1}/${maxRetries}, waiting ${delayTime}ms...`);
+				await delay(delayTime);
+			} else {
+				// First attempt - wait 3 seconds
+				await delay(initialDelay);
+			}
+			
+			const response = await axios.get(getApiUrl, {
+				headers: {
+					'Authorization': `Bearer ${bearerToken}`,
+					'Content-Type': 'application/json'
+				},
+				timeout: requestTimeout
+			});
+			
+			// If we get a successful response, return it
+			if (response.data) {
+				response.data.uuid = uuid;
+				console.log(`Successfully fetched report data for UUID ${uuid} on attempt ${attempt + 1}`);
+				return response;
+			}
+		} catch (error) {
+			// If this is the last attempt, throw the error
+			if (attempt === maxRetries - 1) {
+				console.error(`Failed to fetch report data for UUID ${uuid} after ${maxRetries} attempts:`, error.message);
+				throw new Error(`Failed to fetch report data after ${maxRetries} attempts: ${error.message}`);
+			}
+			// Otherwise, log and continue to next retry
+			console.warn(`Attempt ${attempt + 1} failed for UUID ${uuid}:`, error.message);
+		}
+	}
+	
+	// Should not reach here, but just in case
+	throw new Error(`Failed to fetch report data for UUID ${uuid} after ${maxRetries} attempts`);
 }
 
 async function fetchPpsrReportData(auSearchIdentifier) {
@@ -2034,7 +2068,7 @@ async function trademark_report(business) {
 }
 
 // Function to create report via external API
-async function createReport({ business, type, userId, matterId, ispdfcreate, skipExistingCheck = false, userReportIdToUpdate = null }) {
+async function createReport({ business, type, userId, matterId, ispdfcreate, skipExistingCheck = false, userReportIdToUpdate = null, watchlistNotifications = null }) {
 	try {
 		let existingReport = null;
 		let iresult = null;
@@ -2089,7 +2123,7 @@ async function createReport({ business, type, userId, matterId, ispdfcreate, ski
 				        'Authorization': `Bearer ${bearerToken}`,
 				        'Content-Type': 'application/json'
 				    },
-				    timeout: 30000 // 30 second timeout
+				    timeout: 30000 // 30 second timeout - report creation should be quick
 				});
 
 				// Now call GET API to fetch the report data
@@ -2110,7 +2144,7 @@ async function createReport({ business, type, userId, matterId, ispdfcreate, ski
 				        'Authorization': `Bearer ${bearerToken}`,
 				        'Content-Type': 'application/json'
 				    },
-				    timeout: 30000 // 30 second timeout
+				    timeout: 30000 // 30 second timeout - report creation should be quick
 				});
 
 				// Now call GET API to fetch the report data
@@ -2130,7 +2164,7 @@ async function createReport({ business, type, userId, matterId, ispdfcreate, ski
 				        'Authorization': `Bearer ${bearerToken}`,
 				        'Content-Type': 'application/json'
 				    },
-				    timeout: 30000 // 30 second timeout
+				    timeout: 30000 // 30 second timeout - report creation should be quick
 				});
 
 				//Now call GET API to fetch the report data
@@ -2208,6 +2242,159 @@ async function createReport({ business, type, userId, matterId, ispdfcreate, ski
 			}
 
 			if (!existingReport && reportData && reportData.status !== false && reportData.data) {
+				// If watchlistNotifications are provided, merge them with reportData
+				if (watchlistNotifications && Array.isArray(watchlistNotifications) && watchlistNotifications.length > 0) {
+					// Initialize watchlist notifications array in reportData
+					if (!reportData.data.watchlist_notifications) {
+						reportData.data.watchlist_notifications = [];
+					}
+					
+					// Process each notification and merge relevant data
+					watchlistNotifications.forEach((watchlistNotification) => {
+						// Add notification metadata
+						const notificationData = {
+							id: watchlistNotification.id,
+							watchlist_id: watchlistNotification.watchlist_id,
+							watchlist_entity_id: watchlistNotification.watchlist_entity_id,
+							watchlist: watchlistNotification.watchlist || null,
+							source: watchlistNotification.source || null,
+							case_type: watchlistNotification.case_type || null,
+							status: watchlistNotification.status || null,
+							match_type: watchlistNotification.match_type || null,
+							matched_on: watchlistNotification.matched_on || null,
+							matched_party_role: watchlistNotification.matched_party_role || null,
+							type: watchlistNotification.type || null,
+							url: watchlistNotification.url || null,
+							details: watchlistNotification.details || null,
+							details_html: watchlistNotification.details_html || null,
+							created_at: watchlistNotification.created_at || null,
+							updated_at: watchlistNotification.updated_at || null
+						};
+						
+						// Merge case data if available
+						if (watchlistNotification.case && Array.isArray(watchlistNotification.case) && watchlistNotification.case.length > 0) {
+							if (!reportData.data.cases || !Array.isArray(reportData.data.cases)) {
+								reportData.data.cases = [];
+							}
+							// Merge cases, avoiding duplicates
+							watchlistNotification.case.forEach(caseItem => {
+								const exists = reportData.data.cases.some(existing => existing.id === caseItem.id);
+								if (!exists) {
+									reportData.data.cases.push(caseItem);
+								}
+							});
+							notificationData.case = watchlistNotification.case;
+						}
+						
+						// Merge licence_class if available
+						if (watchlistNotification.licence_class !== null && watchlistNotification.licence_class !== undefined) {
+							if (!reportData.data.licences || !Array.isArray(reportData.data.licences)) {
+								reportData.data.licences = [];
+							}
+							// Add licence class info if not already present
+							const licenceInfo = {
+								class: watchlistNotification.licence_class,
+								source: 'watchlist',
+								notification_id: watchlistNotification.id
+							};
+							reportData.data.licences.push(licenceInfo);
+							notificationData.licence_class = watchlistNotification.licence_class;
+						}
+						
+						// Merge ASIC document if available
+						if (watchlistNotification.asic_document) {
+							// PDF service reads from asic_extracts[0].documents, so merge there
+							if (!reportData.data.asic_extracts || !Array.isArray(reportData.data.asic_extracts) || reportData.data.asic_extracts.length === 0) {
+								// If no asic_extracts, create one
+								reportData.data.asic_extracts = [{
+									type: 'Current',
+									documents: []
+								}];
+							}
+							
+							const firstExtract = reportData.data.asic_extracts[0];
+							if (!firstExtract.documents || !Array.isArray(firstExtract.documents)) {
+								firstExtract.documents = [];
+							}
+							
+							// Check if document already exists by uuid or document_number
+							const existingDoc = firstExtract.documents.find(doc => 
+								doc.uuid === watchlistNotification.asic_document.uuid ||
+								(doc.document_number && watchlistNotification.asic_document.document_number && 
+								 doc.document_number === watchlistNotification.asic_document.document_number)
+							);
+							
+							if (!existingDoc) {
+								// Convert watchlist asic_document format to Alares documents format
+								const watchlistDoc = {
+									type: 'Other',
+									description: watchlistNotification.asic_document.description || 'ASIC Document',
+									document_number: watchlistNotification.asic_document.uuid || null,
+									form_code: null,
+									page_count: null,
+									effective_at: watchlistNotification.created_at || null,
+									processed_at: watchlistNotification.created_at || null,
+									received_at: watchlistNotification.created_at || null,
+									created_at: watchlistNotification.created_at || null,
+									updated_at: watchlistNotification.updated_at || null,
+									uuid: watchlistNotification.asic_document.uuid || null,
+									source: 'watchlist',
+									notification_id: watchlistNotification.id
+								};
+								firstExtract.documents.push(watchlistDoc);
+							}
+							
+							// Also store in asic_documents array for reference
+							if (!reportData.data.asic_documents || !Array.isArray(reportData.data.asic_documents)) {
+								reportData.data.asic_documents = [];
+							}
+							const existingDocInArray = reportData.data.asic_documents.find(doc => doc.uuid === watchlistNotification.asic_document.uuid);
+							if (!existingDocInArray) {
+								reportData.data.asic_documents.push({
+									...watchlistNotification.asic_document,
+									source: 'watchlist',
+									notification_id: watchlistNotification.id
+								});
+							}
+							
+							notificationData.asic_document = watchlistNotification.asic_document;
+						}
+						
+						// Merge notification-specific data (e.g., tax debt updates)
+						if (watchlistNotification.data) {
+							notificationData.notification_data = watchlistNotification.data;
+							
+							// If it's a tax debt notification, update current_tax_debt
+							if (watchlistNotification.type === 'Tax Debt' && watchlistNotification.data.amount !== undefined) {
+								if (!reportData.data.current_tax_debt) {
+									reportData.data.current_tax_debt = {};
+								}
+								// Update tax debt with latest notification data
+								reportData.data.current_tax_debt.date = watchlistNotification.data.date || reportData.data.current_tax_debt.date;
+								reportData.data.current_tax_debt.amount = watchlistNotification.data.amount;
+								if (watchlistNotification.data.previous_amount !== undefined) {
+									reportData.data.current_tax_debt.previous_amount = watchlistNotification.data.previous_amount;
+								}
+								if (watchlistNotification.data.action) {
+									reportData.data.current_tax_debt.action = watchlistNotification.data.action;
+								}
+								reportData.data.current_tax_debt.ato_updated_at = watchlistNotification.updated_at || reportData.data.current_tax_debt.ato_updated_at;
+							}
+						}
+						
+						// Overwrite insolvency_risk_factor if provided in notification
+						if (watchlistNotification.insolvency_risk_factor !== null && watchlistNotification.insolvency_risk_factor !== undefined) {
+							reportData.data.insolvency_risk_factor = watchlistNotification.insolvency_risk_factor;
+							notificationData.insolvency_risk_factor = watchlistNotification.insolvency_risk_factor;
+						}
+						
+						// Add notification to array
+						reportData.data.watchlist_notifications.push(notificationData);
+					});
+					
+		
+				}
+				
 				// Extract search word dynamically from business object
 				const searchWord = extractSearchWord(business, type);
 				

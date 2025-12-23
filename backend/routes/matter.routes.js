@@ -8,6 +8,11 @@ const { createReport } = require('./payment.routes');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
+// Helper function for delay
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 // Middleware to check if user is authenticated (JWT)
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
@@ -548,7 +553,7 @@ router.post('/watchlist/sync', authenticateToken, async (req, res) => {
 // Payment endpoint for watchlist notifications
 router.post('/watchlist/pay', authenticateToken, async (req, res) => {
   try {
-    const { abn, reportword, reportType, matterId, userReportId } = req.body;
+    const { abn, reportword, reportType, matterId, userReportId, watchlistNotifications } = req.body;
     const userId = req.userId;
 
     if (!abn) {
@@ -573,6 +578,9 @@ router.post('/watchlist/pay', authenticateToken, async (req, res) => {
       isCompany: 'ORGANISATION'
     };
 
+    // Add buffer delay before creating report
+    await delay(2000); // 2 second buffer
+
     try {
       const result = await createReport({
         business,
@@ -581,7 +589,8 @@ router.post('/watchlist/pay', authenticateToken, async (req, res) => {
         matterId: matterId || null,
         ispdfcreate: true,
         skipExistingCheck: true,
-        userReportIdToUpdate: userReportId || null
+        userReportIdToUpdate: userReportId || null,
+        watchlistNotifications: watchlistNotifications || null
       });
 
       return res.json({

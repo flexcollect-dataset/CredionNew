@@ -731,7 +731,7 @@ class ApiService {
 		}
 	}
 
-	async payForWatchlistReport(abn: string, reportword:string, reportType: string, matterId?: number, userReportId?: number): Promise<{
+	async payForWatchlistReport(abn: string, reportword:string, reportType: string, matterId?: number, userReportId?: number, watchlistNotifications?: any[]): Promise<{
 		success: boolean;
 		message: string;
 		pdfFilename?: string;
@@ -745,7 +745,7 @@ class ApiService {
 				error?: string;
 			}>('/api/matters/watchlist/pay', {
 				method: 'POST',
-				body: JSON.stringify({ abn, reportword, reportType, matterId, userReportId }),
+				body: JSON.stringify({ abn, reportword, reportType, matterId, userReportId, watchlistNotifications }),
 			});
 
 			return response;
