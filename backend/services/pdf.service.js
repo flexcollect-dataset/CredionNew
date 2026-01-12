@@ -39,7 +39,6 @@ function fmtAbn(abnVal) {
 		: abnVal;
 }
 
-// Helper function to format dates
 function fmtDate(date) {
 	if (!date) return 'N/A';
 	return moment(date).format('DD MMM YYYY');
@@ -121,6 +120,11 @@ function extractSearchWord(business, type) {
 	}
 	return null;
 }
+
+
+
+
+
 
 // Extract data for ATO Report
 function extractAtoData(data) {
@@ -5713,7 +5717,6 @@ function replaceVariables(htmlContent, data, reportype, bussiness) {
 
 	return updatedHtml;
 }
-
 
 // Function to generate PDF from HTML
 async function generatePDF(htmlContent, outputPath) {
